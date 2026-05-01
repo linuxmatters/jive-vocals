@@ -103,6 +103,13 @@ test: _check-submodule
 bench: _check-submodule
     go test -run '^$' -bench . -benchmem ./internal/processor
 
+# Run focused Pass 2 and Pass 4 filter-ablation benchmarks
+bench-fullbench: _check-submodule
+    #!/usr/bin/env bash
+    set -e
+    echo "Using JIVETALKING_BENCH_FIXTURE when set; otherwise fullbench benchmarks skip"
+    go test -run '^$' -bench 'BenchmarkPass(2|4)FilterAblations' -benchmem -count=3 ./internal/processor
+
 # Run processor package benchmarks with a CPU profile
 bench-profile: _check-submodule
     #!/usr/bin/env bash
@@ -111,6 +118,16 @@ bench-profile: _check-submodule
     go test -run '^$' -bench . -benchmem -cpuprofile .bench/cpu.out ./internal/processor
     echo "Run CPU profile analysis with:"
     echo "  go tool pprof .bench/cpu.out"
+
+# Run focused Pass 2 and Pass 4 filter-ablation benchmarks with a CPU profile
+bench-fullbench-profile: _check-submodule
+    #!/usr/bin/env bash
+    set -e
+    mkdir -p .bench
+    echo "Using JIVETALKING_BENCH_FIXTURE when set; otherwise fullbench benchmarks skip"
+    go test -run '^$' -bench 'BenchmarkPass(2|4)FilterAblations' -benchmem -cpuprofile .bench/fullbench-cpu.out ./internal/processor
+    echo "Run CPU profile analysis with:"
+    echo "  go tool pprof .bench/fullbench-cpu.out"
 
 # Benchmark a full CLI processing run against a copied input file
 bench-cli FILE: build

@@ -1,0 +1,1044 @@
+package processor
+
+import (
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
+	"github.com/linuxmatters/jivetalking/internal/audio"
+)
+
+const fullbenchFixtureEnv = "JIVETALKING_BENCH_FIXTURE"
+
+type fullbenchAdaptedSetup struct {
+	Config       *FilterChainConfig
+	Measurements *AudioMeasurements
+}
+
+type fullbenchPass2Seed struct {
+	OutputPath         string
+	Config             *FilterChainConfig
+	InputMeasurements  *AudioMeasurements
+	OutputMeasurements *OutputMeasurements
+	InputMetadata      InputMetadata
+}
+
+type fullbenchLoudnormSetup struct {
+	Measurement       *LoudnormMeasurement
+	EffectiveConfig   *FilterChainConfig
+	Pass3FilterPrefix string
+	PreGainDB         float64
+	LimiterCeiling    float64
+	LimiterNeeded     bool
+	LimiterClamped    bool
+	LinearModeForced  bool
+}
+
+type fullbenchPass4Seed struct {
+	Pass2Seed *fullbenchPass2Seed
+	Loudnorm  *fullbenchLoudnormSetup
+}
+
+type fullbenchPass2AblationVariant struct {
+	Name                string
+	ExtractMeasurements bool
+	BuildSpec           func(*FilterChainConfig) string
+}
+
+type fullbenchPass4AblationVariant struct {
+	Name                string
+	RequiresLimiter     bool
+	ExtractMeasurements bool
+	BuildSpec           func(*fullbenchLoudnormSetup) string
+}
+
+func resolveFullbenchFixture(tb testing.TB) string {
+	tb.Helper()
+
+	fixturePath, ok := resolveFullbenchFixtureFromEnv(tb)
+	if !ok {
+		tb.Skipf("set %s to benchmark fullbench ablations with a real local fixture", fullbenchFixtureEnv)
+	}
+
+	return fixturePath
+}
+
+func resolveFullbenchFixtureFromEnv(tb testing.TB) (string, bool) {
+	tb.Helper()
+
+	fixturePath := os.Getenv(fullbenchFixtureEnv)
+	if fixturePath == "" {
+		return "", false
+	}
+
+	if _, err := os.Stat(fixturePath); err != nil { // #nosec G703 -- local benchmark fixture path is explicitly supplied by JIVETALKING_BENCH_FIXTURE.
+		tb.Fatalf("%s is set but cannot be accessed: %v", fullbenchFixtureEnv, err)
+	}
+	return copyBenchmarkFixture(tb, fixturePath, tb.TempDir()), true
+}
+
+func TestResolveFullbenchFixtureFromEnvSkipsWhenUnset(t *testing.T) {
+	t.Setenv(fullbenchFixtureEnv, "")
+
+	fixturePath, ok := resolveFullbenchFixtureFromEnv(t)
+	if ok {
+		t.Fatalf("expected no fixture without %s, got %q", fullbenchFixtureEnv, fixturePath)
+	}
+	if fixturePath != "" {
+		t.Fatalf("expected empty fixture path without %s, got %q", fullbenchFixtureEnv, fixturePath)
+	}
+}
+
+func TestResolveFullbenchFixtureFromEnvCopiesEnvironmentFixture(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "source.flac")
+	sourceBytes := []byte("fixture")
+	if err := os.WriteFile(sourcePath, sourceBytes, 0o600); err != nil {
+		t.Fatalf("failed to write source fixture: %v", err)
+	}
+	t.Setenv(fullbenchFixtureEnv, sourcePath)
+
+	copiedPath, ok := resolveFullbenchFixtureFromEnv(t)
+	if !ok {
+		t.Fatalf("expected fixture when %s is set", fullbenchFixtureEnv)
+	}
+	if copiedPath == sourcePath {
+		t.Fatal("resolver returned source path instead of a copy")
+	}
+	if filepath.Base(copiedPath) != filepath.Base(sourcePath) {
+		t.Fatalf("copy basename mismatch: got %q, want %q", filepath.Base(copiedPath), filepath.Base(sourcePath))
+	}
+
+	copiedBytes, err := os.ReadFile(copiedPath)
+	if err != nil {
+		t.Fatalf("failed to read copied fixture: %v", err)
+	}
+	if string(copiedBytes) != string(sourceBytes) {
+		t.Fatalf("copied fixture content mismatch: got %q, want %q", copiedBytes, sourceBytes)
+	}
+
+	afterBytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("failed to reread source fixture: %v", err)
+	}
+	if string(afterBytes) != string(sourceBytes) {
+		t.Fatal("source fixture was modified")
+	}
+}
+
+func runFullbenchFilterSpec(tb testing.TB, inputPath, outputPath, filterSpec string, extractMeasurements bool) (InputMetadata, *OutputMeasurements) {
+	tb.Helper()
+
+	if filterSpec == "" {
+		tb.Fatal("fullbench filter spec must not be empty")
+	}
+
+	reader, metadata, err := audio.OpenAudioFile(inputPath)
+	if err != nil {
+		tb.Fatalf("failed to open input file: %v", err)
+	}
+	defer reader.Close()
+
+	inputMetadata := InputMetadata{
+		SampleRate:   metadata.SampleRate,
+		Channels:     metadata.Channels,
+		DurationSecs: metadata.Duration,
+	}
+
+	filterGraph, bufferSrcCtx, bufferSinkCtx, err := setupFilterGraph(reader.GetDecoderContext(), filterSpec)
+	if err != nil {
+		tb.Fatalf("failed to create fullbench filter graph: %v", err)
+	}
+	defer ffmpeg.AVFilterGraphFree(&filterGraph)
+
+	encoder, err := createOutputEncoder(outputPath, metadata, bufferSinkCtx)
+	if err != nil {
+		tb.Fatalf("failed to create fullbench output encoder: %v", err)
+	}
+	encoderClosed := false
+	defer func() {
+		if !encoderClosed {
+			_ = encoder.Close()
+		}
+	}()
+
+	var outputAcc *outputMetadataAccumulators
+	if extractMeasurements {
+		outputAcc = &outputMetadataAccumulators{}
+	}
+
+	if err := runFilterGraph(reader, bufferSrcCtx, bufferSinkCtx, FrameLoopConfig{
+		OnReadError: func(err error) error {
+			return fmt.Errorf("failed to read frame: %w", err)
+		},
+		OnPushError: func(err error) error {
+			return fmt.Errorf("failed to push frame to filter: %w", err)
+		},
+		OnPullError: func(err error) error {
+			return fmt.Errorf("failed to pull frame from filter: %w", err)
+		},
+		OnFrame: func(inputFrame, filteredFrame *ffmpeg.AVFrame) (FrameAction, error) {
+			if outputAcc != nil {
+				extractOutputFrameMetadata(filteredFrame.Metadata(), outputAcc)
+			}
+
+			filteredFrame.SetTimeBase(ffmpeg.AVBuffersinkGetTimeBase(bufferSinkCtx))
+			if err := encoder.WriteFrame(filteredFrame); err != nil {
+				return FrameDiscard, fmt.Errorf("failed to write frame: %w", err)
+			}
+
+			return FrameDiscard, nil
+		},
+	}); err != nil {
+		tb.Fatalf("fullbench filter graph failed: %v", err)
+	}
+
+	if err := encoder.Flush(); err != nil {
+		tb.Fatalf("failed to flush fullbench output encoder: %v", err)
+	}
+	if err := encoder.Close(); err != nil {
+		tb.Fatalf("failed to close fullbench output encoder: %v", err)
+	}
+	encoderClosed = true
+
+	if outputAcc != nil {
+		return inputMetadata, finalizeOutputMeasurements(outputAcc)
+	}
+
+	return inputMetadata, nil
+}
+
+func fullbenchPass2AblationVariants() []fullbenchPass2AblationVariant {
+	return []fullbenchPass2AblationVariant{
+		{
+			Name:                "full_chain",
+			ExtractMeasurements: true,
+			BuildSpec: func(config *FilterChainConfig) string {
+				return config.BuildFilterSpec()
+			},
+		},
+		{
+			Name:                "without_output_analysis",
+			ExtractMeasurements: false,
+			BuildSpec: func(config *FilterChainConfig) string {
+				ablated := *config
+				ablated.AnalysisEnabled = false
+				ablated.OutputAnalysisEnabled = false
+				return ablated.BuildFilterSpec()
+			},
+		},
+		{
+			Name:                "without_anlmdn",
+			ExtractMeasurements: true,
+			BuildSpec:           buildFullbenchPass2WithoutAnlmdnSpec,
+		},
+		{
+			Name:                "without_compand",
+			ExtractMeasurements: true,
+			BuildSpec: func(config *FilterChainConfig) string {
+				ablated := *config
+				ablated.NoiseRemoveCompandEnabled = false
+				return ablated.BuildFilterSpec()
+			},
+		},
+		{
+			Name:                "without_gate_compressor",
+			ExtractMeasurements: true,
+			BuildSpec: func(config *FilterChainConfig) string {
+				ablated := *config
+				ablated.DS201GateEnabled = false
+				ablated.LA2AEnabled = false
+				return ablated.BuildFilterSpec()
+			},
+		},
+	}
+}
+
+func buildFullbenchPass2WithoutAnlmdnSpec(config *FilterChainConfig) string {
+	ablated := *config
+	order := ablated.FilterOrder
+	if len(order) == 0 {
+		order = Pass2FilterOrder
+	}
+
+	filters := make([]string, 0, len(order))
+	for _, id := range order {
+		if id == FilterNoiseRemove {
+			if ablated.NoiseRemoveEnabled && ablated.NoiseRemoveCompandEnabled {
+				filters = append(filters, ablated.buildNoiseRemoveCompandFilter())
+			}
+			continue
+		}
+
+		builder, ok := filterBuilders[id]
+		if !ok {
+			continue
+		}
+		if spec := builder(&ablated); spec != "" {
+			filters = append(filters, spec)
+		}
+	}
+
+	return strings.Join(filters, ",")
+}
+
+func fullbenchPass4AblationVariants() []fullbenchPass4AblationVariant {
+	return []fullbenchPass4AblationVariant{
+		{
+			Name: "loudnorm_only",
+			BuildSpec: func(loudnorm *fullbenchLoudnormSetup) string {
+				return buildFullbenchPass4AblationSpec(loudnorm, false, false)
+			},
+		},
+		{
+			Name:            "loudnorm_plus_limiter",
+			RequiresLimiter: true,
+			BuildSpec: func(loudnorm *fullbenchLoudnormSetup) string {
+				return buildFullbenchPass4AblationSpec(loudnorm, true, false)
+			},
+		},
+		{
+			Name:                "loudnorm_plus_output_analysis",
+			ExtractMeasurements: true,
+			BuildSpec: func(loudnorm *fullbenchLoudnormSetup) string {
+				return buildFullbenchPass4AblationSpec(loudnorm, false, true)
+			},
+		},
+	}
+}
+
+func buildFullbenchPass4AblationSpec(loudnorm *fullbenchLoudnormSetup, includeLimiter, includeOutputAnalysis bool) string {
+	if loudnorm == nil || loudnorm.EffectiveConfig == nil || loudnorm.Measurement == nil {
+		return ""
+	}
+
+	filters := make([]string, 0, 5)
+	if includeLimiter && loudnorm.Pass3FilterPrefix != "" {
+		filters = append(filters, loudnorm.Pass3FilterPrefix)
+	}
+
+	filters = append(filters, buildFullbenchLoudnormClause(loudnorm.EffectiveConfig, loudnorm.Measurement))
+
+	if includeOutputAnalysis {
+		if analysis := buildFullbenchPass4OutputAnalysisFilters(loudnorm.EffectiveConfig, loudnorm.Measurement); analysis != "" {
+			filters = append(filters, analysis)
+		}
+	}
+
+	filters = append(filters, buildFullbenchPass4ResampleFilter(loudnorm.EffectiveConfig))
+
+	return strings.Join(filters, ",")
+}
+
+func buildFullbenchLoudnormClause(config *FilterChainConfig, measurement *LoudnormMeasurement) string {
+	return extractFullbenchFilterClause(
+		buildFullbenchProductionPass4SpecWithoutAdeclick(config, measurement),
+		"loudnorm=",
+	)
+}
+
+func buildFullbenchPass4OutputAnalysisFilters(config *FilterChainConfig, measurement *LoudnormMeasurement) string {
+	clauses := strings.Split(buildFullbenchProductionPass4SpecWithoutAdeclick(config, measurement), ",")
+	analysisStart := -1
+	resampleStart := -1
+	for i, clause := range clauses {
+		switch {
+		case strings.HasPrefix(clause, "astats="):
+			analysisStart = i
+		case strings.HasPrefix(clause, "aformat="):
+			resampleStart = i
+		}
+	}
+	if analysisStart == -1 || resampleStart == -1 || analysisStart >= resampleStart {
+		return ""
+	}
+
+	return strings.Join(clauses[analysisStart:resampleStart], ",")
+}
+
+func buildFullbenchPass4ResampleFilter(config *FilterChainConfig) string {
+	resampleConfig := *config
+	resampleConfig.ResampleEnabled = true
+	return resampleConfig.buildResampleFilter()
+}
+
+func buildFullbenchProductionPass4SpecWithoutAdeclick(config *FilterChainConfig, measurement *LoudnormMeasurement) string {
+	pass4Config := *config
+	pass4Config.AdeclickEnabled = false
+	return buildLoudnormFilterSpec(&pass4Config, measurement, 0, 0, false)
+}
+
+func extractFullbenchFilterClause(spec, prefix string) string {
+	for clause := range strings.SplitSeq(spec, ",") {
+		if strings.HasPrefix(clause, prefix) {
+			return clause
+		}
+	}
+
+	return ""
+}
+
+func TestFullbenchPass2AblationSpecs(t *testing.T) {
+	config := newTestConfig()
+	config.DownmixEnabled = true
+	config.DS201HPEnabled = true
+	config.DS201LPEnabled = true
+	config.NoiseRemoveEnabled = true
+	config.NoiseRemoveCompandEnabled = true
+	config.DS201GateEnabled = true
+	config.LA2AEnabled = true
+	config.DeessEnabled = true
+	config.DeessIntensity = 0.5
+	config.AnalysisEnabled = true
+	config.OutputAnalysisEnabled = true
+	config.ResampleEnabled = true
+	config.FilterOrder = Pass2FilterOrder
+
+	variantByName := make(map[string]fullbenchPass2AblationVariant)
+	for _, variant := range fullbenchPass2AblationVariants() {
+		variantByName[variant.Name] = variant
+	}
+
+	expectedNames := []string{
+		"full_chain",
+		"without_output_analysis",
+		"without_anlmdn",
+		"without_compand",
+		"without_gate_compressor",
+	}
+	if len(variantByName) != len(expectedNames) {
+		t.Fatalf("got %d Pass 2 ablation variants, want %d", len(variantByName), len(expectedNames))
+	}
+	for _, name := range expectedNames {
+		if _, ok := variantByName[name]; !ok {
+			t.Fatalf("missing Pass 2 ablation variant %q", name)
+		}
+	}
+
+	tests := []struct {
+		name                string
+		wantPresent         []string
+		wantAbsent          []string
+		extractMeasurements bool
+	}{
+		{
+			name: "full_chain",
+			wantPresent: []string{
+				"anlmdn=", "compand=", "agate=", "acompressor=",
+				"astats=", "aspectralstats=", "ebur128=",
+				"aformat=sample_rates=44100", "asetnsamples=",
+			},
+			extractMeasurements: true,
+		},
+		{
+			name:        "without_output_analysis",
+			wantPresent: []string{"anlmdn=", "compand=", "agate=", "acompressor=", "aformat=sample_rates=44100", "asetnsamples="},
+			wantAbsent:  []string{"astats=", "aspectralstats=", "ebur128="},
+		},
+		{
+			name:                "without_anlmdn",
+			wantPresent:         []string{"compand=", "agate=", "acompressor=", "astats=", "aspectralstats=", "ebur128=", "aformat=sample_rates=44100", "asetnsamples="},
+			wantAbsent:          []string{"anlmdn="},
+			extractMeasurements: true,
+		},
+		{
+			name:                "without_compand",
+			wantPresent:         []string{"anlmdn=", "agate=", "acompressor=", "astats=", "aspectralstats=", "ebur128=", "aformat=sample_rates=44100", "asetnsamples="},
+			wantAbsent:          []string{"compand="},
+			extractMeasurements: true,
+		},
+		{
+			name:                "without_gate_compressor",
+			wantPresent:         []string{"anlmdn=", "compand=", "astats=", "aspectralstats=", "ebur128=", "aformat=sample_rates=44100", "asetnsamples="},
+			wantAbsent:          []string{"agate=", "acompressor="},
+			extractMeasurements: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			variant := variantByName[tt.name]
+			spec := variant.BuildSpec(config)
+			assertFullbenchSpecContains(t, spec, tt.wantPresent)
+			assertFullbenchSpecExcludes(t, spec, tt.wantAbsent)
+			if variant.ExtractMeasurements != tt.extractMeasurements {
+				t.Fatalf("ExtractMeasurements = %v, want %v", variant.ExtractMeasurements, tt.extractMeasurements)
+			}
+		})
+	}
+}
+
+func TestFullbenchPass2WithoutAnlmdnPreservesOrder(t *testing.T) {
+	config := newTestConfig()
+	config.DownmixEnabled = true
+	config.DS201HPEnabled = true
+	config.DS201LPEnabled = true
+	config.NoiseRemoveEnabled = true
+	config.NoiseRemoveCompandEnabled = true
+	config.DS201GateEnabled = true
+	config.LA2AEnabled = true
+	config.DeessEnabled = true
+	config.DeessIntensity = 0.5
+	config.AnalysisEnabled = true
+	config.ResampleEnabled = true
+	config.FilterOrder = Pass2FilterOrder
+
+	spec := buildFullbenchPass2WithoutAnlmdnSpec(config)
+
+	assertFullbenchSpecExcludes(t, spec, []string{"anlmdn="})
+	assertFullbenchSpecContains(t, spec, []string{"compand="})
+	assertFullbenchSpecOrder(t, spec, []string{
+		"aformat=channel_layouts=mono",
+		"highpass=",
+		"lowpass=",
+		"compand=",
+		"agate=",
+		"acompressor=",
+		"deesser=",
+		"astats=",
+		"aspectralstats=",
+		"ebur128=",
+		"aformat=sample_rates=44100",
+		"asetnsamples=",
+	})
+}
+
+func TestFullbenchLoudnormClauseMatchesProduction(t *testing.T) {
+	config := newTestConfig()
+	config.AdeclickEnabled = true
+	config.LoudnormTargetI = -17.25
+	config.LoudnormTargetTP = -2.25
+	config.LoudnormTargetLRA = 9.0
+
+	measurement := &LoudnormMeasurement{
+		InputI:       -23.25,
+		InputTP:      -4.50,
+		InputLRA:     5.75,
+		InputThresh:  -34.25,
+		TargetOffset: -0.75,
+	}
+
+	productionConfig := *config
+	productionConfig.AdeclickEnabled = false
+	productionClause := extractFullbenchFilterClause(
+		buildLoudnormFilterSpec(&productionConfig, measurement, 0, 0, false),
+		"loudnorm=",
+	)
+	benchmarkClause := buildFullbenchLoudnormClause(config, measurement)
+
+	if benchmarkClause != productionClause {
+		t.Fatalf("benchmark loudnorm clause drifted from production\nbenchmark:  %s\nproduction: %s", benchmarkClause, productionClause)
+	}
+	assertFullbenchSpecContains(t, benchmarkClause, []string{
+		"I=-17.25",
+		"TP=-2.25",
+		"LRA=9.0",
+		"measured_I=-23.25",
+		"measured_TP=-4.50",
+		"measured_LRA=5.75",
+		"measured_thresh=-34.25",
+		"offset=-0.75",
+		"dual_mono=true",
+		"linear=true",
+		"print_format=json",
+	})
+	assertFullbenchSpecExcludes(t, benchmarkClause, []string{
+		"adeclick=", "astats=", "aspectralstats=", "ebur128=", "aformat=", "asetnsamples=",
+	})
+}
+
+func TestFullbenchPass4AblationSpecs(t *testing.T) {
+	config := newTestConfig()
+	config.AdeclickEnabled = true
+	config.ResampleEnabled = false
+	measurement := &LoudnormMeasurement{
+		InputI:       -24.0,
+		InputTP:      -6.0,
+		InputLRA:     7.0,
+		InputThresh:  -34.0,
+		TargetOffset: -1.0,
+	}
+	loudnorm := &fullbenchLoudnormSetup{
+		Measurement:       measurement,
+		EffectiveConfig:   config,
+		Pass3FilterPrefix: buildPreLimiterPrefix(0, -12.0, true),
+		LimiterNeeded:     true,
+		LimiterCeiling:    -12.0,
+	}
+
+	variantByName := make(map[string]fullbenchPass4AblationVariant)
+	for _, variant := range fullbenchPass4AblationVariants() {
+		variantByName[variant.Name] = variant
+	}
+
+	expectedNames := []string{
+		"loudnorm_only",
+		"loudnorm_plus_limiter",
+		"loudnorm_plus_output_analysis",
+	}
+	if len(variantByName) != len(expectedNames) {
+		t.Fatalf("got %d Pass 4 ablation variants, want %d", len(variantByName), len(expectedNames))
+	}
+	for _, name := range expectedNames {
+		if _, ok := variantByName[name]; !ok {
+			t.Fatalf("missing Pass 4 ablation variant %q", name)
+		}
+	}
+
+	tests := []struct {
+		name                string
+		wantPresent         []string
+		wantAbsent          []string
+		extractMeasurements bool
+		requiresLimiter     bool
+	}{
+		{
+			name:        "loudnorm_only",
+			wantPresent: []string{"loudnorm=", "aformat=sample_rates=44100", "asetnsamples="},
+			wantAbsent:  []string{"alimiter=", "astats=", "aspectralstats=", "ebur128=", "adeclick="},
+		},
+		{
+			name:            "loudnorm_plus_limiter",
+			wantPresent:     []string{"alimiter=", "loudnorm=", "aformat=sample_rates=44100", "asetnsamples="},
+			wantAbsent:      []string{"astats=", "aspectralstats=", "ebur128=", "adeclick="},
+			requiresLimiter: true,
+		},
+		{
+			name:                "loudnorm_plus_output_analysis",
+			wantPresent:         []string{"loudnorm=", "astats=", "aspectralstats=", "ebur128=", "aformat=sample_rates=44100", "asetnsamples="},
+			wantAbsent:          []string{"alimiter=", "adeclick="},
+			extractMeasurements: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			variant := variantByName[tt.name]
+			spec := variant.BuildSpec(loudnorm)
+			assertFullbenchSpecContains(t, spec, tt.wantPresent)
+			assertFullbenchSpecExcludes(t, spec, tt.wantAbsent)
+			if variant.ExtractMeasurements != tt.extractMeasurements {
+				t.Fatalf("ExtractMeasurements = %v, want %v", variant.ExtractMeasurements, tt.extractMeasurements)
+			}
+			if variant.RequiresLimiter != tt.requiresLimiter {
+				t.Fatalf("RequiresLimiter = %v, want %v", variant.RequiresLimiter, tt.requiresLimiter)
+			}
+		})
+	}
+
+	limiterSpec := variantByName["loudnorm_plus_limiter"].BuildSpec(loudnorm)
+	assertFullbenchSpecOrder(t, limiterSpec, []string{"alimiter=", "loudnorm=", "aformat=", "asetnsamples="})
+
+	analysisSpec := variantByName["loudnorm_plus_output_analysis"].BuildSpec(loudnorm)
+	assertFullbenchSpecOrder(t, analysisSpec, []string{
+		"loudnorm=",
+		"astats=",
+		"aspectralstats=",
+		"ebur128=",
+		"aformat=",
+		"asetnsamples=",
+	})
+}
+
+func TestFullbenchPass4LimiterVariantOmitsInactivePrefix(t *testing.T) {
+	config := newTestConfig()
+	measurement := &LoudnormMeasurement{
+		InputI:       -20.0,
+		InputTP:      -8.0,
+		InputLRA:     5.0,
+		InputThresh:  -30.0,
+		TargetOffset: 0.0,
+	}
+	loudnorm := &fullbenchLoudnormSetup{
+		Measurement:     measurement,
+		EffectiveConfig: config,
+	}
+
+	for _, variant := range fullbenchPass4AblationVariants() {
+		if variant.Name != "loudnorm_plus_limiter" {
+			continue
+		}
+		if !variant.RequiresLimiter {
+			t.Fatal("loudnorm_plus_limiter must require an active limiter prefix")
+		}
+		spec := variant.BuildSpec(loudnorm)
+		assertFullbenchSpecContains(t, spec, []string{"loudnorm=", "aformat=sample_rates=44100", "asetnsamples="})
+		assertFullbenchSpecExcludes(t, spec, []string{"alimiter=", "volume="})
+		return
+	}
+
+	t.Fatal("missing loudnorm_plus_limiter variant")
+}
+
+func assertFullbenchSpecContains(tb testing.TB, spec string, parts []string) {
+	tb.Helper()
+
+	for _, part := range parts {
+		if !strings.Contains(spec, part) {
+			tb.Fatalf("filter spec missing %q\nSpec: %s", part, spec)
+		}
+	}
+}
+
+func assertFullbenchSpecExcludes(tb testing.TB, spec string, parts []string) {
+	tb.Helper()
+
+	for _, part := range parts {
+		if strings.Contains(spec, part) {
+			tb.Fatalf("filter spec contains unwanted %q\nSpec: %s", part, spec)
+		}
+	}
+}
+
+func assertFullbenchSpecOrder(tb testing.TB, spec string, parts []string) {
+	tb.Helper()
+
+	previous := -1
+	for _, part := range parts {
+		current := strings.Index(spec, part)
+		if current == -1 {
+			tb.Fatalf("filter spec missing %q\nSpec: %s", part, spec)
+		}
+		if current <= previous {
+			tb.Fatalf("filter spec order mismatch at %q\nSpec: %s", part, spec)
+		}
+		previous = current
+	}
+}
+
+func TestRunFullbenchFilterSpecSyntheticSmoke(t *testing.T) {
+	inputPath := generateTestAudio(t, TestAudioOptions{
+		DurationSecs: 1.0,
+		SampleRate:   44100,
+		ToneFreq:     180.0,
+		ToneLevel:    -18.0,
+		NoiseLevel:   -58.0,
+		Dir:          t.TempDir(),
+	})
+	defer cleanupTestAudio(t, inputPath)
+
+	config := newTestConfig()
+	config.AnalysisEnabled = true
+	config.ResampleEnabled = true
+	config.FilterOrder = Pass2FilterOrder
+	filterSpec := config.BuildFilterSpec()
+
+	measuredOutputPath := filepath.Join(t.TempDir(), "measured.flac")
+	inputMetadata, outputMeasurements := runFullbenchFilterSpec(t, inputPath, measuredOutputPath, filterSpec, true)
+	if inputMetadata.SampleRate != 44100 {
+		t.Fatalf("input metadata sample rate mismatch: got %d, want 44100", inputMetadata.SampleRate)
+	}
+	if outputMeasurements == nil {
+		t.Fatal("expected output measurements when extraction is requested")
+	}
+	assertFullbenchFLACOutput(t, measuredOutputPath)
+
+	unmeasuredOutputPath := filepath.Join(t.TempDir(), "unmeasured.flac")
+	_, unmeasuredOutputMeasurements := runFullbenchFilterSpec(t, inputPath, unmeasuredOutputPath, filterSpec, false)
+	if unmeasuredOutputMeasurements != nil {
+		t.Fatal("did not expect output measurements when extraction is not requested")
+	}
+	assertFullbenchFLACOutput(t, unmeasuredOutputPath)
+}
+
+func BenchmarkPass2FilterAblations(b *testing.B) {
+	inputPath := resolveFullbenchFixture(b)
+	adapted := setupFullbenchAdaptedConfig(b, inputPath)
+
+	for _, variant := range fullbenchPass2AblationVariants() {
+		b.Run(variant.Name, func(b *testing.B) {
+			config := *adapted.Config
+			config.Pass = PassProcessing
+			config.FilterOrder = Pass2FilterOrder
+			spec := variant.BuildSpec(&config)
+			if spec == "" {
+				b.Fatal("Pass 2 ablation filter spec must not be empty")
+			}
+
+			outputDir := b.TempDir()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				outputPath := filepath.Join(outputDir, fmt.Sprintf("%s-%d.flac", variant.Name, i))
+				_, outputMeasurements := runFullbenchFilterSpec(b, inputPath, outputPath, spec, variant.ExtractMeasurements)
+				if variant.ExtractMeasurements && outputMeasurements == nil {
+					b.Fatal("expected output measurements for Pass 2 ablation variant")
+				}
+				if !variant.ExtractMeasurements && outputMeasurements != nil {
+					b.Fatal("did not expect output measurements for Pass 2 ablation variant")
+				}
+
+				b.StopTimer()
+				if err := os.Remove(outputPath); err != nil {
+					b.Fatalf("failed to remove Pass 2 ablation output: %v", err)
+				}
+				b.StartTimer()
+			}
+		})
+	}
+}
+
+func BenchmarkPass4FilterAblations(b *testing.B) {
+	inputPath := resolveFullbenchFixture(b)
+	seed := setupFullbenchPass4Seed(b, inputPath)
+	if seed.Pass2Seed == nil || seed.Loudnorm == nil {
+		b.Fatal("Pass 4 ablation setup returned incomplete seed")
+	}
+
+	for _, variant := range fullbenchPass4AblationVariants() {
+		b.Run(variant.Name, func(b *testing.B) {
+			if variant.RequiresLimiter && seed.Loudnorm.Pass3FilterPrefix == "" {
+				b.Fatal("Pass 4 limiter ablation requires a fixture that activates the limiter prefix")
+			}
+
+			spec := variant.BuildSpec(seed.Loudnorm)
+			if spec == "" {
+				b.Fatal("Pass 4 ablation filter spec must not be empty")
+			}
+
+			outputDir := b.TempDir()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				outputPath := filepath.Join(outputDir, fmt.Sprintf("%s-%d.flac", variant.Name, i))
+				_, outputMeasurements := runFullbenchFilterSpec(
+					b,
+					seed.Pass2Seed.OutputPath,
+					outputPath,
+					spec,
+					variant.ExtractMeasurements,
+				)
+				if variant.ExtractMeasurements && outputMeasurements == nil {
+					b.Fatal("expected output measurements for Pass 4 ablation variant")
+				}
+				if !variant.ExtractMeasurements && outputMeasurements != nil {
+					b.Fatal("did not expect output measurements for Pass 4 ablation variant")
+				}
+
+				b.StopTimer()
+				if err := os.Remove(outputPath); err != nil {
+					b.Fatalf("failed to remove Pass 4 ablation output: %v", err)
+				}
+				b.StartTimer()
+			}
+		})
+	}
+}
+
+func assertFullbenchFLACOutput(tb testing.TB, outputPath string) {
+	tb.Helper()
+
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		tb.Fatalf("fullbench output was not written: %v", err)
+	}
+	if info.Size() == 0 {
+		tb.Fatal("fullbench output is empty")
+	}
+
+	reader, metadata, err := audio.OpenAudioFile(outputPath)
+	if err != nil {
+		tb.Fatalf("failed to reopen fullbench output: %v", err)
+	}
+	defer reader.Close()
+
+	if metadata.SampleRate != 44100 {
+		tb.Fatalf("output sample rate mismatch: got %d, want 44100", metadata.SampleRate)
+	}
+	if metadata.Channels != 1 {
+		tb.Fatalf("output channels mismatch: got %d, want 1", metadata.Channels)
+	}
+}
+
+func setupFullbenchAdaptedConfig(tb testing.TB, inputPath string) *fullbenchAdaptedSetup {
+	tb.Helper()
+
+	config := DefaultFilterConfig()
+	analysisResult, err := AnalyzeOnlyDetailed(inputPath, config, nil)
+	if err != nil {
+		tb.Fatalf("failed to prepare fullbench adapted config: %v", err)
+	}
+	if analysisResult == nil || analysisResult.Config == nil || analysisResult.Measurements == nil {
+		tb.Fatal("fullbench adapted setup returned incomplete analysis result")
+	}
+
+	analysisResult.Config.Pass = PassProcessing
+	analysisResult.Config.FilterOrder = Pass2FilterOrder
+	analysisResult.Config.OutputAnalysisEnabled = true
+
+	return &fullbenchAdaptedSetup{
+		Config:       analysisResult.Config,
+		Measurements: analysisResult.Measurements,
+	}
+}
+
+func setupFullbenchPass2Seed(tb testing.TB, inputPath string, adapted *fullbenchAdaptedSetup) *fullbenchPass2Seed {
+	tb.Helper()
+
+	if adapted == nil || adapted.Config == nil || adapted.Measurements == nil {
+		tb.Fatal("fullbench Pass 2 seed requires adapted config and measurements")
+	}
+
+	config := *adapted.Config
+	config.Pass = PassProcessing
+	config.FilterOrder = Pass2FilterOrder
+	config.AnalysisEnabled = true
+	config.OutputAnalysisEnabled = true
+
+	outputPath := filepath.Join(tb.TempDir(), "fullbench-pass2-seed.flac")
+	inputMetadata, outputMeasurements := runFullbenchFilterSpec(
+		tb,
+		inputPath,
+		outputPath,
+		config.BuildFilterSpec(),
+		true,
+	)
+	if outputMeasurements == nil {
+		tb.Fatal("fullbench Pass 2 seed did not produce output measurements")
+	}
+
+	return &fullbenchPass2Seed{
+		OutputPath:         outputPath,
+		Config:             &config,
+		InputMeasurements:  adapted.Measurements,
+		OutputMeasurements: outputMeasurements,
+		InputMetadata:      inputMetadata,
+	}
+}
+
+func setupFullbenchLoudnormMeasurement(tb testing.TB, seed *fullbenchPass2Seed) *fullbenchLoudnormSetup {
+	tb.Helper()
+
+	if seed == nil || seed.Config == nil || seed.OutputMeasurements == nil {
+		tb.Fatal("fullbench loudnorm setup requires a Pass 2 seed with output measurements")
+	}
+
+	config := *seed.Config
+	limiterCeiling, limiterNeeded, limiterClamped := calculateLimiterCeiling(
+		seed.OutputMeasurements.OutputI,
+		seed.OutputMeasurements.OutputTP,
+		config.LoudnormTargetI,
+		config.LoudnormTargetTP,
+	)
+	preGainDB, reDerivedCeiling := calculatePreGain(
+		seed.OutputMeasurements.OutputI,
+		config.LoudnormTargetI,
+		config.LoudnormTargetTP,
+	)
+	if limiterClamped {
+		limiterCeiling = reDerivedCeiling
+	}
+
+	filterPrefix := buildPreLimiterPrefix(preGainDB, limiterCeiling, limiterNeeded)
+	measurement, err := measureWithLoudnorm(seed.OutputPath, &config, filterPrefix, nil)
+	if err != nil {
+		tb.Fatalf("failed to prepare fullbench loudnorm measurement: %v", err)
+	}
+	if measurement == nil {
+		tb.Fatal("fullbench loudnorm setup returned nil measurement")
+		return nil
+	}
+	if math.IsInf(measurement.InputI, -1) || measurement.InputI < -70.0 {
+		tb.Fatalf("fullbench loudnorm measurement is not usable: %.1f LUFS", measurement.InputI)
+	}
+
+	effectiveTargetI, _, linearPossible := calculateLinearModeTarget(
+		measurement.InputI,
+		measurement.InputTP,
+		config.LoudnormTargetI,
+		config.LoudnormTargetTP,
+	)
+	effectiveConfig := config
+	effectiveConfig.LoudnormTargetI = effectiveTargetI
+
+	return &fullbenchLoudnormSetup{
+		Measurement:       measurement,
+		EffectiveConfig:   &effectiveConfig,
+		Pass3FilterPrefix: filterPrefix,
+		PreGainDB:         preGainDB,
+		LimiterCeiling:    limiterCeiling,
+		LimiterNeeded:     limiterNeeded,
+		LimiterClamped:    limiterClamped,
+		LinearModeForced:  !linearPossible,
+	}
+}
+
+func setupFullbenchPass4Seed(tb testing.TB, inputPath string) *fullbenchPass4Seed {
+	tb.Helper()
+
+	adapted := setupFullbenchAdaptedConfig(tb, inputPath)
+	pass2Seed := setupFullbenchPass2Seed(tb, inputPath, adapted)
+	loudnorm := setupFullbenchLoudnormMeasurement(tb, pass2Seed)
+
+	return &fullbenchPass4Seed{
+		Pass2Seed: pass2Seed,
+		Loudnorm:  loudnorm,
+	}
+}
+
+func TestFullbenchSetupHelpersSyntheticSmoke(t *testing.T) {
+	inputPath := generateTestAudio(t, TestAudioOptions{
+		DurationSecs: 2.0,
+		SampleRate:   44100,
+		ToneFreq:     180.0,
+		ToneLevel:    -18.0,
+		NoiseLevel:   -58.0,
+		Dir:          t.TempDir(),
+	})
+	defer cleanupTestAudio(t, inputPath)
+
+	adapted := setupFullbenchAdaptedConfig(t, inputPath)
+	if adapted.Config == nil {
+		t.Fatal("expected adapted config")
+	}
+	if adapted.Measurements == nil {
+		t.Fatal("expected Pass 1 measurements")
+	}
+	if adapted.Config.Measurements != adapted.Measurements {
+		t.Fatal("adapted config does not reference Pass 1 measurements")
+	}
+	if adapted.Config.Pass != PassProcessing {
+		t.Fatalf("adapted config pass mismatch: got %d, want %d", adapted.Config.Pass, PassProcessing)
+	}
+
+	pass2Seed := setupFullbenchPass2Seed(t, inputPath, adapted)
+	if pass2Seed.OutputMeasurements == nil {
+		t.Fatal("expected Pass 2 seed output measurements")
+	}
+	assertFullbenchFLACOutput(t, pass2Seed.OutputPath)
+
+	loudnorm := setupFullbenchLoudnormMeasurement(t, pass2Seed)
+	if loudnorm.Measurement == nil {
+		t.Fatal("expected loudnorm measurement")
+	}
+	if loudnorm.EffectiveConfig == nil {
+		t.Fatal("expected effective loudnorm config")
+	}
+	if loudnorm.Pass3FilterPrefix != buildPreLimiterPrefix(loudnorm.PreGainDB, loudnorm.LimiterCeiling, loudnorm.LimiterNeeded) {
+		t.Fatal("loudnorm setup prefix does not match computed limiter values")
+	}
+	if loudnorm.LimiterNeeded && loudnorm.Pass3FilterPrefix == "" {
+		t.Fatal("active limiter setup did not produce a limiter prefix")
+	}
+	effectiveTargetI, _, linearPossible := calculateLinearModeTarget(
+		loudnorm.Measurement.InputI,
+		loudnorm.Measurement.InputTP,
+		pass2Seed.Config.LoudnormTargetI,
+		pass2Seed.Config.LoudnormTargetTP,
+	)
+	if math.Abs(loudnorm.EffectiveConfig.LoudnormTargetI-effectiveTargetI) > 0.01 {
+		t.Fatalf("effective target mismatch: got %.2f, want %.2f", loudnorm.EffectiveConfig.LoudnormTargetI, effectiveTargetI)
+	}
+	if loudnorm.LinearModeForced != !linearPossible {
+		t.Fatalf("linear mode forced mismatch: got %v, want %v", loudnorm.LinearModeForced, !linearPossible)
+	}
+
+	pass4Seed := setupFullbenchPass4Seed(t, inputPath)
+	if pass4Seed.Pass2Seed == nil || pass4Seed.Loudnorm == nil {
+		t.Fatal("expected combined Pass 4 seed setup")
+	}
+	assertFullbenchFLACOutput(t, pass4Seed.Pass2Seed.OutputPath)
+}
