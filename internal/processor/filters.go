@@ -96,11 +96,6 @@ const (
 	noiseRemoveProductionPatchSec    = 0.0060
 	noiseRemoveProductionResearchSec = 0.0020
 	noiseRemoveProductionSmooth      = 3.0
-
-	noiseRemoveLegacyStrength    = 0.00001
-	noiseRemoveLegacyPatchSec    = 0.0060
-	noiseRemoveLegacyResearchSec = 0.0058
-	noiseRemoveLegacySmooth      = 11.0
 )
 
 // filterBuilderFunc is a function that builds a filter spec from config.
