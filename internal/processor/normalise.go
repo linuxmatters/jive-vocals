@@ -675,7 +675,12 @@ func applyLoudnormAndMeasure(
 		loudnormAVFilterGraphFree(&filterGraph)
 		return 0.0, 0.0, nil, getLoudnormStats(), 0, fmt.Errorf("failed to create encoder: %w", err)
 	}
-	defer encoder.Close()
+	encoderClosed := false
+	defer func() {
+		if !encoderClosed {
+			_ = encoder.Close()
+		}
+	}()
 
 	// Process frames and accumulate ebur128 measurements using Pass 2's extraction function
 	var acc outputMetadataAccumulators
@@ -729,6 +734,7 @@ func applyLoudnormAndMeasure(
 		loudnormAVFilterGraphFree(&filterGraph)
 		return 0.0, 0.0, nil, getLoudnormStats(), 0, fmt.Errorf("failed to close encoder: %w", err)
 	}
+	encoderClosed = true
 
 	// Atomic rename: temp file → original file (in-place update)
 	if err := loudnormRename(tempPath, inputPath); err != nil {
