@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,77 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("analysis-only output missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestRunAnalysisOnlyWithDeps_UsesPerFileResultConfig(t *testing.T) {
+	files := []string{"first.wav", "second.wav"}
+	baseConfig := processor.DefaultFilterConfig()
+	var output bytes.Buffer
+	resultConfigs := []*processor.FilterChainConfig{
+		processor.DefaultFilterConfig(),
+		processor.DefaultFilterConfig(),
+	}
+	resultConfigs[0].DS201HPFreq = 60.0
+	resultConfigs[1].DS201HPFreq = 100.0
+
+	var analyzedConfigs []*processor.FilterChainConfig
+	var displayedConfigs []*processor.FilterChainConfig
+
+	runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, analysisOnlyDeps{
+		stdout: &output,
+		hasTTY: func() bool {
+			return false
+		},
+		openMetadata: func(path string) (*audio.Metadata, error) {
+			return &audio.Metadata{
+				Duration:   120,
+				SampleRate: 48000,
+				Channels:   1,
+			}, nil
+		},
+		runWithTUI: func(string, *processor.FilterChainConfig, func(string, ...any)) (*processor.AnalysisResult, error) {
+			t.Fatal("runWithTUI should not be called for non-TTY output")
+			return nil, nil
+		},
+		analyzeDetailed: func(path string, cfg *processor.FilterChainConfig, progress func(processor.PassNumber, string, float64, float64, *processor.AudioMeasurements)) (*processor.AnalysisResult, error) {
+			if cfg != baseConfig {
+				t.Fatalf("analyzeDetailed config = %p, want shared base %p", cfg, baseConfig)
+			}
+			analyzedConfigs = append(analyzedConfigs, cfg)
+
+			index := len(analyzedConfigs) - 1
+			return &processor.AnalysisResult{
+				Measurements:       makeAnalysisOnlyTestMeasurements(),
+				Config:             resultConfigs[index],
+				AnalysisDuration:   2 * time.Second,
+				AdaptationDuration: 100 * time.Millisecond,
+			}, nil
+		},
+		displayResults: func(w io.Writer, inputPath string, metadata *audio.Metadata, measurements *processor.AudioMeasurements, config *processor.FilterChainConfig, timings ...logging.AnalysisTimings) {
+			displayedConfigs = append(displayedConfigs, config)
+		},
+		printError: func(message string) {
+			t.Fatalf("printError called: %s", message)
+		},
+	})
+
+	if len(analyzedConfigs) != len(files) {
+		t.Fatalf("analyzed config count = %d, want %d", len(analyzedConfigs), len(files))
+	}
+	if analyzedConfigs[0] != baseConfig || analyzedConfigs[1] != baseConfig {
+		t.Fatal("analysis-only did not reuse the shared base config pointer for analysis calls")
+	}
+	if len(displayedConfigs) != len(resultConfigs) {
+		t.Fatalf("displayed config count = %d, want %d", len(displayedConfigs), len(resultConfigs))
+	}
+	for i := range resultConfigs {
+		if displayedConfigs[i] != resultConfigs[i] {
+			t.Fatalf("displayed config %d = %p, want AnalysisResult.Config %p", i, displayedConfigs[i], resultConfigs[i])
+		}
+	}
+	if baseConfig.DS201HPFreq == resultConfigs[0].DS201HPFreq || baseConfig.DS201HPFreq == resultConfigs[1].DS201HPFreq {
+		t.Fatal("test setup failed: result configs should differ from the shared base seed")
 	}
 }
 

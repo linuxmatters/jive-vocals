@@ -398,26 +398,33 @@ func detectContentType(m *AudioMeasurements) ContentType {
 
 // AdaptConfig tunes all filter parameters based on Pass 1 measurements.
 // This is the main entry point for adaptive configuration.
-// It updates config in-place based on the audio characteristics measured in analysis.
-func AdaptConfig(config *FilterChainConfig, measurements *AudioMeasurements) {
+// It returns a per-file effective config without mutating the caller's base seed.
+func AdaptConfig(config *FilterChainConfig, measurements *AudioMeasurements) *FilterChainConfig {
+	effectiveConfig := derivePerFileConfig(config)
+	if effectiveConfig == nil {
+		return nil
+	}
+
 	// Store measurements reference
-	config.Measurements = measurements
+	effectiveConfig.Measurements = measurements
 
 	// Tune each filter adaptively based on measurements
 	// Order matters: gate threshold calculated BEFORE denoise filters
-	tuneDS201HighPass(config, measurements) // Composite: highpass + hum notch
-	tuneDS201LowPass(config, measurements)  // Ultrasonic rejection (adaptive)
+	tuneDS201HighPass(effectiveConfig, measurements) // Composite: highpass + hum notch
+	tuneDS201LowPass(effectiveConfig, measurements)  // Ultrasonic rejection (adaptive)
 
 	// NoiseRemove: anlmdn + compand (primary noise reduction)
-	tuneNoiseRemove(config, measurements)
+	tuneNoiseRemove(effectiveConfig, measurements)
 
-	tuneDS201Gate(config, measurements) // DS201-style soft expander gate
-	tuneDeesser(config, measurements)
-	tuneLA2ACompressor(config, measurements)
+	tuneDS201Gate(effectiveConfig, measurements) // DS201-style soft expander gate
+	tuneDeesser(effectiveConfig, measurements)
+	tuneLA2ACompressor(effectiveConfig, measurements)
 	// tuneVolumaxLimiter removed - limiter moved to Pass 4, tuned from Pass 3 measurements
 
 	// Final safety checks
-	sanitizeConfig(config)
+	sanitizeConfig(effectiveConfig)
+
+	return effectiveConfig
 }
 
 // tuneDS201HighPass adapts DS201-inspired highpass composite filter based on:
