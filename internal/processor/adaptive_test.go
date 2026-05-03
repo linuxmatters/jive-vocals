@@ -33,9 +33,12 @@ func TestAdaptConfigReturnsEffectiveConfig(t *testing.T) {
 	base.DS201HPFreq = 95.0
 	base.TargetI = -18.0
 
-	effective := AdaptConfig(base, measurements)
+	effective, diagnostics := AdaptConfig(base, measurements)
 	if effective == nil {
 		t.Fatal("AdaptConfig returned nil")
+	}
+	if diagnostics == nil {
+		t.Fatal("AdaptConfig returned nil diagnostics")
 	}
 	if effective.Measurements != measurements {
 		t.Fatal("effective Measurements was not set to Pass 1 measurements")
@@ -67,6 +70,13 @@ func TestAdaptConfigReturnsEffectiveConfig(t *testing.T) {
 	if effective.DS201HPFreq == 95.0 {
 		t.Fatal("effective DS201HPFreq did not adapt from base seed value")
 	}
+	if diagnostics.DS201LPContentType != ContentMusic {
+		t.Errorf("diagnostics DS201LPContentType = %v, want %v", diagnostics.DS201LPContentType, ContentMusic)
+	}
+	if diagnostics.DS201LPReason != "music content detected" {
+		t.Errorf("diagnostics DS201LPReason = %q, want music content detected", diagnostics.DS201LPReason)
+	}
+	assertCompatibilityDiagnosticsClear(t, &effective.FilterChainConfig)
 }
 
 func TestAdaptConfigOrderIndependence(t *testing.T) {
@@ -74,27 +84,34 @@ func TestAdaptConfigOrderIndependence(t *testing.T) {
 	fileA := orderIndependenceWarmNoProfileMeasurements()
 	fileB := orderIndependenceBrightSpeechMeasurements()
 
-	firstEffective := AdaptConfig(sharedSeed, fileA)
+	firstEffective, firstDiagnostics := AdaptConfig(sharedSeed, fileA)
 	if firstEffective == nil {
 		t.Fatal("AdaptConfig returned nil for file A")
 	}
-	if !firstEffective.DS201GateGentleMode {
+	if firstDiagnostics == nil {
+		t.Fatal("AdaptConfig returned nil diagnostics for file A")
+	}
+	if !firstDiagnostics.DS201GateGentleMode {
 		t.Fatal("file A setup failed: expected gentle gate mode")
 	}
 	if firstEffective.NoiseRemoveCompandEnabled {
 		t.Fatal("file A setup failed: expected compand disabled without a noise profile")
 	}
-	if !firstEffective.LA2AHighCrestActive {
+	if !firstDiagnostics.LA2AHighCrestActive {
 		t.Fatal("file A setup failed: expected high-crest diagnostics active")
 	}
 
-	afterA := AdaptConfig(sharedSeed, fileB)
-	alone := AdaptConfig(newOrderIndependenceSeed(), fileB)
+	afterA, afterADiagnostics := AdaptConfig(sharedSeed, fileB)
+	alone, aloneDiagnostics := AdaptConfig(newOrderIndependenceSeed(), fileB)
 	if afterA == nil || alone == nil {
 		t.Fatal("AdaptConfig returned nil for file B")
 	}
+	if afterADiagnostics == nil || aloneDiagnostics == nil {
+		t.Fatal("AdaptConfig returned nil diagnostics for file B")
+	}
 
 	assertOrderIndependentAdaptiveFields(t, afterA, alone)
+	assertOrderIndependentAdaptiveDiagnostics(t, afterADiagnostics, aloneDiagnostics)
 
 	if !sharedSeed.NoiseRemoveCompandEnabled {
 		t.Fatal("shared seed retained file A compand disabled state")
@@ -130,9 +147,12 @@ func TestAdaptConfigFilterSpecBehaviourBaseline(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := newOrderIndependenceSeed()
-			got := AdaptConfig(config, tt.measurements)
+			got, diagnostics := AdaptConfig(config, tt.measurements)
 			if got == nil {
 				t.Fatal("AdaptConfig returned nil")
+			}
+			if diagnostics == nil {
+				t.Fatal("AdaptConfig returned nil diagnostics")
 			}
 
 			spec := got.BuildFilterSpec()
@@ -224,7 +244,7 @@ func orderIndependenceBrightSpeechMeasurements() *AudioMeasurements {
 	}
 }
 
-func assertOrderIndependentAdaptiveFields(t *testing.T, got, want *FilterChainConfig) {
+func assertOrderIndependentAdaptiveFields(t *testing.T, got, want *EffectiveFilterConfig) {
 	t.Helper()
 
 	tests := []struct {
@@ -237,15 +257,43 @@ func assertOrderIndependentAdaptiveFields(t *testing.T, got, want *FilterChainCo
 		{"DS201HPWidth", got.DS201HPWidth, want.DS201HPWidth},
 		{"DS201HPMix", got.DS201HPMix, want.DS201HPMix},
 		{"DS201HPTransform", got.DS201HPTransform, want.DS201HPTransform},
-		{"DS201GateGentleMode", got.DS201GateGentleMode, want.DS201GateGentleMode},
 		{"NoiseRemoveCompandEnabled", got.NoiseRemoveCompandEnabled, want.NoiseRemoveCompandEnabled},
 		{"NoiseRemoveCompandThreshold", got.NoiseRemoveCompandThreshold, want.NoiseRemoveCompandThreshold},
 		{"NoiseRemoveCompandExpansion", got.NoiseRemoveCompandExpansion, want.NoiseRemoveCompandExpansion},
 		{"DS201LPEnabled", got.DS201LPEnabled, want.DS201LPEnabled},
 		{"DS201LPFreq", got.DS201LPFreq, want.DS201LPFreq},
+		{"LA2AThreshold", got.LA2AThreshold, want.LA2AThreshold},
+		{"LA2ARatio", got.LA2ARatio, want.LA2ARatio},
+		{"LA2ARelease", got.LA2ARelease, want.LA2ARelease},
+		{"LA2AKnee", got.LA2AKnee, want.LA2AKnee},
+	}
+
+	for _, tt := range tests {
+		if !reflect.DeepEqual(tt.got, tt.want) {
+			t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+		}
+	}
+}
+
+func assertOrderIndependentAdaptiveDiagnostics(t *testing.T, got, want *AdaptiveDiagnostics) {
+	t.Helper()
+
+	tests := []struct {
+		name string
+		got  any
+		want any
+	}{
 		{"DS201LPContentType", got.DS201LPContentType, want.DS201LPContentType},
 		{"DS201LPReason", got.DS201LPReason, want.DS201LPReason},
 		{"DS201LPRolloffRatio", got.DS201LPRolloffRatio, want.DS201LPRolloffRatio},
+		{"DS201GateGentleMode", got.DS201GateGentleMode, want.DS201GateGentleMode},
+		{"DS201GateAggression", got.DS201GateAggression, want.DS201GateAggression},
+		{"DS201GateDynamicRange", got.DS201GateDynamicRange, want.DS201GateDynamicRange},
+		{"DS201GateQuietSpeechEstimate", got.DS201GateQuietSpeechEstimate, want.DS201GateQuietSpeechEstimate},
+		{"DS201GateSpeechSeparation", got.DS201GateSpeechSeparation, want.DS201GateSpeechSeparation},
+		{"DS201GateSpeechHeadroom", got.DS201GateSpeechHeadroom, want.DS201GateSpeechHeadroom},
+		{"DS201GateThresholdUnclamped", got.DS201GateThresholdUnclamped, want.DS201GateThresholdUnclamped},
+		{"DS201GateClampReason", got.DS201GateClampReason, want.DS201GateClampReason},
 		{"LA2AHighCrestActive", got.LA2AHighCrestActive, want.LA2AHighCrestActive},
 		{"LA2AHighCrestDeficit", got.LA2AHighCrestDeficit, want.LA2AHighCrestDeficit},
 		{"LA2AHighCrestSeverity", got.LA2AHighCrestSeverity, want.LA2AHighCrestSeverity},
@@ -690,10 +738,10 @@ func TestTuneDS201LowPass(t *testing.T) {
 	// Constants from adaptive.go for reference:
 	// Content detection: speech needs kurtosis>6, flatness<0.45, flux<0.003, crest>30 (3+ matches)
 	// HF noise triggers (speech only):
-	//   - Rolloff/centroid > 2.5 → cutoff = rolloff - 1000
-	//   - Slope > -1e-05 → cutoff = 12000
-	//   - ZCR > 0.10 AND centroid < 4000 → cutoff = 10000
-	// Cutoff clamped to 8000-18000
+	//   - Rolloff > 14kHz → cutoff = rolloff + 2kHz
+	//   - Rolloff < 8kHz → disabled because the voice is already dark
+	//   - ZCR > 0.10 AND centroid < 4000 → cutoff = 12000
+	// Cutoff capped at 20000
 
 	tests := []struct {
 		name            string
@@ -857,6 +905,7 @@ func TestTuneDS201LowPass(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := newTestConfig()
+			diagnostics := &AdaptiveDiagnostics{}
 			m := &AudioMeasurements{
 				BaseMeasurements: BaseMeasurements{
 					SpectralKurtosis:  tt.kurtosis,
@@ -870,22 +919,24 @@ func TestTuneDS201LowPass(t *testing.T) {
 				},
 			}
 
-			tuneDS201LowPass(config, m)
+			tuneDS201LowPass(config, diagnostics, m)
 
 			if config.DS201LPEnabled != tt.wantEnabled {
 				t.Errorf("DS201LPEnabled = %v, want %v [%s]",
 					config.DS201LPEnabled, tt.wantEnabled, tt.desc)
 			}
 
-			if config.DS201LPContentType != tt.wantContentType {
+			if diagnostics.DS201LPContentType != tt.wantContentType {
 				t.Errorf("DS201LPContentType = %v, want %v [%s]",
-					config.DS201LPContentType, tt.wantContentType, tt.desc)
+					diagnostics.DS201LPContentType, tt.wantContentType, tt.desc)
 			}
 
-			if config.DS201LPReason != tt.wantReason {
+			if diagnostics.DS201LPReason != tt.wantReason {
 				t.Errorf("DS201LPReason = %q, want %q [%s]",
-					config.DS201LPReason, tt.wantReason, tt.desc)
+					diagnostics.DS201LPReason, tt.wantReason, tt.desc)
 			}
+
+			assertCompatibilityDiagnosticsClear(t, config)
 
 			if tt.wantEnabled && tt.wantFreqMin > 0 {
 				if config.DS201LPFreq < tt.wantFreqMin || config.DS201LPFreq > tt.wantFreqMax {
@@ -1230,7 +1281,7 @@ func TestTuneDS201Gate(t *testing.T) {
 					},
 				}
 
-				tuneDS201Gate(config, measurements)
+				tuneDS201GateForTest(config, measurements)
 
 				actualDB := linearToDB(config.DS201GateThreshold)
 				diff := actualDB - tt.wantThresholdDB
@@ -1267,7 +1318,7 @@ func TestTuneDS201Gate(t *testing.T) {
 					InputLRA:   tt.lra,
 				}
 
-				tuneDS201Gate(config, measurements)
+				tuneDS201GateForTest(config, measurements)
 
 				if config.DS201GateRatio != tt.wantRatio {
 					t.Errorf("DS201GateRatio = %.1f, want %.1f [%s]", config.DS201GateRatio, tt.wantRatio, tt.desc)
@@ -1304,7 +1355,7 @@ func TestTuneDS201Gate(t *testing.T) {
 					NoiseFloor: -55.0,
 				}
 
-				tuneDS201Gate(config, measurements)
+				tuneDS201GateForTest(config, measurements)
 
 				diff := config.DS201GateAttack - tt.wantAttackMS
 				if diff < 0 {
@@ -1347,7 +1398,7 @@ func TestTuneDS201Gate(t *testing.T) {
 					},
 				}
 
-				tuneDS201Gate(config, measurements)
+				tuneDS201GateForTest(config, measurements)
 
 				if config.DS201GateDetection != tt.wantDetection {
 					t.Errorf("DS201GateDetection = %q, want %q [%s]",
@@ -1385,7 +1436,7 @@ func TestTuneDS201Gate(t *testing.T) {
 					},
 				}
 
-				tuneDS201Gate(config, measurements)
+				tuneDS201GateForTest(config, measurements)
 
 				actualDB := linearToDB(config.DS201GateRange)
 				diff := actualDB - tt.wantRangeDB
@@ -1409,7 +1460,7 @@ func TestTuneDS201Gate(t *testing.T) {
 		}
 
 		// Should not panic
-		tuneDS201Gate(config, measurements)
+		tuneDS201GateForTest(config, measurements)
 
 		// Should still calculate threshold from noise floor
 		thresholdDB := linearToDB(config.DS201GateThreshold)
@@ -1499,7 +1550,7 @@ func TestTuneDS201Gate(t *testing.T) {
 					},
 				}
 
-				tuneDS201Gate(config, measurements)
+				tuneDS201GateForTest(config, measurements)
 
 				if config.DS201GateRelease < tt.wantReleaseMin || config.DS201GateRelease > tt.wantReleaseMax {
 					t.Errorf("DS201GateRelease = %.1f ms, want %.1f-%.1f ms [%s]",
@@ -1573,7 +1624,7 @@ func TestTuneDS201Gate(t *testing.T) {
 					},
 				}
 
-				tuneDS201Gate(config, measurements)
+				tuneDS201GateForTest(config, measurements)
 
 				if config.DS201GateRelease < tt.wantReleaseMin || config.DS201GateRelease > tt.wantReleaseMax {
 					t.Errorf("DS201GateRelease = %.1f ms (LRA=%.1f LU), want %.1f-%.1f ms [%s]",
@@ -1583,10 +1634,9 @@ func TestTuneDS201Gate(t *testing.T) {
 		}
 	})
 
-	t.Run("resets gentle mode and diagnostics without speech metrics", func(t *testing.T) {
+	t.Run("populates diagnostics with speech metrics", func(t *testing.T) {
 		config := newTestConfig()
-
-		tuneDS201Gate(config, &AudioMeasurements{
+		diagnostics := tuneDS201GateForTest(config, &AudioMeasurements{
 			BaseMeasurements: BaseMeasurements{
 				SpectralFlux:  0.02,
 				SpectralCrest: 20.0,
@@ -1605,19 +1655,27 @@ func TestTuneDS201Gate(t *testing.T) {
 			},
 		})
 
-		if !config.DS201GateGentleMode {
+		if !diagnostics.DS201GateGentleMode {
 			t.Fatal("expected first tuning to enable gentle mode")
 		}
-		if config.DS201GateAggression == 0 ||
-			config.DS201GateDynamicRange == 0 ||
-			config.DS201GateQuietSpeechEstimate == 0 ||
-			config.DS201GateSpeechSeparation == 0 ||
-			config.DS201GateThresholdUnclamped == 0 ||
-			config.DS201GateClampReason == "" {
-			t.Fatalf("expected first tuning to populate gate diagnostics: %+v", config)
+		if diagnostics.DS201GateAggression == 0 ||
+			diagnostics.DS201GateDynamicRange == 0 ||
+			diagnostics.DS201GateQuietSpeechEstimate == 0 ||
+			diagnostics.DS201GateSpeechSeparation == 0 ||
+			diagnostics.DS201GateThresholdUnclamped == 0 ||
+			diagnostics.DS201GateClampReason == "" {
+			t.Fatalf("expected tuning to populate gate diagnostics: %+v", diagnostics)
 		}
+		if config.DS201GateRatio != ds201GateGentleRatio || config.DS201GateKnee != ds201GateGentleKnee {
+			t.Fatalf("expected gentle mode to tune builder values, ratio=%.1f knee=%.1f",
+				config.DS201GateRatio, config.DS201GateKnee)
+		}
+		assertCompatibilityDiagnosticsClear(t, config)
+	})
 
-		tuneDS201Gate(config, &AudioMeasurements{
+	t.Run("fresh diagnostics without speech metrics", func(t *testing.T) {
+		config := newTestConfig()
+		diagnostics := tuneDS201GateForTest(config, &AudioMeasurements{
 			BaseMeasurements: BaseMeasurements{
 				SpectralFlux: 0.02,
 			},
@@ -1626,19 +1684,25 @@ func TestTuneDS201Gate(t *testing.T) {
 			NoiseFloor: -55.0,
 		})
 
-		if config.DS201GateGentleMode {
-			t.Error("DS201GateGentleMode = true, want false")
+		if diagnostics.DS201GateGentleMode {
+			t.Error("diagnostics DS201GateGentleMode = true, want false")
 		}
-		if config.DS201GateAggression != 0 ||
-			config.DS201GateDynamicRange != 0 ||
-			config.DS201GateQuietSpeechEstimate != 0 ||
-			config.DS201GateSpeechSeparation != 0 ||
-			config.DS201GateSpeechHeadroom != 0 ||
-			config.DS201GateThresholdUnclamped != 0 ||
-			config.DS201GateClampReason != "" {
-			t.Errorf("gate diagnostics retained without speech metrics: %+v", config)
+		if diagnostics.DS201GateAggression != 0 ||
+			diagnostics.DS201GateDynamicRange != 0 ||
+			diagnostics.DS201GateQuietSpeechEstimate != 0 ||
+			diagnostics.DS201GateSpeechSeparation != 0 ||
+			diagnostics.DS201GateSpeechHeadroom != 0 ||
+			diagnostics.DS201GateThresholdUnclamped != 0 ||
+			diagnostics.DS201GateClampReason != "" {
+			t.Errorf("fresh gate diagnostics populated without speech metrics: %+v", diagnostics)
 		}
 	})
+}
+
+func tuneDS201GateForTest(config *FilterChainConfig, measurements *AudioMeasurements) *AdaptiveDiagnostics {
+	diagnostics := &AdaptiveDiagnostics{}
+	tuneDS201Gate(config, diagnostics, measurements)
+	return diagnostics
 }
 
 // linearToDB converts linear amplitude to dB for test error messages
@@ -2610,20 +2674,22 @@ func TestApplyHighCrestOverrides(t *testing.T) {
 				config := newTestConfig()
 				// Use DefaultFilterConfig target TP (-2.0) to match proposal calculations
 				config.LoudnormTargetTP = -2.0
+				diagnostics := &AdaptiveDiagnostics{}
 				measurements := &AudioMeasurements{
 					InputI:        tt.inputI,
 					InputTP:       tt.inputTP,
 					SpeechProfile: tt.speechProfile,
 				}
 
-				overrides := applyHighCrestOverrides(config, measurements)
+				overrides := applyHighCrestOverrides(config, diagnostics, measurements)
 
-				if config.LA2AHighCrestActive != tt.wantActive {
-					t.Errorf("LA2AHighCrestActive = %v, want %v", config.LA2AHighCrestActive, tt.wantActive)
+				if diagnostics.LA2AHighCrestActive != tt.wantActive {
+					t.Errorf("LA2AHighCrestActive = %v, want %v", diagnostics.LA2AHighCrestActive, tt.wantActive)
 				}
-				assertClose(t, "LA2AHighCrestDeficit", config.LA2AHighCrestDeficit, tt.wantDeficit, 0.01)
-				assertClose(t, "LA2AHighCrestSeverity", config.LA2AHighCrestSeverity, tt.wantSeverity, 0.001)
-				assertClose(t, "LA2AHighCrestProjectedTP", config.LA2AHighCrestProjectedTP, tt.wantProjectedTP, 0.01)
+				assertClose(t, "LA2AHighCrestDeficit", diagnostics.LA2AHighCrestDeficit, tt.wantDeficit, 0.01)
+				assertClose(t, "LA2AHighCrestSeverity", diagnostics.LA2AHighCrestSeverity, tt.wantSeverity, 0.001)
+				assertClose(t, "LA2AHighCrestProjectedTP", diagnostics.LA2AHighCrestProjectedTP, tt.wantProjectedTP, 0.01)
+				assertCompatibilityDiagnosticsClear(t, config)
 
 				// When inactive, overrides must be zero-valued
 				if !tt.wantActive {
@@ -2679,18 +2745,20 @@ func TestApplyHighCrestOverrides(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				config := newTestConfig()
 				config.LoudnormTargetTP = -2.0
+				diagnostics := &AdaptiveDiagnostics{}
 				measurements := &AudioMeasurements{
 					InputI:        tt.inputI,
 					InputTP:       tt.inputTP,
 					SpeechProfile: &SpeechCandidateMetrics{},
 				}
 
-				overrides := applyHighCrestOverrides(config, measurements)
+				overrides := applyHighCrestOverrides(config, diagnostics, measurements)
 
 				assertClose(t, "ThresholdFloor", overrides.ThresholdFloor, tt.wantThresholdFloor, 0.01)
 				assertClose(t, "RatioFloor", overrides.RatioFloor, tt.wantRatioFloor, 0.01)
 				assertClose(t, "ReleaseFloor", overrides.ReleaseFloor, tt.wantReleaseFloor, 0.01)
 				assertClose(t, "KneeFloor", overrides.KneeFloor, tt.wantKneeFloor, 0.01)
+				assertCompatibilityDiagnosticsClear(t, config)
 			})
 		}
 	})
@@ -2717,16 +2785,18 @@ func TestApplyHighCrestOverrides(t *testing.T) {
 		for _, tt := range deficits {
 			config := newTestConfig()
 			config.LoudnormTargetTP = -2.0
+			diagnostics := &AdaptiveDiagnostics{}
 			measurements := &AudioMeasurements{
 				InputI:        tt.inputI,
 				InputTP:       -5.0,
 				SpeechProfile: &SpeechCandidateMetrics{},
 			}
 
-			applyHighCrestOverrides(config, measurements)
+			applyHighCrestOverrides(config, diagnostics, measurements)
 
-			assertClose(t, "deficit", config.LA2AHighCrestDeficit, tt.wantDeficit, 0.01)
-			assertClose(t, "severity", config.LA2AHighCrestSeverity, tt.wantSeverity, 0.001)
+			assertClose(t, "deficit", diagnostics.LA2AHighCrestDeficit, tt.wantDeficit, 0.01)
+			assertClose(t, "severity", diagnostics.LA2AHighCrestSeverity, tt.wantSeverity, 0.001)
+			assertCompatibilityDiagnosticsClear(t, config)
 		}
 	})
 
@@ -2734,22 +2804,24 @@ func TestApplyHighCrestOverrides(t *testing.T) {
 		// Acceptance criterion 6: fields populated even when inactive
 		config := newTestConfig()
 		config.LoudnormTargetTP = -2.0
+		diagnostics := &AdaptiveDiagnostics{}
 		measurements := &AudioMeasurements{
 			InputI:        -20.2,
 			InputTP:       -2.5,
 			SpeechProfile: &SpeechCandidateMetrics{},
 		}
 
-		applyHighCrestOverrides(config, measurements)
+		applyHighCrestOverrides(config, diagnostics, measurements)
 
-		if config.LA2AHighCrestActive {
+		if diagnostics.LA2AHighCrestActive {
 			t.Error("expected LA2AHighCrestActive=false for Marius-like input")
 		}
-		if config.LA2AHighCrestDeficit == 0 && config.LA2AHighCrestProjectedTP == 0 {
+		if diagnostics.LA2AHighCrestDeficit == 0 && diagnostics.LA2AHighCrestProjectedTP == 0 {
 			t.Error("diagnostic fields should be populated even when inactive")
 		}
-		assertClose(t, "deficit", config.LA2AHighCrestDeficit, -16.3, 0.01)
-		assertClose(t, "projectedTP", config.LA2AHighCrestProjectedTP, 1.7, 0.01)
+		assertClose(t, "deficit", diagnostics.LA2AHighCrestDeficit, -16.3, 0.01)
+		assertClose(t, "projectedTP", diagnostics.LA2AHighCrestProjectedTP, 1.7, 0.01)
+		assertCompatibilityDiagnosticsClear(t, config)
 	})
 }
 
@@ -2779,6 +2851,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 		// Acceptance criterion 1: ratio pushed toward ~3.87, threshold toward ~-27.5
 		config := newTestConfig()
 		config.LoudnormTargetTP = -2.0
+		diagnostics := &AdaptiveDiagnostics{}
 		measurements := &AudioMeasurements{
 			BaseMeasurements: BaseMeasurements{
 				DynamicRange:     86.3,
@@ -2795,14 +2868,15 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 			SpeechProfile: speechProfile,
 		}
 
-		tuneLA2ACompressor(config, measurements)
+		tuneLA2ACompressor(config, diagnostics, measurements)
 
 		// Diagnostic fields must be set
-		if !config.LA2AHighCrestActive {
+		if !diagnostics.LA2AHighCrestActive {
 			t.Fatal("expected LA2AHighCrestActive=true for Anna-like input")
 		}
-		assertClose(t, "deficit", config.LA2AHighCrestDeficit, 2.6, 0.1)
-		assertClose(t, "severity", config.LA2AHighCrestSeverity, 0.433, 0.01)
+		assertClose(t, "deficit", diagnostics.LA2AHighCrestDeficit, 2.6, 0.1)
+		assertClose(t, "severity", diagnostics.LA2AHighCrestSeverity, 0.433, 0.01)
+		assertCompatibilityDiagnosticsClear(t, config)
 
 		// Override floors: ratio >= 3.8, threshold <= -27.0
 		// Sub-tuners may push further, but not back above the floor.
@@ -2830,6 +2904,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 		// Acceptance criterion 2: identical output to before high-crest logic
 		config := newTestConfig()
 		config.LoudnormTargetTP = -2.0
+		diagnostics := &AdaptiveDiagnostics{}
 		measurements := &AudioMeasurements{
 			BaseMeasurements: BaseMeasurements{
 				DynamicRange:     88.9,
@@ -2847,11 +2922,12 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 		}
 
 		// Run once with the full tuner chain
-		tuneLA2ACompressor(config, measurements)
+		tuneLA2ACompressor(config, diagnostics, measurements)
 
-		if config.LA2AHighCrestActive {
+		if diagnostics.LA2AHighCrestActive {
 			t.Error("expected LA2AHighCrestActive=false for Marius-like input")
 		}
+		assertCompatibilityDiagnosticsClear(t, config)
 
 		// Capture the values
 		ratioWithOverrides := config.LA2ARatio
@@ -2863,7 +2939,9 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 		// since overrides are zero-valued)
 		config2 := newTestConfig()
 		config2.LoudnormTargetTP = -2.0
-		tuneLA2ACompressor(config2, measurements)
+		diagnostics2 := &AdaptiveDiagnostics{}
+		tuneLA2ACompressor(config2, diagnostics2, measurements)
+		assertCompatibilityDiagnosticsClear(t, config2)
 
 		assertClose(t, "ratio", ratioWithOverrides, config2.LA2ARatio, 0.001)
 		assertClose(t, "threshold", thresholdWithOverrides, config2.LA2AThreshold, 0.001)
@@ -2890,6 +2968,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				config := newTestConfig()
 				config.LoudnormTargetTP = -2.0
+				diagnostics := &AdaptiveDiagnostics{}
 				measurements := &AudioMeasurements{
 					BaseMeasurements: BaseMeasurements{
 						DynamicRange:     60.0,
@@ -2906,12 +2985,13 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 					SpeechProfile: speechProfile,
 				}
 
-				tuneLA2ACompressor(config, measurements)
+				tuneLA2ACompressor(config, diagnostics, measurements)
 
-				if config.LA2AHighCrestActive {
+				if diagnostics.LA2AHighCrestActive {
 					t.Errorf("deficit > 0 (%.2f) with hot InputTP (%.1f dBTP) - invariant violated",
-						config.LA2AHighCrestDeficit, tt.inputTP)
+						diagnostics.LA2AHighCrestDeficit, tt.inputTP)
 				}
+				assertCompatibilityDiagnosticsClear(t, config)
 			})
 		}
 	})
@@ -2920,6 +3000,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 		// Deficit >= 4.0 -> severity 1.0 -> maximum override floors
 		config := newTestConfig()
 		config.LoudnormTargetTP = -2.0
+		diagnostics := &AdaptiveDiagnostics{}
 		measurements := &AudioMeasurements{
 			BaseMeasurements: BaseMeasurements{
 				DynamicRange:     90.0,
@@ -2936,12 +3017,13 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 			SpeechProfile: speechProfile,
 		}
 
-		tuneLA2ACompressor(config, measurements)
+		tuneLA2ACompressor(config, diagnostics, measurements)
 
-		if !config.LA2AHighCrestActive {
+		if !diagnostics.LA2AHighCrestActive {
 			t.Fatal("expected LA2AHighCrestActive=true for maximum severity input")
 		}
-		assertClose(t, "severity", config.LA2AHighCrestSeverity, 1.0, 0.001)
+		assertClose(t, "severity", diagnostics.LA2AHighCrestSeverity, 1.0, 0.001)
+		assertCompatibilityDiagnosticsClear(t, config)
 
 		// At severity 1.0, floors are: threshold=-40, ratio=5.0, release=350, knee=6.0
 		// Sub-tuners may push further but not below the floor.

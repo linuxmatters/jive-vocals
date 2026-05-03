@@ -64,18 +64,21 @@ func TestEffectiveConfigFilterOrderIsolation(t *testing.T) {
 	base := newTestBaseConfig()
 	base.FilterOrder = []FilterID{FilterAnalysis, FilterDeesser}
 
-	first := AdaptConfig(base, &AudioMeasurements{
+	first, firstDiagnostics := AdaptConfig(base, &AudioMeasurements{
 		BaseMeasurements: BaseMeasurements{
 			SpectralCentroid: 5000,
 		},
 	})
-	second := AdaptConfig(base, &AudioMeasurements{
+	second, secondDiagnostics := AdaptConfig(base, &AudioMeasurements{
 		BaseMeasurements: BaseMeasurements{
 			SpectralCentroid: 2000,
 		},
 	})
 	if first == nil || second == nil {
 		t.Fatal("AdaptConfig returned nil")
+	}
+	if firstDiagnostics == nil || secondDiagnostics == nil {
+		t.Fatal("AdaptConfig returned nil diagnostics")
 	}
 
 	first.FilterOrder[0] = FilterDownmix

@@ -44,9 +44,10 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 			if progress != nil {
 				t.Fatal("progress callback should be nil for non-TTY output")
 			}
+			effective, _ := processor.AdaptConfig(cfg, makeAnalysisOnlyTestMeasurements())
 			return &processor.AnalysisResult{
 				Measurements:       makeAnalysisOnlyTestMeasurements(),
-				Config:             processor.AdaptConfig(cfg, makeAnalysisOnlyTestMeasurements()),
+				Config:             &effective.FilterChainConfig,
 				AnalysisDuration:   2 * time.Second,
 				AdaptationDuration: 100 * time.Millisecond,
 			}, nil
@@ -79,9 +80,11 @@ func TestRunAnalysisOnlyWithDeps_UsesPerFileResultConfig(t *testing.T) {
 	files := []string{"first.wav", "second.wav"}
 	baseConfig := processor.DefaultFilterConfig()
 	var output bytes.Buffer
+	firstEffective, _ := processor.AdaptConfig(processor.DefaultFilterConfig(), makeAnalysisOnlyTestMeasurements())
+	secondEffective, _ := processor.AdaptConfig(processor.DefaultFilterConfig(), makeAnalysisOnlyTestMeasurements())
 	resultConfigs := []*processor.FilterChainConfig{
-		processor.AdaptConfig(processor.DefaultFilterConfig(), makeAnalysisOnlyTestMeasurements()),
-		processor.AdaptConfig(processor.DefaultFilterConfig(), makeAnalysisOnlyTestMeasurements()),
+		&firstEffective.FilterChainConfig,
+		&secondEffective.FilterChainConfig,
 	}
 	resultConfigs[0].DS201HPFreq = 60.0
 	resultConfigs[1].DS201HPFreq = 100.0

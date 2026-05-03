@@ -29,7 +29,7 @@ type fullbenchPass2Seed struct {
 
 type fullbenchLoudnormSetup struct {
 	Measurement       *LoudnormMeasurement
-	EffectiveConfig   *FilterChainConfig
+	EffectiveConfig   *EffectiveFilterConfig
 	Pass3FilterPrefix string
 	PreGainDB         float64
 	LimiterCeiling    float64
@@ -52,7 +52,7 @@ type fullbenchFilterSpecRunResult struct {
 type fullbenchPass2AblationVariant struct {
 	Name                string
 	ExtractMeasurements bool
-	BuildSpec           func(*FilterChainConfig) string
+	BuildSpec           func(*EffectiveFilterConfig) string
 }
 
 type fullbenchPass4AblationVariant struct {
@@ -244,14 +244,14 @@ func fullbenchPass2AblationVariants() []fullbenchPass2AblationVariant {
 		{
 			Name:                "full_chain",
 			ExtractMeasurements: true,
-			BuildSpec: func(config *FilterChainConfig) string {
+			BuildSpec: func(config *EffectiveFilterConfig) string {
 				return config.BuildFilterSpec()
 			},
 		},
 		{
 			Name:                "without_output_analysis",
 			ExtractMeasurements: false,
-			BuildSpec: func(config *FilterChainConfig) string {
+			BuildSpec: func(config *EffectiveFilterConfig) string {
 				ablated := *config
 				ablated.AnalysisEnabled = false
 				ablated.OutputAnalysisEnabled = false
@@ -266,7 +266,7 @@ func fullbenchPass2AblationVariants() []fullbenchPass2AblationVariant {
 		{
 			Name:                "without_compand",
 			ExtractMeasurements: true,
-			BuildSpec: func(config *FilterChainConfig) string {
+			BuildSpec: func(config *EffectiveFilterConfig) string {
 				ablated := *config
 				ablated.NoiseRemoveCompandEnabled = false
 				return ablated.BuildFilterSpec()
@@ -275,7 +275,7 @@ func fullbenchPass2AblationVariants() []fullbenchPass2AblationVariant {
 		{
 			Name:                "without_gate_compressor",
 			ExtractMeasurements: true,
-			BuildSpec: func(config *FilterChainConfig) string {
+			BuildSpec: func(config *EffectiveFilterConfig) string {
 				ablated := *config
 				ablated.DS201GateEnabled = false
 				ablated.LA2AEnabled = false
@@ -285,7 +285,7 @@ func fullbenchPass2AblationVariants() []fullbenchPass2AblationVariant {
 	}
 }
 
-func buildFullbenchPass2WithoutAnlmdnSpec(config *FilterChainConfig) string {
+func buildFullbenchPass2WithoutAnlmdnSpec(config *EffectiveFilterConfig) string {
 	ablated := *config
 	order := ablated.FilterOrder
 	if len(order) == 0 {
@@ -361,14 +361,14 @@ func buildFullbenchPass4AblationSpec(loudnorm *fullbenchLoudnormSetup, includeLi
 	return strings.Join(filters, ",")
 }
 
-func buildFullbenchLoudnormClause(config *FilterChainConfig, measurement *LoudnormMeasurement) string {
+func buildFullbenchLoudnormClause(config *EffectiveFilterConfig, measurement *LoudnormMeasurement) string {
 	return extractFullbenchFilterClause(
 		buildFullbenchProductionPass4SpecWithoutAdeclick(config, measurement),
 		"loudnorm=",
 	)
 }
 
-func buildFullbenchPass4OutputAnalysisFilters(config *FilterChainConfig, measurement *LoudnormMeasurement) string {
+func buildFullbenchPass4OutputAnalysisFilters(config *EffectiveFilterConfig, measurement *LoudnormMeasurement) string {
 	clauses := strings.Split(buildFullbenchProductionPass4SpecWithoutAdeclick(config, measurement), ",")
 	analysisStart := -1
 	resampleStart := -1
@@ -387,16 +387,16 @@ func buildFullbenchPass4OutputAnalysisFilters(config *FilterChainConfig, measure
 	return strings.Join(clauses[analysisStart:resampleStart], ",")
 }
 
-func buildFullbenchPass4ResampleFilter(config *FilterChainConfig) string {
+func buildFullbenchPass4ResampleFilter(config *EffectiveFilterConfig) string {
 	resampleConfig := *config
 	resampleConfig.ResampleEnabled = true
 	return resampleConfig.buildResampleFilter()
 }
 
-func buildFullbenchProductionPass4SpecWithoutAdeclick(config *FilterChainConfig, measurement *LoudnormMeasurement) string {
+func buildFullbenchProductionPass4SpecWithoutAdeclick(config *EffectiveFilterConfig, measurement *LoudnormMeasurement) string {
 	pass4Config := *config
 	pass4Config.AdeclickEnabled = false
-	return buildLoudnormFilterSpec(&pass4Config, measurement, 0, 0, false)
+	return buildLoudnormFilterSpec(&pass4Config.FilterChainConfig, measurement, 0, 0, false)
 }
 
 func extractFullbenchFilterClause(spec, prefix string) string {
@@ -489,7 +489,7 @@ func TestFullbenchPass2AblationSpecs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			variant := variantByName[tt.name]
-			spec := variant.BuildSpec(config)
+			spec := variant.BuildSpec(effectiveFromFilterChainConfig(config))
 			assertFullbenchSpecContains(t, spec, tt.wantPresent)
 			assertFullbenchSpecExcludes(t, spec, tt.wantAbsent)
 			if variant.ExtractMeasurements != tt.extractMeasurements {
@@ -514,7 +514,7 @@ func TestFullbenchPass2WithoutAnlmdnPreservesOrder(t *testing.T) {
 	config.ResampleEnabled = true
 	config.FilterOrder = Pass2FilterOrder
 
-	spec := buildFullbenchPass2WithoutAnlmdnSpec(config)
+	spec := buildFullbenchPass2WithoutAnlmdnSpec(effectiveFromFilterChainConfig(config))
 
 	assertFullbenchSpecExcludes(t, spec, []string{"anlmdn="})
 	assertFullbenchSpecContains(t, spec, []string{"compand="})
@@ -555,7 +555,7 @@ func TestFullbenchLoudnormClauseMatchesProduction(t *testing.T) {
 		buildLoudnormFilterSpec(&productionConfig, measurement, 0, 0, false),
 		"loudnorm=",
 	)
-	benchmarkClause := buildFullbenchLoudnormClause(config, measurement)
+	benchmarkClause := buildFullbenchLoudnormClause(effectiveFromFilterChainConfig(config), measurement)
 
 	if benchmarkClause != productionClause {
 		t.Fatalf("benchmark loudnorm clause drifted from production\nbenchmark:  %s\nproduction: %s", benchmarkClause, productionClause)
@@ -591,7 +591,7 @@ func TestFullbenchPass4AblationSpecs(t *testing.T) {
 	}
 	loudnorm := &fullbenchLoudnormSetup{
 		Measurement:       measurement,
-		EffectiveConfig:   config,
+		EffectiveConfig:   effectiveFromFilterChainConfig(config),
 		Pass3FilterPrefix: buildPreLimiterPrefix(0, -12.0, true),
 		LimiterNeeded:     true,
 		LimiterCeiling:    -12.0,
@@ -682,7 +682,7 @@ func TestFullbenchPass4LimiterVariantOmitsInactivePrefix(t *testing.T) {
 	}
 	loudnorm := &fullbenchLoudnormSetup{
 		Measurement:     measurement,
-		EffectiveConfig: config,
+		EffectiveConfig: effectiveFromFilterChainConfig(config),
 	}
 
 	for _, variant := range fullbenchPass4AblationVariants() {
@@ -798,7 +798,7 @@ func BenchmarkPass2FilterAblations(b *testing.B) {
 			config := *adapted.Config
 			config.Pass = PassProcessing
 			config.FilterOrder = Pass2FilterOrder
-			spec := variant.BuildSpec(&config)
+			spec := variant.BuildSpec(effectiveFromFilterChainConfig(&config))
 			if spec == "" {
 				b.Fatal("Pass 2 ablation filter spec must not be empty")
 			}
@@ -1008,7 +1008,7 @@ func setupFullbenchLoudnormMeasurement(tb testing.TB, seed *fullbenchPass2Seed) 
 
 	return &fullbenchLoudnormSetup{
 		Measurement:       measurement,
-		EffectiveConfig:   &effectiveConfig,
+		EffectiveConfig:   effectiveFromFilterChainConfig(&effectiveConfig),
 		Pass3FilterPrefix: filterPrefix,
 		PreGainDB:         preGainDB,
 		LimiterCeiling:    limiterCeiling,
