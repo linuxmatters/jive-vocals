@@ -302,6 +302,46 @@ func TestTuneDS201HighPass(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("resets adaptive baseline after warm tuning", func(t *testing.T) {
+		config := newTestConfig()
+		config.DS201HPEnabled = true
+
+		tuneDS201HighPass(config, &AudioMeasurements{
+			BaseMeasurements: BaseMeasurements{
+				SpectralCentroid: 5000,
+				SpectralDecrease: -0.12,
+			},
+			NoiseProfile: makeNoiseProfile(-50.0, 0.8),
+		})
+
+		if config.DS201HPPoles != 1 || config.DS201HPWidth != ds201HPVeryWarmWidth || config.DS201HPMix != ds201HPVeryWarmMix {
+			t.Fatalf("warm tuning did not enter gentle baseline: poles=%d width=%.3f mix=%.2f",
+				config.DS201HPPoles, config.DS201HPWidth, config.DS201HPMix)
+		}
+
+		tuneDS201HighPass(config, &AudioMeasurements{
+			BaseMeasurements: BaseMeasurements{
+				SpectralCentroid: 5000,
+			},
+		})
+
+		if config.DS201HPFreq != ds201HPBrightFreq {
+			t.Errorf("DS201HPFreq = %.1f, want %.1f", config.DS201HPFreq, ds201HPBrightFreq)
+		}
+		if config.DS201HPPoles != ds201HPDefaultPoles {
+			t.Errorf("DS201HPPoles = %d, want %d", config.DS201HPPoles, ds201HPDefaultPoles)
+		}
+		if config.DS201HPWidth != ds201HPDefaultWidth {
+			t.Errorf("DS201HPWidth = %.3f, want %.3f", config.DS201HPWidth, ds201HPDefaultWidth)
+		}
+		if config.DS201HPMix != ds201HPDefaultMix {
+			t.Errorf("DS201HPMix = %.2f, want %.2f", config.DS201HPMix, ds201HPDefaultMix)
+		}
+		if config.DS201HPTransform != ds201HPDefaultTransform {
+			t.Errorf("DS201HPTransform = %q, want %q", config.DS201HPTransform, ds201HPDefaultTransform)
+		}
+	})
 }
 
 func TestDetectContentType(t *testing.T) {
@@ -1286,6 +1326,63 @@ func TestTuneDS201Gate(t *testing.T) {
 						config.DS201GateRelease, tt.lra, tt.wantReleaseMin, tt.wantReleaseMax, tt.desc)
 				}
 			})
+		}
+	})
+
+	t.Run("resets gentle mode and diagnostics without speech metrics", func(t *testing.T) {
+		config := newTestConfig()
+
+		tuneDS201Gate(config, &AudioMeasurements{
+			BaseMeasurements: BaseMeasurements{
+				SpectralFlux:  0.02,
+				SpectralCrest: 20.0,
+			},
+			InputI:     -48.0,
+			InputLRA:   6.0,
+			NoiseFloor: -70.0,
+			NoiseProfile: &NoiseProfile{
+				PeakLevel:   -65.0,
+				CrestFactor: 12.0,
+				Entropy:     0.5,
+			},
+			SpeechProfile: &SpeechCandidateMetrics{
+				RMSLevel:    -35.0,
+				CrestFactor: 10.0,
+			},
+		})
+
+		if !config.DS201GateGentleMode {
+			t.Fatal("expected first tuning to enable gentle mode")
+		}
+		if config.DS201GateAggression == 0 ||
+			config.DS201GateDynamicRange == 0 ||
+			config.DS201GateQuietSpeechEstimate == 0 ||
+			config.DS201GateSpeechSeparation == 0 ||
+			config.DS201GateThresholdUnclamped == 0 ||
+			config.DS201GateClampReason == "" {
+			t.Fatalf("expected first tuning to populate gate diagnostics: %+v", config)
+		}
+
+		tuneDS201Gate(config, &AudioMeasurements{
+			BaseMeasurements: BaseMeasurements{
+				SpectralFlux: 0.02,
+			},
+			InputI:     -20.0,
+			InputLRA:   16.0,
+			NoiseFloor: -55.0,
+		})
+
+		if config.DS201GateGentleMode {
+			t.Error("DS201GateGentleMode = true, want false")
+		}
+		if config.DS201GateAggression != 0 ||
+			config.DS201GateDynamicRange != 0 ||
+			config.DS201GateQuietSpeechEstimate != 0 ||
+			config.DS201GateSpeechSeparation != 0 ||
+			config.DS201GateSpeechHeadroom != 0 ||
+			config.DS201GateThresholdUnclamped != 0 ||
+			config.DS201GateClampReason != "" {
+			t.Errorf("gate diagnostics retained without speech metrics: %+v", config)
 		}
 	})
 }

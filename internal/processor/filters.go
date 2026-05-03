@@ -96,6 +96,13 @@ const (
 	noiseRemoveProductionSmooth      = 3.0
 )
 
+const (
+	ds201HPDefaultPoles     = 2
+	ds201HPDefaultWidth     = 0.707
+	ds201HPDefaultMix       = 1.0
+	ds201HPDefaultTransform = "tdii"
+)
+
 // filterBuilderFunc is a function that builds a filter spec from config.
 // Returns the FFmpeg filter specification string, or empty string if disabled.
 type filterBuilderFunc func(*FilterChainConfig) string
@@ -294,11 +301,11 @@ func DefaultFilterConfig() *FilterChainConfig {
 
 		// DS201-Inspired High-pass - remove subsonic rumble (part of DS201 side-chain)
 		DS201HPEnabled:   true,
-		DS201HPFreq:      80.0,   // 80Hz cutoff
-		DS201HPPoles:     2,      // 12dB/oct standard slope (1=gentle 6dB/oct for warm voices)
-		DS201HPWidth:     0.707,  // Butterworth Q (maximally flat passband)
-		DS201HPMix:       1.0,    // Full wet signal (reduce for warm voice protection)
-		DS201HPTransform: "tdii", // Transposed Direct Form II - best floating-point accuracy
+		DS201HPFreq:      80.0,                    // 80Hz cutoff
+		DS201HPPoles:     ds201HPDefaultPoles,     // 12dB/oct standard slope (1=gentle 6dB/oct for warm voices)
+		DS201HPWidth:     ds201HPDefaultWidth,     // Butterworth Q (maximally flat passband)
+		DS201HPMix:       ds201HPDefaultMix,       // Full wet signal (reduce for warm voice protection)
+		DS201HPTransform: ds201HPDefaultTransform, // Transposed Direct Form II - best floating-point accuracy
 
 		// DS201-Inspired Low-pass Filter - removes ultrasonic noise (part of DS201 side-chain)
 		DS201LPEnabled:   true,
@@ -381,6 +388,48 @@ func DefaultFilterConfig() *FilterChainConfig {
 		LoudnormDualMono:  true,  // CRITICAL for mono recordings
 		LoudnormLinear:    true,  // Prefer linear (transparent) mode
 	}
+}
+
+func derivePerFileConfig(base *FilterChainConfig) *FilterChainConfig {
+	if base == nil {
+		return nil
+	}
+
+	derived := *base
+	if base.FilterOrder != nil {
+		derived.FilterOrder = append([]FilterID(nil), base.FilterOrder...)
+	}
+
+	derived.Pass = 0
+	derived.Measurements = nil
+	derived.OutputAnalysisEnabled = false
+	resetAdaptiveDiagnostics(&derived)
+
+	return &derived
+}
+
+func resetAdaptiveDiagnostics(config *FilterChainConfig) {
+	config.DS201LPContentType = 0
+	config.DS201LPReason = ""
+	config.DS201LPRolloffRatio = 0
+
+	config.DS201GateGentleMode = false
+	resetDS201GateDiagnostics(config)
+
+	config.LA2AHighCrestActive = false
+	config.LA2AHighCrestDeficit = 0
+	config.LA2AHighCrestSeverity = 0
+	config.LA2AHighCrestProjectedTP = 0
+}
+
+func resetDS201GateDiagnostics(config *FilterChainConfig) {
+	config.DS201GateAggression = 0
+	config.DS201GateDynamicRange = 0
+	config.DS201GateQuietSpeechEstimate = 0
+	config.DS201GateSpeechSeparation = 0
+	config.DS201GateSpeechHeadroom = 0
+	config.DS201GateThresholdUnclamped = 0
+	config.DS201GateClampReason = ""
 }
 
 // DbToLinear converts decibel value to linear amplitude.

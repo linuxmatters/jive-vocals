@@ -442,6 +442,11 @@ func AdaptConfig(config *FilterChainConfig, measurements *AudioMeasurements) {
 // - High entropy indicates broadband noise → skip notch filter
 // - Voice-aware: reduces harmonics for warm voices to protect vocal fundamentals
 func tuneDS201HighPass(config *FilterChainConfig, measurements *AudioMeasurements) {
+	config.DS201HPPoles = ds201HPDefaultPoles
+	config.DS201HPWidth = ds201HPDefaultWidth
+	config.DS201HPMix = ds201HPDefaultMix
+	config.DS201HPTransform = ds201HPDefaultTransform
+
 	if measurements.SpectralCentroid <= 0 {
 		// No spectral analysis available - keep default
 		return
@@ -513,7 +518,7 @@ func tuneDS201HighPass(config *FilterChainConfig, measurements *AudioMeasurement
 	}
 
 	// Set TDII transform for all highpass (best floating-point accuracy)
-	config.DS201HPTransform = "tdii"
+	config.DS201HPTransform = ds201HPDefaultTransform
 
 	// Protect warm voices with significant LF body
 	// Instead of disabling highpass, we use gentler settings:
@@ -856,6 +861,9 @@ func tuneDeesserCentroidOnly(config *FilterChainConfig, measurements *AudioMeasu
 //   - Detection: RMS for tonal bleed/noisy silence, peak for clean recordings
 //   - Makeup: 1.0 (loudness normalisation handles level compensation)
 func tuneDS201Gate(config *FilterChainConfig, measurements *AudioMeasurements) {
+	config.DS201GateGentleMode = false
+	resetDS201GateDiagnostics(config)
+
 	// Extract silence sample characteristics for gate tuning
 	var silenceEntropy, silenceCrest, silencePeak float64
 

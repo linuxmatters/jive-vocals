@@ -91,6 +91,48 @@ func TestAnalyzeAudio(t *testing.T) {
 	})
 }
 
+func TestAnalyzeAudioDoesNotMutateCallerConfig(t *testing.T) {
+	testFile := generateTestAudio(t, TestAudioOptions{
+		DurationSecs: 1.0,
+		SampleRate:   44100,
+		ToneFreq:     440.0,
+		ToneLevel:    -23.0,
+		NoiseLevel:   -60.0,
+	})
+	defer cleanupTestAudio(t, testFile)
+
+	seedMeasurements := &AudioMeasurements{InputI: -30.0}
+	config := DefaultFilterConfig()
+	config.Pass = PassProcessing
+	config.FilterOrder = []FilterID{FilterNoiseRemove, FilterAnalysis}
+	config.Measurements = seedMeasurements
+	config.OutputAnalysisEnabled = true
+
+	originalOrder := append([]FilterID(nil), config.FilterOrder...)
+
+	if _, err := AnalyzeAudio(testFile, config, nil); err != nil {
+		t.Fatalf("AnalyzeAudio failed: %v", err)
+	}
+
+	if config.Pass != PassProcessing {
+		t.Errorf("Pass = %d, want %d", config.Pass, PassProcessing)
+	}
+	if len(config.FilterOrder) != len(originalOrder) {
+		t.Fatalf("FilterOrder length = %d, want %d", len(config.FilterOrder), len(originalOrder))
+	}
+	for i := range originalOrder {
+		if config.FilterOrder[i] != originalOrder[i] {
+			t.Errorf("FilterOrder[%d] = %q, want %q", i, config.FilterOrder[i], originalOrder[i])
+		}
+	}
+	if config.Measurements != seedMeasurements {
+		t.Errorf("Measurements = %p, want %p", config.Measurements, seedMeasurements)
+	}
+	if !config.OutputAnalysisEnabled {
+		t.Error("OutputAnalysisEnabled = false, want true")
+	}
+}
+
 func TestCalculateAdaptiveGateThreshold(t *testing.T) {
 	// Tests for the data-driven gate threshold calculation
 	// The function uses noise floor and RMS trough (quiet speech) to calculate

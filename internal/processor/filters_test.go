@@ -3,8 +3,10 @@ package processor
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestConfig creates a minimal FilterChainConfig for testing.
@@ -777,6 +779,104 @@ func TestFilterOrderRespected(t *testing.T) {
 	}
 	if deesserPos >= aformatPos {
 		t.Errorf("deesser (pos %d) should come before aformat (pos %d)", deesserPos, aformatPos)
+	}
+}
+
+func TestDerivePerFileConfig(t *testing.T) {
+	measurements := &AudioMeasurements{InputI: -24.0}
+	base := DefaultFilterConfig()
+	base.Pass = PassProcessing
+	base.FilterOrder = []FilterID{FilterDeesser, FilterAnalysis}
+	base.Measurements = measurements
+	base.OutputAnalysisEnabled = true
+	base.TargetI = -18.0
+	base.SilenceScanDuration = 2 * time.Second
+	base.NoiseRemoveCompandThreshold = -48.0
+
+	base.DS201LPContentType = ContentMusic
+	base.DS201LPReason = "stale lowpass reason"
+	base.DS201LPRolloffRatio = 3.5
+	base.DS201GateGentleMode = true
+	base.DS201GateAggression = 0.45
+	base.DS201GateDynamicRange = 12.0
+	base.DS201GateQuietSpeechEstimate = -42.0
+	base.DS201GateSpeechSeparation = 18.0
+	base.DS201GateSpeechHeadroom = 7.0
+	base.DS201GateThresholdUnclamped = -35.0
+	base.DS201GateClampReason = "speech_rms"
+	base.LA2AHighCrestActive = true
+	base.LA2AHighCrestDeficit = 2.5
+	base.LA2AHighCrestSeverity = 0.4
+	base.LA2AHighCrestProjectedTP = 1.2
+
+	derived := derivePerFileConfig(base)
+	if derived == nil {
+		t.Fatal("derivePerFileConfig returned nil")
+	}
+	if derived == base {
+		t.Fatal("derivePerFileConfig returned the base pointer")
+	}
+
+	if derived.Pass != 0 {
+		t.Errorf("Pass = %d, want 0", derived.Pass)
+	}
+	if derived.Measurements != nil {
+		t.Errorf("Measurements = %p, want nil", derived.Measurements)
+	}
+	if derived.OutputAnalysisEnabled {
+		t.Error("OutputAnalysisEnabled = true, want false")
+	}
+
+	if !reflect.DeepEqual(derived.FilterOrder, base.FilterOrder) {
+		t.Errorf("FilterOrder = %v, want %v", derived.FilterOrder, base.FilterOrder)
+	}
+	derived.FilterOrder[0] = FilterDownmix
+	if base.FilterOrder[0] == FilterDownmix {
+		t.Error("derived FilterOrder mutation changed base FilterOrder")
+	}
+
+	if derived.TargetI != base.TargetI {
+		t.Errorf("TargetI = %.1f, want %.1f", derived.TargetI, base.TargetI)
+	}
+	if derived.SilenceScanDuration != base.SilenceScanDuration {
+		t.Errorf("SilenceScanDuration = %s, want %s", derived.SilenceScanDuration, base.SilenceScanDuration)
+	}
+	if derived.NoiseRemoveCompandThreshold != base.NoiseRemoveCompandThreshold {
+		t.Errorf("NoiseRemoveCompandThreshold = %.1f, want %.1f",
+			derived.NoiseRemoveCompandThreshold, base.NoiseRemoveCompandThreshold)
+	}
+
+	if derived.DS201LPContentType != 0 || derived.DS201LPReason != "" || derived.DS201LPRolloffRatio != 0 {
+		t.Errorf("low-pass diagnostics not reset: type=%v reason=%q ratio=%.2f",
+			derived.DS201LPContentType, derived.DS201LPReason, derived.DS201LPRolloffRatio)
+	}
+	if derived.DS201GateGentleMode ||
+		derived.DS201GateAggression != 0 ||
+		derived.DS201GateDynamicRange != 0 ||
+		derived.DS201GateQuietSpeechEstimate != 0 ||
+		derived.DS201GateSpeechSeparation != 0 ||
+		derived.DS201GateSpeechHeadroom != 0 ||
+		derived.DS201GateThresholdUnclamped != 0 ||
+		derived.DS201GateClampReason != "" {
+		t.Errorf("gate diagnostics not reset: %+v", derived)
+	}
+	if derived.LA2AHighCrestActive ||
+		derived.LA2AHighCrestDeficit != 0 ||
+		derived.LA2AHighCrestSeverity != 0 ||
+		derived.LA2AHighCrestProjectedTP != 0 {
+		t.Errorf("LA-2A diagnostics not reset: active=%v deficit=%.2f severity=%.2f projected=%.2f",
+			derived.LA2AHighCrestActive,
+			derived.LA2AHighCrestDeficit,
+			derived.LA2AHighCrestSeverity,
+			derived.LA2AHighCrestProjectedTP)
+	}
+
+	if base.Pass != PassProcessing ||
+		base.Measurements != measurements ||
+		!base.OutputAnalysisEnabled ||
+		base.DS201GateClampReason != "speech_rms" ||
+		!base.LA2AHighCrestActive {
+		t.Error("derivePerFileConfig mutated the base config")
 	}
 }
 
