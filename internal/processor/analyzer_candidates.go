@@ -1034,7 +1034,7 @@ func detectVoiceActivated(candidates []SilenceCandidateMetrics) bool {
 	return fraction >= voiceActivatedDigitalSilenceThreshold
 }
 
-func findBestSilenceRegion(regions []SilenceRegion, intervals []IntervalSample, _ float64) *findBestSilenceRegionResult {
+func findBestSilenceRegion(regions []SilenceRegion, intervals []IntervalSample) *findBestSilenceRegionResult {
 	result := &findBestSilenceRegionResult{}
 
 	if len(regions) == 0 {
