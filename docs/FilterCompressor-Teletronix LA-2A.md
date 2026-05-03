@@ -142,34 +142,33 @@ Real LA-2As have no parallel compression—they're 100% wet. We default to full 
 | Home office | −65 to −45 dBFS | 0.93 |
 | Noisy environment | > −45 dBFS | 0.85 |
 
-### Makeup Gain: Conservative Compensation
+### Makeup Gain: Unity
 
-Makeup gain compensates for compression but shouldn't over-drive downstream processing:
-
-```
-overshoot = peak_level − threshold
-reduction = overshoot × (1 − 1/ratio)
-makeup = reduction × 0.65
-```
-
-Clamped to 1–5 dB. Let normalisation handle the rest.
+Makeup gain stays at 0 dB. Loudnorm handles final level adjustment after compression.
 
 ---
 
 ## Configuration
 
-### FilterChainConfig Fields
+### Configuration Fields
+
+`BaseFilterConfig` stores caller-owned LA-2A defaults. `AdaptConfig()` copies those defaults into an `EffectiveFilterConfig`, tunes them from Pass 1 measurements, and returns `AdaptiveDiagnostics` for report-only high-crest explanations.
 
 | Field | Type | Range | Default | Purpose |
 |-------|------|-------|---------|---------|
 | `LA2AEnabled` | bool | — | true | Enable/disable filter |
-| `LA2AThreshold` | float64 | −40 to −12 dB | −24 dB | Compression threshold |
+| `LA2AThreshold` | float64 | −40 to −12 dB | −18 dB | Compression threshold |
 | `LA2ARatio` | float64 | 2.0–5.0 | 3.0 | Compression ratio |
 | `LA2AAttack` | float64 | 8–12 ms | 10 ms | Attack time |
 | `LA2ARelease` | float64 | 150–350 ms | 200 ms | Release time |
-| `LA2AMakeup` | float64 | 1–5 dB | 2 dB | Makeup gain |
+| `LA2AMakeup` | float64 | 0 dB | 0 dB | Unity gain |
 | `LA2AKnee` | float64 | 3.5–6.0 | 4.0 | Knee softness |
 | `LA2AMix` | float64 | 0.85–1.0 | 1.0 | Wet/dry mix |
+
+### AdaptiveDiagnostics Fields
+
+| Field | Type | Range | Default | Purpose |
+|-------|------|-------|---------|---------|
 | `LA2AHighCrestActive` | bool | — | false | Whether high-crest overrides were applied |
 | `LA2AHighCrestDeficit` | float64 | dB | 0.0 | Predicted ceiling deficit |
 | `LA2AHighCrestSeverity` | float64 | 0.0–1.0 | 0.0 | Override scaling factor |

@@ -254,7 +254,7 @@ internal/
 ├── processor/
 │   ├── analyzer.go         # Pass 1: ebur128 + astats + aspectralstats
 │   ├── processor.go        # Pass 2: adaptive filter chain execution
-│   ├── filters.go          # FilterChainConfig, BuildFilterSpec()
+│   ├── filters.go          # BaseFilterConfig, EffectiveFilterConfig, BuildFilterSpec()
 │   └── adaptive.go         # Measurement-driven parameter tuning
 ├── ui/                     # Bubbletea model, views, messages
 └── cli/                    # Help styling, version output
