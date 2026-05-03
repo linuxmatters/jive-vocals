@@ -35,6 +35,102 @@ func makeMinimalMetadata() *audio.Metadata {
 	}
 }
 
+func makeFullAnalysisMeasurements() *processor.AudioMeasurements {
+	m := makeMinimalMeasurements()
+	m.InputI = -18.4
+	m.InputTP = -2.1
+	m.InputLRA = 7.8
+	m.RMSLevel = -28.2
+	m.PeakLevel = -7.4
+	m.DynamicRange = 20.8
+	m.CrestFactor = 11.4
+	m.PreScanNoiseFloor = -58.4
+	m.SilenceDetectLevel = -57.4
+	m.NoiseFloor = -58.4
+	m.NoiseFloorSource = "silence_profile"
+	m.SuggestedGateThreshold = processor.DbToLinear(-52.4)
+	m.NoiseReductionHeadroom = 24.6
+	m.SpectralCentroid = 2450
+	m.SpectralSpread = 1800
+	m.SpectralRolloff = 7200
+	m.SpectralFlatness = 0.210
+	m.SpectralKurtosis = 9.7
+	m.SpectralSkewness = 0.82
+	m.SpectralCrest = 12.6
+	m.SpectralSlope = -1.20e-03
+	m.SpectralDecrease = -0.0123
+	m.SpectralEntropy = 0.365
+	m.SpectralFlux = 0.0820
+	m.NoiseProfile = &processor.NoiseProfile{
+		Start:              6 * time.Second,
+		Duration:           4 * time.Second,
+		MeasuredNoiseFloor: -58.4,
+		PeakLevel:          -44.0,
+		CrestFactor:        14.4,
+		Entropy:            0.365,
+		SpectralFlatness:   0.210,
+		SpectralKurtosis:   9.7,
+		WasRefined:         true,
+		OriginalStart:      5 * time.Second,
+		OriginalDuration:   8 * time.Second,
+	}
+	m.SilenceCandidates = []processor.SilenceCandidateMetrics{
+		{
+			Region:      processor.SilenceRegion{Start: 5 * time.Second, Duration: 8 * time.Second},
+			RMSLevel:    -58.4,
+			PeakLevel:   -44.0,
+			CrestFactor: 14.4,
+			Spectral: processor.SpectralMetrics{
+				Entropy:  0.365,
+				Flatness: 0.210,
+				Kurtosis: 9.7,
+				Centroid: 2450,
+			},
+			Score: 0.910,
+		},
+		{
+			Region:      processor.SilenceRegion{Start: 40 * time.Second, Duration: 3 * time.Second},
+			RMSLevel:    -56.1,
+			CrestFactor: 10.2,
+			Spectral:    processor.SpectralMetrics{Entropy: 0.620},
+			Score:       0.420,
+		},
+		{
+			Region:           processor.SilenceRegion{Start: 70 * time.Second, Duration: 2 * time.Second},
+			TransientWarning: "rejected: digital silence",
+			Score:            0,
+		},
+	}
+	m.SpeechCandidates = []processor.SpeechCandidateMetrics{
+		{
+			Region:      processor.SpeechRegion{Start: 15 * time.Second, Duration: 60 * time.Second},
+			RMSLevel:    -33.8,
+			PeakLevel:   -9.0,
+			CrestFactor: 12.8,
+			Spectral: processor.SpectralMetrics{
+				Centroid: 2450,
+				Kurtosis: 9.7,
+				Rolloff:  7200,
+			},
+			VoicingDensity: 0.76,
+			Score:          0.88,
+		},
+		{
+			Region:      processor.SpeechRegion{Start: 90 * time.Second, Duration: 20 * time.Second},
+			RMSLevel:    -35.2,
+			CrestFactor: 11.0,
+			Spectral:    processor.SpectralMetrics{Centroid: 3100},
+			Score:       0.55,
+		},
+		{
+			Region: processor.SpeechRegion{Start: 115 * time.Second, Duration: 5 * time.Second},
+			Score:  0,
+		},
+	}
+	m.SpeechProfile = &m.SpeechCandidates[0]
+	return m
+}
+
 func TestDisplayAnalysisResults_VoiceActivated_NoElectedCandidate(t *testing.T) {
 	m := makeMinimalMeasurements()
 	m.VoiceActivated = true
@@ -53,6 +149,127 @@ func TestDisplayAnalysisResults_VoiceActivated_NoElectedCandidate(t *testing.T) 
 
 	if !strings.Contains(output, "Voice-activated recording detected") {
 		t.Error("expected 'Voice-activated recording detected' in output for voice-activated recording with no elected candidate")
+	}
+}
+
+func TestDisplayAnalysisResults_FullOutputFixture(t *testing.T) {
+	m := makeFullAnalysisMeasurements()
+	config := processor.DefaultFilterConfig()
+	config.NoiseRemoveCompandEnabled = true
+	config.NoiseRemoveCompandThreshold = -53
+	config.NoiseRemoveCompandExpansion = 7
+	config.DeessIntensity = 0.35
+	config.LA2AThreshold = -21
+	config.LA2ARatio = 2.5
+	config.DS201HPFreq = 85
+	config.DS201GateThreshold = processor.DbToLinear(-51.2)
+	config.DS201GateRatio = 3.0
+	timings := AnalysisTimings{
+		Analysis:     2*time.Minute + 3*time.Second,
+		Adaptation:   1500 * time.Millisecond,
+		ReportOutput: 250 * time.Millisecond,
+	}
+
+	var buf bytes.Buffer
+	DisplayAnalysisResults(&buf, "/tmp/full-fixture.wav", &audio.Metadata{
+		Duration:   3672.0,
+		SampleRate: 48000,
+		Channels:   2,
+	}, m, config, timings)
+
+	const want = `======================================================================
+ANALYSIS: full-fixture.wav
+======================================================================
+Duration:    1h 1m 12s
+Sample Rate: 48000 Hz
+Channels:    stereo
+
+LOUDNESS
+  Integrated:     -18.4 LUFS
+  True Peak:      -2.1 dBTP
+  Loudness Range: 7.8 LU
+
+DYNAMICS
+  RMS Level:      -28.2 dBFS
+  Peak Level:     -7.4 dBFS
+  Dynamic Range:  20.8 dB
+  Crest Factor:   12.8 dB (speech)
+
+SILENCE DETECTION
+  Threshold:      -57.4 dB (-58.4 dBFS room tone estimate + 1 dB)
+  Candidates:     3 evaluated
+  Displayed:      elected + 1 chronological (1 omitted)
+
+  #1: 8.0s at 5.0s (elected)
+      Refined:     4.0s at 6.0s (golden sub-region)
+      Score:       0.910
+      RMS Level:   -58.4 dBFS
+      Peak Level:  -44.0 dBFS
+      Crest:       14.4 dB
+      Entropy:     0.365 (mixed voiced/unvoiced)
+      Flatness:    0.210 (very tonal, strong harmonics)
+      Kurtosis:    9.7 (leptokurtic, clear harmonics)
+      Centroid:    2450 Hz
+
+  #2: 3.0s at 40.0s (score: 0.420)
+      RMS: -56.1 dBFS, Crest: 10.2 dB, Entropy: 0.620 (disordered, fricatives)
+
+  Rejected:       1 digital silence
+
+SPEECH DETECTION
+  Candidates:     3 evaluated
+  Displayed:      elected + 1 chronological (1 omitted)
+
+  #1: 60.0s at 15.0s (elected)
+      Score:       0.88
+      RMS Level:   -33.8 dBFS
+      Crest:       12.8 dB
+      Centroid:    2450 Hz (forward, clear)
+      Kurtosis:    9.7 (leptokurtic, clear harmonics)
+      Voicing:     76%
+
+  #2: 20.0s at 1m 30s (score: 0.55)
+      RMS: -35.2 dBFS, Crest: 11.0 dB, Centroid: 3100 Hz (bright, articulate)
+
+  Rejected:       1 zero score
+
+DERIVED MEASUREMENTS
+  Noise Floor:    -58.4 dBFS (from elected silence)
+  Gate Baseline:  -52.4 dB (noise floor + margin)
+  NR Headroom:    24.6 dB (noise-to-speech gap)
+
+FILTER ADAPTATION
+  Highpass:       85 Hz (from spectral analysis)
+  Gate Threshold: -51.2 dB (with breath reduction)
+  Gate Ratio:     3.0:1
+  NR Threshold:   -53 dB
+  NR Expansion:   7 dB
+  De-esser:       35% intensity
+  LA-2A Thresh:   -21 dB
+  LA-2A Ratio:    2.5:1
+SPECTRAL SUMMARY
+  Centroid:       2450 Hz (forward, clear)
+  Spread:         1800 Hz (moderate, natural speech)
+  Rolloff:        7200 Hz (good articulation)
+  Flatness:       0.210 (very tonal, strong harmonics)
+  Kurtosis:       9.7 (leptokurtic, clear harmonics)
+  Skewness:       0.82 (LF emphasis with HF tail (typical voice))
+  Crest:          12.6 (moderate peaks)
+  Slope:          -1.20e-03 (very steep slope, dark/warm)
+  Decrease:       -0.0123 (strong bass emphasis)
+  Entropy:        0.365 (mixed voiced/unvoiced)
+  Flux:           0.0820 (high variation, transients)
+
+RECORDING TIPS
+  ✓ Your recording setup looks good. No issues detected.
+
+ANALYSIS TIMINGS
+  Analysis:      2m 3s
+  Adaptation:    1.5s
+  Report Output: 0.2s
+`
+	if got := buf.String(); got != want {
+		t.Fatalf("DisplayAnalysisResults output mismatch\nwant:\n%s\ngot:\n%s", want, got)
 	}
 }
 
