@@ -459,6 +459,8 @@ func replaceApplyLoudnormRename(t *testing.T, rename func(string, string) error)
 type loudnormTestEncoder struct {
 	flushErr error
 	closeErr error
+	closed   bool
+	closeN   int
 }
 
 func (e *loudnormTestEncoder) WriteFrame(*ffmpeg.AVFrame) error {
@@ -470,6 +472,11 @@ func (e *loudnormTestEncoder) Flush() error {
 }
 
 func (e *loudnormTestEncoder) Close() error {
+	e.closeN++
+	if e.closed {
+		return nil
+	}
+	e.closed = true
 	return e.closeErr
 }
 
@@ -597,12 +604,13 @@ func TestApplyLoudnormAndMeasureLoopErrorFreesGraphBeforeStoppingCapture(t *test
 	testFile := generateLoudnormApplicationTestAudio(t)
 	recorder := installLoudnormCleanupRecorder(t)
 	replaceApplyLoudnormGraphFree(t, recorder, true)
+	encoder := &loudnormTestEncoder{}
 	replaceApplyLoudnormCreateEncoder(t, func(
 		string,
 		*audio.Metadata,
 		*ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
-		return &loudnormTestEncoder{}, nil
+		return encoder, nil
 	})
 
 	runErr := errors.New("injected application loop failure")
@@ -625,6 +633,9 @@ func TestApplyLoudnormAndMeasureLoopErrorFreesGraphBeforeStoppingCapture(t *test
 	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
 		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
 	}
+	if encoder.closeN != 1 {
+		t.Fatalf("encoder close calls = %d, want 1", encoder.closeN)
+	}
 	requireLoudnormCaptureStoppedOnce(t, recorder)
 }
 
@@ -634,12 +645,13 @@ func TestApplyLoudnormAndMeasureFlushErrorFreesGraphBeforeStoppingCapture(t *tes
 	replaceApplyLoudnormGraphFree(t, recorder, true)
 
 	flushErr := errors.New("injected flush failure")
+	encoder := &loudnormTestEncoder{flushErr: flushErr}
 	replaceApplyLoudnormCreateEncoder(t, func(
 		string,
 		*audio.Metadata,
 		*ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
-		return &loudnormTestEncoder{flushErr: flushErr}, nil
+		return encoder, nil
 	})
 
 	oldRun := loudnormRunFilterGraph
@@ -664,6 +676,9 @@ func TestApplyLoudnormAndMeasureFlushErrorFreesGraphBeforeStoppingCapture(t *tes
 	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
 		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
 	}
+	if encoder.closeN != 1 {
+		t.Fatalf("encoder close calls = %d, want 1", encoder.closeN)
+	}
 	requireLoudnormCaptureStoppedOnce(t, recorder)
 }
 
@@ -673,12 +688,13 @@ func TestApplyLoudnormAndMeasureCloseErrorFreesGraphBeforeStoppingCapture(t *tes
 	replaceApplyLoudnormGraphFree(t, recorder, true)
 
 	closeErr := errors.New("injected close failure")
+	encoder := &loudnormTestEncoder{closeErr: closeErr}
 	replaceApplyLoudnormCreateEncoder(t, func(
 		string,
 		*audio.Metadata,
 		*ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
-		return &loudnormTestEncoder{closeErr: closeErr}, nil
+		return encoder, nil
 	})
 
 	oldRun := loudnormRunFilterGraph
@@ -703,6 +719,9 @@ func TestApplyLoudnormAndMeasureCloseErrorFreesGraphBeforeStoppingCapture(t *tes
 	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
 		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
 	}
+	if encoder.closeN != 2 {
+		t.Fatalf("encoder close calls = %d, want 2", encoder.closeN)
+	}
 	requireLoudnormCaptureStoppedOnce(t, recorder)
 }
 
@@ -710,12 +729,13 @@ func TestApplyLoudnormAndMeasureRenameErrorFreesGraphBeforeStoppingCapture(t *te
 	testFile := generateLoudnormApplicationTestAudio(t)
 	recorder := installLoudnormCleanupRecorder(t)
 	replaceApplyLoudnormGraphFree(t, recorder, true)
+	encoder := &loudnormTestEncoder{}
 	replaceApplyLoudnormCreateEncoder(t, func(
 		string,
 		*audio.Metadata,
 		*ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
-		return &loudnormTestEncoder{}, nil
+		return encoder, nil
 	})
 
 	oldRun := loudnormRunFilterGraph
@@ -753,6 +773,9 @@ func TestApplyLoudnormAndMeasureRenameErrorFreesGraphBeforeStoppingCapture(t *te
 	}
 	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
 		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
+	}
+	if encoder.closeN != 1 {
+		t.Fatalf("encoder close calls = %d, want 1", encoder.closeN)
 	}
 	requireLoudnormCaptureStoppedOnce(t, recorder)
 }
