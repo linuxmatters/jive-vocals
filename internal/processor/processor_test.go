@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/linuxmatters/jivetalking/internal/audio"
@@ -87,6 +88,11 @@ func TestProcessAudio(t *testing.T) {
 	config.AnalysisEnabled = true
 	config.ResampleEnabled = true
 	config.DS201HPEnabled = true // Basic processing
+	config.DS201HPFreq = 95.0
+	basePass := config.Pass
+	baseFilterOrder := append([]FilterID(nil), config.FilterOrder...)
+	baseMeasurements := config.Measurements
+	baseOutputAnalysisEnabled := config.OutputAnalysisEnabled
 
 	// Process the audio with a no-op progress callback
 	result, err := ProcessAudio(testFile, config, func(pass PassNumber, passName string, progress float64, level float64, measurements *AudioMeasurements) {
@@ -138,6 +144,46 @@ func TestProcessAudio(t *testing.T) {
 	// Verify measurements are populated
 	if result.Measurements == nil {
 		t.Error("ProcessAudio returned nil measurements")
+	}
+	if config.Pass != basePass {
+		t.Errorf("base Pass = %d, want %d", config.Pass, basePass)
+	}
+	if !reflect.DeepEqual(config.FilterOrder, baseFilterOrder) {
+		t.Errorf("base FilterOrder = %v, want %v", config.FilterOrder, baseFilterOrder)
+	}
+	if config.Measurements != baseMeasurements {
+		t.Fatal("base Measurements was mutated")
+	}
+	if config.OutputAnalysisEnabled != baseOutputAnalysisEnabled {
+		t.Errorf("base OutputAnalysisEnabled = %v, want %v", config.OutputAnalysisEnabled, baseOutputAnalysisEnabled)
+	}
+	if config.DS201HPFreq != 95.0 {
+		t.Errorf("base DS201HPFreq = %.1f, want unchanged 95.0", config.DS201HPFreq)
+	}
+	if result.Config == nil {
+		t.Fatal("ProcessAudio returned nil config")
+	}
+	if result.Config == config {
+		t.Fatal("ProcessAudio returned the caller seed config")
+	}
+	if result.Config.Measurements != result.Measurements {
+		t.Fatal("result config Measurements does not point at Pass 1 measurements")
+	}
+	if result.Config.Pass != PassProcessing {
+		t.Errorf("result config Pass = %d, want %d", result.Config.Pass, PassProcessing)
+	}
+	if !reflect.DeepEqual(result.Config.FilterOrder, Pass2FilterOrder) {
+		t.Errorf("result config FilterOrder = %v, want %v", result.Config.FilterOrder, Pass2FilterOrder)
+	}
+	if !result.Config.OutputAnalysisEnabled {
+		t.Fatal("result config OutputAnalysisEnabled = false, want true")
+	}
+	if result.Config.DS201HPFreq == 95.0 {
+		t.Fatal("result config DS201HPFreq did not adapt from base seed value")
+	}
+	result.Config.FilterOrder[0] = FilterDeesser
+	if config.FilterOrder[0] == FilterDeesser {
+		t.Fatal("result config FilterOrder mutation changed base FilterOrder")
 	}
 
 	// Verify report-needed input metadata is populated from the processing path
@@ -245,6 +291,12 @@ func TestAnalyzeOnlyDetailedTimings(t *testing.T) {
 	config := newTestConfig()
 	config.DownmixEnabled = true
 	config.AnalysisEnabled = true
+	config.DS201HPEnabled = true
+	config.DS201HPFreq = 95.0
+	basePass := config.Pass
+	baseFilterOrder := append([]FilterID(nil), config.FilterOrder...)
+	baseMeasurements := config.Measurements
+	baseOutputAnalysisEnabled := config.OutputAnalysisEnabled
 
 	result, err := AnalyzeOnlyDetailed(testFile, config, nil)
 	if err != nil {
@@ -256,6 +308,27 @@ func TestAnalyzeOnlyDetailedTimings(t *testing.T) {
 	}
 	if result.Config == nil {
 		t.Fatal("AnalyzeOnlyDetailed returned nil config")
+	}
+	if result.Config == config {
+		t.Fatal("AnalyzeOnlyDetailed returned the caller seed config")
+	}
+	if result.Config.Measurements != result.Measurements {
+		t.Fatal("result config Measurements does not point at Pass 1 measurements")
+	}
+	if config.Pass != basePass {
+		t.Errorf("base Pass = %d, want %d", config.Pass, basePass)
+	}
+	if !reflect.DeepEqual(config.FilterOrder, baseFilterOrder) {
+		t.Errorf("base FilterOrder = %v, want %v", config.FilterOrder, baseFilterOrder)
+	}
+	if config.Measurements != baseMeasurements {
+		t.Fatal("base Measurements was mutated")
+	}
+	if config.OutputAnalysisEnabled != baseOutputAnalysisEnabled {
+		t.Errorf("base OutputAnalysisEnabled = %v, want %v", config.OutputAnalysisEnabled, baseOutputAnalysisEnabled)
+	}
+	if config.DS201HPFreq != 95.0 {
+		t.Errorf("base DS201HPFreq = %.1f, want unchanged 95.0", config.DS201HPFreq)
 	}
 	if result.AnalysisDuration <= 0 {
 		t.Errorf("AnalysisDuration = %s, want > 0", result.AnalysisDuration)

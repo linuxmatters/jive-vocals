@@ -43,12 +43,12 @@ func AnalyzeOnlyDetailed(inputPath string, config *FilterChainConfig,
 
 	// Adapt config to show what would be used in Pass 2
 	adaptationStart := time.Now()
-	AdaptConfig(config, measurements)
+	effectiveConfig := AdaptConfig(config, measurements)
 	adaptationDuration := time.Since(adaptationStart)
 
 	return &AnalysisResult{
 		Measurements:       measurements,
-		Config:             config,
+		Config:             effectiveConfig,
 		AnalysisDuration:   analysisDuration,
 		AdaptationDuration: adaptationDuration,
 	}, nil
@@ -77,7 +77,7 @@ func ProcessAudio(inputPath string, config *FilterChainConfig, progressCallback 
 	}
 
 	// Adapt filter configuration based on Pass 1 measurements
-	AdaptConfig(config, measurements)
+	effectiveConfig := AdaptConfig(config, measurements)
 
 	// Pass 2: Processing
 	if progressCallback != nil {
@@ -88,17 +88,17 @@ func ProcessAudio(inputPath string, config *FilterChainConfig, progressCallback 
 	outputPath := generateOutputPath(inputPath)
 
 	// Enable output analysis to measure processed audio characteristics
-	config.OutputAnalysisEnabled = true
+	effectiveConfig.OutputAnalysisEnabled = true
 
 	// Set Pass 2 configuration for filter chain
-	config.Pass = PassProcessing
-	config.FilterOrder = Pass2FilterOrder
+	effectiveConfig.Pass = PassProcessing
+	effectiveConfig.FilterOrder = append([]FilterID(nil), Pass2FilterOrder...)
 
 	// Track output measurements from Pass 2 (filtered but not yet normalised)
 	var filteredMeasurements *OutputMeasurements
 	var regionTimings RegionMeasurementTimings
 
-	inputMetadata, err := processWithFilters(inputPath, outputPath, config, progressCallback, measurements, &filteredMeasurements)
+	inputMetadata, err := processWithFilters(inputPath, outputPath, effectiveConfig, progressCallback, measurements, &filteredMeasurements)
 	if err != nil {
 		return nil, fmt.Errorf("pass 2 failed: %w", err)
 	}
@@ -123,7 +123,7 @@ func ProcessAudio(inputPath string, config *FilterChainConfig, progressCallback 
 	// The FinalMeasurements in the result include region measurements captured in Pass 4
 	var normResult *NormalisationResult
 	if filteredMeasurements != nil {
-		normResult, err = ApplyNormalisation(outputPath, config, filteredMeasurements, measurements, progressCallback)
+		normResult, err = ApplyNormalisation(outputPath, effectiveConfig, filteredMeasurements, measurements, progressCallback)
 		if err != nil {
 			return nil, fmt.Errorf("pass 3 failed: %w", err)
 		}
@@ -137,7 +137,7 @@ func ProcessAudio(inputPath string, config *FilterChainConfig, progressCallback 
 		OutputLUFS:           0.0, // Will be set to final value below
 		NoiseFloor:           measurements.NoiseFloor,
 		Measurements:         measurements,
-		Config:               config, // Include config for logging adaptive parameters
+		Config:               effectiveConfig, // Include per-file config for logging adaptive parameters
 		InputMetadata:        inputMetadata,
 		RegionTimings:        regionTimings,
 		FilteredMeasurements: filteredMeasurements,

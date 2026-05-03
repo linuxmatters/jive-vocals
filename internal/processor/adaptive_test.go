@@ -2,8 +2,88 @@ package processor
 
 import (
 	"math"
+	"reflect"
 	"testing"
 )
+
+func TestAdaptConfigReturnsEffectiveConfig(t *testing.T) {
+	staleMeasurements := &AudioMeasurements{InputI: -12.0}
+	measurements := &AudioMeasurements{
+		BaseMeasurements: BaseMeasurements{
+			SpectralCentroid: 5000,
+			SpectralDecrease: -0.12,
+			SpectralSkewness: 1.2,
+			DynamicRange:     32.0,
+			SpectralKurtosis: 4.0,
+			SpectralFlux:     0.01,
+			PeakLevel:        -8.0,
+		},
+		InputI:     -28.0,
+		InputTP:    -4.0,
+		InputLRA:   9.0,
+		NoiseFloor: -60.0,
+		NoiseProfile: &NoiseProfile{
+			MeasuredNoiseFloor: -50.0,
+			Entropy:            0.8,
+		},
+	}
+
+	base := newTestConfig()
+	base.Pass = PassProcessing
+	base.FilterOrder = []FilterID{FilterDeesser, FilterAnalysis}
+	base.Measurements = staleMeasurements
+	base.OutputAnalysisEnabled = true
+	base.DS201HPEnabled = true
+	base.DS201HPFreq = 95.0
+	base.TargetI = -18.0
+
+	effective := AdaptConfig(base, measurements)
+	if effective == nil {
+		t.Fatal("AdaptConfig returned nil")
+	}
+	if effective == base {
+		t.Fatal("AdaptConfig returned the base pointer")
+	}
+	if effective.Measurements != measurements {
+		t.Fatal("effective Measurements was not set to Pass 1 measurements")
+	}
+
+	if base.Pass != PassProcessing {
+		t.Errorf("base Pass = %d, want %d", base.Pass, PassProcessing)
+	}
+	if !reflect.DeepEqual(base.FilterOrder, []FilterID{FilterDeesser, FilterAnalysis}) {
+		t.Errorf("base FilterOrder = %v, want unchanged custom order", base.FilterOrder)
+	}
+	if base.Measurements != staleMeasurements {
+		t.Fatal("base Measurements was mutated")
+	}
+	if !base.OutputAnalysisEnabled {
+		t.Fatal("base OutputAnalysisEnabled was mutated")
+	}
+	if base.DS201HPFreq != 95.0 {
+		t.Errorf("base DS201HPFreq = %.1f, want unchanged 95.0", base.DS201HPFreq)
+	}
+	if base.TargetI != -18.0 {
+		t.Errorf("base TargetI = %.1f, want unchanged -18.0", base.TargetI)
+	}
+
+	if effective.Pass != 0 {
+		t.Errorf("effective Pass = %d, want cleared pass state", effective.Pass)
+	}
+	if effective.OutputAnalysisEnabled {
+		t.Fatal("effective OutputAnalysisEnabled = true, want cleared pass state")
+	}
+	if !reflect.DeepEqual(effective.FilterOrder, base.FilterOrder) {
+		t.Errorf("effective FilterOrder = %v, want copied base order %v", effective.FilterOrder, base.FilterOrder)
+	}
+	effective.FilterOrder[0] = FilterDownmix
+	if base.FilterOrder[0] == FilterDownmix {
+		t.Fatal("effective FilterOrder mutation changed base FilterOrder")
+	}
+	if effective.DS201HPFreq == 95.0 {
+		t.Fatal("effective DS201HPFreq did not adapt from base seed value")
+	}
+}
 
 func TestTuneDS201HighPass(t *testing.T) {
 	// Helper to create noise profile with given characteristics
