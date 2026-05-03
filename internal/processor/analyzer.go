@@ -548,7 +548,7 @@ func AnalyzeAudio(filename string, config *FilterChainConfig, progressCallback f
 
 	// Extract noise profile from best silence region (if available)
 	// Uses interval data for all measurements - no file re-reading required
-	silenceResult := findBestSilenceRegion(measurements.SilenceRegions, silenceIntervals, totalDuration)
+	silenceResult := findBestSilenceRegion(measurements.SilenceRegions, silenceIntervals)
 
 	// Store all evaluated candidates for reporting/debugging
 	measurements.SilenceCandidates = silenceResult.Candidates

@@ -519,7 +519,7 @@ func TestFindBestSilenceRegion_HighestScoreWinsAfterDip(t *testing.T) {
 
 	allIntervals := append(append(intervalsA, intervalsB...), intervalsC...)
 
-	result := findBestSilenceRegion(regions, allIntervals, 3600.0)
+	result := findBestSilenceRegion(regions, allIntervals)
 
 	if result.BestRegion == nil {
 		t.Fatal("expected a best region to be selected")
@@ -557,7 +557,7 @@ func TestFindBestSilenceRegion_EarlierCandidatePreferredWithinTolerance(t *testi
 	allIntervals = append(allIntervals, intervalsA...)
 	allIntervals = append(allIntervals, intervalsB...)
 
-	result := findBestSilenceRegion(regions, allIntervals, 3600.0)
+	result := findBestSilenceRegion(regions, allIntervals)
 
 	if result.BestRegion == nil {
 		t.Fatal("expected a best region to be selected")
@@ -596,7 +596,7 @@ func TestFindBestSilenceRegion_AllBelowMinAcceptableScoreFallsBack(t *testing.T)
 	allIntervals = append(allIntervals, intervalsA...)
 	allIntervals = append(allIntervals, intervalsB...)
 
-	result := findBestSilenceRegion(regions, allIntervals, 3600.0)
+	result := findBestSilenceRegion(regions, allIntervals)
 
 	if result.BestRegion == nil {
 		t.Fatal("expected fallback BestRegion when candidates exist below minAcceptableScore")
@@ -634,7 +634,7 @@ func TestFindBestSilenceRegion_AllRejectedCandidatesDoNotFallback(t *testing.T) 
 	allIntervals = append(allIntervals, intervalsA...)
 	allIntervals = append(allIntervals, intervalsB...)
 
-	result := findBestSilenceRegion(regions, allIntervals, 3600.0)
+	result := findBestSilenceRegion(regions, allIntervals)
 
 	if result.BestRegion != nil {
 		t.Fatalf("BestRegion = %+v, want nil for all rejected candidates", result.BestRegion)
@@ -660,7 +660,7 @@ func TestFindBestSilenceRegion_SingleAcceptableCandidateElected(t *testing.T) {
 	intervals := makeSilenceTestIntervals(0, 10*time.Second,
 		-65.0, -60.0, 100.0, 0.8, 2.0, 0.0)
 
-	result := findBestSilenceRegion(regions, intervals, 3600.0)
+	result := findBestSilenceRegion(regions, intervals)
 
 	if result.BestRegion == nil {
 		t.Fatal("expected a best region to be selected")
@@ -695,7 +695,7 @@ func TestFindBestSilenceRegion_LaterCandidateWinsWhenGapExceedsTolerance(t *test
 	allIntervals = append(allIntervals, intervalsA...)
 	allIntervals = append(allIntervals, intervalsB...)
 
-	result := findBestSilenceRegion(regions, allIntervals, 3600.0)
+	result := findBestSilenceRegion(regions, allIntervals)
 
 	if result.BestRegion == nil {
 		t.Fatal("expected a best region to be selected")
@@ -725,7 +725,7 @@ func TestFindBestSilenceRegion_LateCandidateDiscoverable(t *testing.T) {
 	intervals := makeSilenceTestIntervals(1800*time.Second, 10*time.Second,
 		-75.0, -70.0, 100.0, 0.9, 1.0, 0.0)
 
-	result := findBestSilenceRegion(regions, intervals, 3600.0)
+	result := findBestSilenceRegion(regions, intervals)
 
 	if result.BestRegion == nil {
 		t.Fatal("expected candidate at t=1800s to be elected")
@@ -2355,7 +2355,7 @@ func TestFindBestSilenceRegion_BoundaryTransientSurvivesAfterRefinement(t *testi
 	allIntervals = append(allIntervals, transientIntervals...)
 	allIntervals = append(allIntervals, cleanIntervals...)
 
-	result := findBestSilenceRegion(regions, allIntervals, 3600.0)
+	result := findBestSilenceRegion(regions, allIntervals)
 
 	if result.BestRegion == nil {
 		t.Fatal("expected candidate to be elected after pre-scoring refinement trims boundary transient")
