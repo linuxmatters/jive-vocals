@@ -404,27 +404,23 @@ func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) (*Ef
 	if effectiveConfig == nil {
 		return nil, nil
 	}
-	filterConfig := &effectiveConfig.FilterChainConfig
 	diagnostics := &AdaptiveDiagnostics{}
-
-	// Store measurements reference
-	filterConfig.Measurements = measurements
 
 	// Tune each filter adaptively based on measurements
 	// Order matters: gate threshold calculated BEFORE denoise filters
-	tuneDS201HighPass(filterConfig, measurements)             // Composite: highpass + hum notch
-	tuneDS201LowPass(filterConfig, diagnostics, measurements) // Ultrasonic rejection (adaptive)
+	tuneDS201HighPass(effectiveConfig, measurements)             // Composite: highpass + hum notch
+	tuneDS201LowPass(effectiveConfig, diagnostics, measurements) // Ultrasonic rejection (adaptive)
 
 	// NoiseRemove: anlmdn + compand (primary noise reduction)
-	tuneNoiseRemove(filterConfig, measurements)
+	tuneNoiseRemove(effectiveConfig, measurements)
 
-	tuneDS201Gate(filterConfig, diagnostics, measurements) // DS201-style soft expander gate
-	tuneDeesser(filterConfig, measurements)
-	tuneLA2ACompressor(filterConfig, diagnostics, measurements)
+	tuneDS201Gate(effectiveConfig, diagnostics, measurements) // DS201-style soft expander gate
+	tuneDeesser(effectiveConfig, measurements)
+	tuneLA2ACompressor(effectiveConfig, diagnostics, measurements)
 	// tuneVolumaxLimiter removed - limiter moved to Pass 4, tuned from Pass 3 measurements
 
 	// Final safety checks
-	sanitizeConfig(filterConfig)
+	sanitizeConfig(effectiveConfig)
 
 	return effectiveConfig, diagnostics
 }
@@ -450,7 +446,7 @@ func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) (*Ef
 // - Low entropy (< 0.7) indicates periodic/tonal noise → enable hum removal
 // - High entropy indicates broadband noise → skip notch filter
 // - Voice-aware: reduces harmonics for warm voices to protect vocal fundamentals
-func tuneDS201HighPass(config *FilterChainConfig, measurements *AudioMeasurements) {
+func tuneDS201HighPass(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
 	config.DS201HPPoles = ds201HPDefaultPoles
 	config.DS201HPWidth = ds201HPDefaultWidth
 	config.DS201HPMix = ds201HPDefaultMix
@@ -576,7 +572,7 @@ func tuneDS201HighPass(config *FilterChainConfig, measurements *AudioMeasurement
 // The DS201's LP filter prevents false gate triggers from ultrasonic noise.
 // Since we filter the audio path (not true sidechain), we must be conservative
 // to avoid audible HF loss.
-func tuneDS201LowPass(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, m *AudioMeasurements) {
+func tuneDS201LowPass(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnostics, m *AudioMeasurements) {
 	// Start disabled - only enable when we detect clear benefit
 	config.DS201LPEnabled = false
 	config.DS201LPFreq = ds201LPDefaultFreq
@@ -630,7 +626,7 @@ func tuneDS201LowPass(config *FilterChainConfig, diagnostics *AdaptiveDiagnostic
 // Constraints:
 //   - Never cut below 8kHz (sibilance lives at 4-8kHz, air/presence at 8-12kHz)
 //   - Conservative approach — preserves natural voice character
-func tuneDS201LowPassForSpeech(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, m *AudioMeasurements) {
+func tuneDS201LowPassForSpeech(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnostics, m *AudioMeasurements) {
 	// Default: DISABLED per spec — only activate when measurements indicate benefit
 	config.DS201LPEnabled = false
 	config.DS201LPFreq = ds201LPDefaultFreq
@@ -697,7 +693,7 @@ func tuneDS201LowPassForSpeech(config *FilterChainConfig, diagnostics *AdaptiveD
 // - patch: 6ms (context window)
 // - research: production default (search window)
 // - smooth: 11 (weight smoothing)
-func tuneNoiseRemove(config *FilterChainConfig, m *AudioMeasurements) {
+func tuneNoiseRemove(config *EffectiveFilterConfig, m *AudioMeasurements) {
 	if !config.NoiseRemoveEnabled {
 		return
 	}
@@ -774,7 +770,7 @@ func scaleExpansion(noiseFloor float64) float64 {
 // - High centroid + high rolloff → likely sibilance, use more de-essing
 // - Low rolloff → limited HF content, skip or reduce de-essing
 // - Dark voice with no HF extension → disable de-esser entirely
-func tuneDeesser(config *FilterChainConfig, measurements *AudioMeasurements) {
+func tuneDeesser(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
 	// Require speech profile for reliable sibilance detection.
 	// Full-file spectral metrics are diluted by silence/noise regions
 	// and produce false positives for sibilance in speech-sparse recordings.
@@ -799,7 +795,7 @@ func tuneDeesser(config *FilterChainConfig, measurements *AudioMeasurements) {
 }
 
 // tuneDeesserFull uses both centroid and rolloff for precise de-esser tuning
-func tuneDeesserFull(config *FilterChainConfig, measurements *AudioMeasurements) {
+func tuneDeesserFull(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
 	// Prefer speech-specific measurements for sibilance detection
 	centroid := measurements.SpectralCentroid
 	rolloff := measurements.SpectralRolloff
@@ -843,7 +839,7 @@ func tuneDeesserFull(config *FilterChainConfig, measurements *AudioMeasurements)
 }
 
 // tuneDeesserCentroidOnly provides fallback when rolloff is unavailable
-func tuneDeesserCentroidOnly(config *FilterChainConfig, measurements *AudioMeasurements) {
+func tuneDeesserCentroidOnly(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
 	// Prefer speech-specific centroid when available.
 	// Full-file averages are diluted by silence in multi-track recordings.
 	centroid := measurements.SpectralCentroid
@@ -872,7 +868,7 @@ func tuneDeesserCentroidOnly(config *FilterChainConfig, measurements *AudioMeasu
 //   - Knee: based on spectral crest (dynamic content = soft knee)
 //   - Detection: RMS for tonal bleed/noisy silence, peak for clean recordings
 //   - Makeup: 1.0 (loudness normalisation handles level compensation)
-func tuneDS201Gate(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) {
+func tuneDS201Gate(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) {
 	if diagnostics != nil {
 		diagnostics.DS201GateGentleMode = false
 		diagnostics.DS201GateAggression = 0
@@ -1319,7 +1315,7 @@ func calculateDS201GateDetection(silenceEntropy, silenceCrestDB float64) string 
 //
 // This implementation uses spectral measurements to emulate program-dependent
 // behaviour that the optical T4 cell provides naturally.
-func tuneLA2ACompressor(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) {
+func tuneLA2ACompressor(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) {
 	overrides := applyHighCrestOverrides(config, diagnostics, measurements)
 	tuneLA2AAttack(config, measurements)
 	tuneLA2ARelease(config, measurements, overrides)
@@ -1338,7 +1334,7 @@ func tuneLA2ACompressor(config *FilterChainConfig, diagnostics *AdaptiveDiagnost
 //
 // Diagnostic fields are always populated (active or not) when diagnostics is non-nil.
 // Returns zero-value la2aOverrides when no overrides are needed (deficit <= 0).
-func applyHighCrestOverrides(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) la2aOverrides {
+func applyHighCrestOverrides(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) la2aOverrides {
 	if measurements.SpeechProfile == nil {
 		debugLog("high-crest: SpeechProfile is nil, using full-file InputI/InputTP for deficit calculation")
 	}
@@ -1377,7 +1373,7 @@ func applyHighCrestOverrides(config *FilterChainConfig, diagnostics *AdaptiveDia
 // tuneLA2AAttack sets attack time based on transient characteristics.
 // LA-2A has fixed 10ms attack - we allow slight variation for extreme cases.
 // MaxDifference indicates transient sharpness (% of full scale).
-func tuneLA2AAttack(config *FilterChainConfig, measurements *AudioMeasurements) {
+func tuneLA2AAttack(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
 	// Default to LA-2A's fixed 10ms attack
 	attack := la2aAttackBase
 
@@ -1408,7 +1404,7 @@ func tuneLA2AAttack(config *FilterChainConfig, measurements *AudioMeasurements) 
 // - Wide LRA + high flux = expressive speech, needs longer release
 // - Narrow LRA + low flux = compressed/monotone, faster release OK
 // - Warm voices (high skewness) get extra release to preserve body
-func tuneLA2ARelease(config *FilterChainConfig, measurements *AudioMeasurements, overrides la2aOverrides) {
+func tuneLA2ARelease(config *EffectiveFilterConfig, measurements *AudioMeasurements, overrides la2aOverrides) {
 	// Prefer speech-specific flux for timing decisions
 	flux := measurements.SpectralFlux
 	if measurements.SpeechProfile != nil {
@@ -1478,7 +1474,7 @@ func tuneLA2ARelease(config *FilterChainConfig, measurements *AudioMeasurements,
 //
 // Kurtosis reference: Gaussian distribution has kurtosis=3.
 // Speech typically ranges 5-10 (leptokurtic, clear harmonics).
-func tuneLA2ARatio(config *FilterChainConfig, measurements *AudioMeasurements, overrides la2aOverrides) {
+func tuneLA2ARatio(config *EffectiveFilterConfig, measurements *AudioMeasurements, overrides la2aOverrides) {
 	// Prefer speech-specific kurtosis for harmonic structure
 	kurtosis := measurements.SpectralKurtosis
 	if measurements.SpeechProfile != nil {
@@ -1531,7 +1527,7 @@ func tuneLA2ARatio(config *FilterChainConfig, measurements *AudioMeasurements, o
 // tuneLA2AThreshold sets threshold relative to RMS level.
 // LA-2A's Peak Reduction knob effectively sets threshold relative to signal.
 // We calculate threshold as peak level minus headroom, where headroom determines depth.
-func tuneLA2AThreshold(config *FilterChainConfig, measurements *AudioMeasurements, overrides la2aOverrides) {
+func tuneLA2AThreshold(config *EffectiveFilterConfig, measurements *AudioMeasurements, overrides la2aOverrides) {
 	// Fallback if no peak measurement
 	if measurements.PeakLevel == 0 {
 		config.LA2AThreshold = defaultLA2AThreshold
@@ -1583,7 +1579,7 @@ func tuneLA2AThreshold(config *FilterChainConfig, measurements *AudioMeasurement
 // tuneLA2AKnee sets knee softness to emulate T4 optical cell.
 // The T4 provides an inherently soft knee - one of LA-2A's defining characteristics.
 // We adapt based on voice character (spectral centroid and skewness).
-func tuneLA2AKnee(config *FilterChainConfig, measurements *AudioMeasurements, overrides la2aOverrides) {
+func tuneLA2AKnee(config *EffectiveFilterConfig, measurements *AudioMeasurements, overrides la2aOverrides) {
 	// Start with standard LA-2A soft knee
 	knee := la2aKneeNormal
 
@@ -1632,7 +1628,7 @@ func tuneLA2AKnee(config *FilterChainConfig, measurements *AudioMeasurements, ov
 // tuneLA2AMix sets wet/dry mix.
 // Real LA-2A is 100% wet (no parallel compression).
 // We allow slight dry signal for problematic recordings to mask artefacts.
-func tuneLA2AMix(config *FilterChainConfig, measurements *AudioMeasurements) {
+func tuneLA2AMix(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
 	// Default to true LA-2A behaviour (100% wet)
 	mix := la2aMixClean
 
@@ -1650,7 +1646,7 @@ func tuneLA2AMix(config *FilterChainConfig, measurements *AudioMeasurements) {
 }
 
 // sanitizeConfig ensures no NaN or Inf values remain after adaptive tuning
-func sanitizeConfig(config *FilterChainConfig) {
+func sanitizeConfig(config *EffectiveFilterConfig) {
 	// DS201-inspired highpass filter
 	config.DS201HPFreq = sanitizeFloat(config.DS201HPFreq, ds201DefaultHPFreq)
 	config.DS201HPWidth = sanitizeFloat(config.DS201HPWidth, 0.707) // Butterworth default

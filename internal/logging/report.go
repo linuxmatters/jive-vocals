@@ -446,17 +446,17 @@ func GenerateReport(data ReportData) error {
 
 	// Filter Chain Applied
 	if data.Result != nil && data.Result.Config != nil {
-		writeFilterChainApplied(f, &data.Result.Config.FilterChainConfig, data.Result.Measurements)
+		writeFilterChainApplied(f, data.Result.Config, data.Result.Diagnostics, data.Result.Measurements)
 	}
 
 	// Peak Limiter (Pass 4 pre-limiting before loudnorm)
 	if data.Result != nil && data.Result.NormResult != nil {
-		writeDiagnosticPeakLimiter(f, data.Result.NormResult, &data.Result.Config.FilterChainConfig)
+		writeDiagnosticPeakLimiter(f, data.Result.NormResult, data.Result.Config)
 	}
 
 	// Loudnorm (follows filter chain as it's the final processing stage)
 	if data.Result != nil && data.Result.Config != nil {
-		writeDiagnosticLoudnorm(f, data.Result.NormResult, &data.Result.Config.FilterChainConfig)
+		writeDiagnosticLoudnorm(f, data.Result.NormResult, data.Result.Config)
 	}
 
 	// Loudness Measurements Table (Input → Filtered → Final)
@@ -518,18 +518,18 @@ func channelName(channels int) string {
 // formatFilterChain generates the filter chain section of the report.
 // Iterates over filters in chain order, showing enabled/disabled status,
 // key parameters, and adaptive rationale for each filter.
-func formatFilterChain(f *os.File, cfg *processor.FilterChainConfig, m *processor.AudioMeasurements) {
+func formatFilterChain(f *os.File, cfg *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, m *processor.AudioMeasurements) {
 	fmt.Fprintln(f, "Filter Chain (in processing order)")
 	fmt.Fprintln(f, "------------------------------------")
 
 	for i, filterID := range cfg.FilterOrder {
 		prefix := fmt.Sprintf("%2d. ", i+1)
-		formatFilter(f, filterID, cfg, m, prefix)
+		formatFilter(f, filterID, cfg, diagnostics, m, prefix)
 	}
 }
 
 // formatFilter outputs details for a single filter
-func formatFilter(f *os.File, filterID processor.FilterID, cfg *processor.FilterChainConfig, m *processor.AudioMeasurements, prefix string) {
+func formatFilter(f *os.File, filterID processor.FilterID, cfg *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, m *processor.AudioMeasurements, prefix string) {
 	switch filterID {
 	case processor.FilterDownmix:
 		formatDownmixFilter(f, cfg, prefix)
@@ -540,13 +540,13 @@ func formatFilter(f *os.File, filterID processor.FilterID, cfg *processor.Filter
 	case processor.FilterDS201HighPass:
 		formatDS201HighpassFilter(f, cfg, m, prefix)
 	case processor.FilterDS201LowPass:
-		formatDS201LowPassFilter(f, cfg, m, prefix)
+		formatDS201LowPassFilter(f, cfg, diagnostics, m, prefix)
 	case processor.FilterNoiseRemove:
 		formatNoiseRemoveFilter(f, cfg, m, prefix)
 	case processor.FilterDS201Gate:
-		formatDS201GateFilter(f, cfg, m, prefix)
+		formatDS201GateFilter(f, cfg, diagnostics, m, prefix)
 	case processor.FilterLA2ACompressor:
-		formatLA2ACompressorFilter(f, cfg, m, prefix)
+		formatLA2ACompressorFilter(f, cfg, diagnostics, m, prefix)
 	case processor.FilterDeesser:
 		formatDeesserFilter(f, cfg, m, prefix)
 	default:
@@ -555,7 +555,7 @@ func formatFilter(f *os.File, filterID processor.FilterID, cfg *processor.Filter
 }
 
 // formatDS201HighpassFilter outputs DS201-inspired highpass filter details
-func formatDS201HighpassFilter(f *os.File, cfg *processor.FilterChainConfig, m *processor.AudioMeasurements, prefix string) {
+func formatDS201HighpassFilter(f *os.File, cfg *processor.EffectiveFilterConfig, m *processor.AudioMeasurements, prefix string) {
 	if !cfg.DS201HPEnabled {
 		fmt.Fprintf(f, "%sDS201 highpass: DISABLED\n", prefix)
 		return
@@ -619,11 +619,11 @@ func formatDS201HighpassFilter(f *os.File, cfg *processor.FilterChainConfig, m *
 }
 
 // formatDS201LowPassFilter outputs DS201-inspired low-pass filter details
-func formatDS201LowPassFilter(f *os.File, cfg *processor.FilterChainConfig, m *processor.AudioMeasurements, prefix string) {
+func formatDS201LowPassFilter(f *os.File, cfg *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, m *processor.AudioMeasurements, prefix string) {
 	if !cfg.DS201LPEnabled {
 		// Show reason for being disabled (pass-through mode)
-		if cfg.DS201LPReason != "" {
-			fmt.Fprintf(f, "%sDS201 lowpass: DISABLED (%s)\n", prefix, cfg.DS201LPReason)
+		if diagnostics != nil && diagnostics.DS201LPReason != "" {
+			fmt.Fprintf(f, "%sDS201 lowpass: DISABLED (%s)\n", prefix, diagnostics.DS201LPReason)
 		} else {
 			fmt.Fprintf(f, "%sDS201 lowpass: DISABLED\n", prefix)
 		}
@@ -660,20 +660,30 @@ func formatDS201LowPassFilter(f *os.File, cfg *processor.FilterChainConfig, m *p
 	fmt.Fprintln(f, header)
 
 	// Show rationale
-	if cfg.DS201LPReason != "" {
-		fmt.Fprintf(f, "        Rationale: %s\n", cfg.DS201LPReason)
+	if diagnostics != nil && diagnostics.DS201LPReason != "" {
+		fmt.Fprintf(f, "        Rationale: %s\n", diagnostics.DS201LPReason)
 	}
 
 	// Show content type detection metrics
 	if m != nil {
+		contentType := processor.ContentType(-1)
+		if diagnostics != nil {
+			contentType = diagnostics.DS201LPContentType
+		}
 		fmt.Fprintf(f, "        Content type: %s (kurtosis %.1f, flatness %.3f, flux %.4f)\n",
-			cfg.DS201LPContentType.String(), m.SpectralKurtosis, m.SpectralFlatness, m.SpectralFlux)
+			contentType.String(), m.SpectralKurtosis, m.SpectralFlatness, m.SpectralFlux)
 
 		// Show the triggering metric details
-		switch cfg.DS201LPReason {
+		lpReason := ""
+		rolloffRatio := 0.0
+		if diagnostics != nil {
+			lpReason = diagnostics.DS201LPReason
+			rolloffRatio = diagnostics.DS201LPRolloffRatio
+		}
+		switch lpReason {
 		case "rolloff/centroid gap":
 			fmt.Fprintf(f, "        Rolloff/centroid ratio: %.2f > 2.5 (rolloff %.0f Hz, centroid %.0f Hz)\n",
-				cfg.DS201LPRolloffRatio, m.SpectralRolloff, m.SpectralCentroid)
+				rolloffRatio, m.SpectralRolloff, m.SpectralCentroid)
 		case "flat spectral slope":
 			fmt.Fprintf(f, "        Spectral slope: %.2e > -1e-05 (unusual HF emphasis)\n", m.SpectralSlope)
 		case "high ZCR with low centroid":
@@ -685,7 +695,7 @@ func formatDS201LowPassFilter(f *os.File, cfg *processor.FilterChainConfig, m *p
 
 // formatNoiseRemoveFilter outputs NoiseRemove (anlmdn + compand) filter details
 // Uses Non-Local Means denoiser followed by compand for residual suppression
-func formatNoiseRemoveFilter(f *os.File, cfg *processor.FilterChainConfig, m *processor.AudioMeasurements, prefix string) {
+func formatNoiseRemoveFilter(f *os.File, cfg *processor.EffectiveFilterConfig, m *processor.AudioMeasurements, prefix string) {
 	if !cfg.NoiseRemoveEnabled {
 		fmt.Fprintf(f, "%snoiseremove: DISABLED\n", prefix)
 		return
@@ -720,7 +730,7 @@ func formatNoiseRemoveFilter(f *os.File, cfg *processor.FilterChainConfig, m *pr
 }
 
 // formatDS201GateFilter outputs DS201-inspired gate filter details
-func formatDS201GateFilter(f *os.File, cfg *processor.FilterChainConfig, m *processor.AudioMeasurements, prefix string) {
+func formatDS201GateFilter(f *os.File, cfg *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, m *processor.AudioMeasurements, prefix string) {
 	if !cfg.DS201GateEnabled {
 		fmt.Fprintf(f, "%sDS201 gate: DISABLED\n", prefix)
 		return
@@ -736,7 +746,7 @@ func formatDS201GateFilter(f *os.File, cfg *processor.FilterChainConfig, m *proc
 
 	// Show mode indicator if gentle mode is active
 	modeNote := ""
-	if cfg.DS201GateGentleMode {
+	if diagnostics != nil && diagnostics.DS201GateGentleMode {
 		modeNote = " [gentle mode]"
 	}
 
@@ -796,7 +806,7 @@ func formatDS201GateFilter(f *os.File, cfg *processor.FilterChainConfig, m *proc
 		}
 
 		// Gentle mode rationale - for extreme LUFS gap + low LRA recordings
-		if cfg.DS201GateGentleMode {
+		if diagnostics != nil && diagnostics.DS201GateGentleMode {
 			rationale = append(rationale, "gentle mode (extreme LUFS gap + low LRA)")
 		}
 
@@ -805,23 +815,23 @@ func formatDS201GateFilter(f *os.File, cfg *processor.FilterChainConfig, m *proc
 		}
 
 		// Show aggression-based threshold calculation
-		if cfg.DS201GateAggression > 0 {
+		if diagnostics != nil && diagnostics.DS201GateAggression > 0 {
 			fmt.Fprintf(f, "        Aggression: %.2f (separation %.1f dB)\n",
-				cfg.DS201GateAggression, cfg.DS201GateSpeechSeparation)
+				diagnostics.DS201GateAggression, diagnostics.DS201GateSpeechSeparation)
 			fmt.Fprintf(f, "        Quiet speech: %.1f dB, Dynamic range: %.1f dB\n",
-				cfg.DS201GateQuietSpeechEstimate, cfg.DS201GateDynamicRange)
-			if cfg.DS201GateClampReason != "none" {
+				diagnostics.DS201GateQuietSpeechEstimate, diagnostics.DS201GateDynamicRange)
+			if diagnostics.DS201GateClampReason != "none" {
 				fmt.Fprintf(f, "        Clamped by: %s (unclamped: %.1f dB)\n",
-					cfg.DS201GateClampReason, cfg.DS201GateThresholdUnclamped)
+					diagnostics.DS201GateClampReason, diagnostics.DS201GateThresholdUnclamped)
 			}
 			fmt.Fprintf(f, "        Headroom above quiet speech: %.1f dB\n",
-				-cfg.DS201GateSpeechHeadroom) // Negative because threshold is above quiet speech
+				-diagnostics.DS201GateSpeechHeadroom) // Negative because threshold is above quiet speech
 		}
 	}
 }
 
 // formatLA2ACompressorFilter outputs LA-2A Compressor filter details
-func formatLA2ACompressorFilter(f *os.File, cfg *processor.FilterChainConfig, m *processor.AudioMeasurements, prefix string) {
+func formatLA2ACompressorFilter(f *os.File, cfg *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, m *processor.AudioMeasurements, prefix string) {
 	if !cfg.LA2AEnabled {
 		fmt.Fprintf(f, "%sLA-2A Compressor: DISABLED\n", prefix)
 		return
@@ -861,24 +871,28 @@ func formatLA2ACompressorFilter(f *os.File, cfg *processor.FilterChainConfig, m 
 	}
 
 	// High-crest override diagnostics
-	if cfg.LA2AHighCrestActive && m != nil {
+	if diagnostics != nil && diagnostics.LA2AHighCrestActive && m != nil {
 		fmt.Fprintf(f, "        High-crest override: ACTIVE (deficit %.1f dB, severity %.2f)\n",
-			cfg.LA2AHighCrestDeficit, cfg.LA2AHighCrestSeverity)
+			diagnostics.LA2AHighCrestDeficit, diagnostics.LA2AHighCrestSeverity)
 		gainRequired := processor.NormTargetLUFS - m.InputI
 		fmt.Fprintf(f, "        Projected TP: %.1f dBTP (gain %.1f dB applied to %.1f dBTP peaks)\n",
-			cfg.LA2AHighCrestProjectedTP, gainRequired, m.InputTP)
+			diagnostics.LA2AHighCrestProjectedTP, gainRequired, m.InputTP)
 		idealCeiling := cfg.LoudnormTargetTP - gainRequired - 1.5
 		fmt.Fprintf(f, "        Ideal ceiling: %.1f dBTP, alimiter minimum: -24.0 dBTP\n", idealCeiling)
 		fmt.Fprintf(f, "        Override targets: threshold <= %.0f dB, ratio >= %.1f:1\n",
 			cfg.LA2AThreshold, cfg.LA2ARatio)
 	} else {
+		highCrestDeficit := 0.0
+		if diagnostics != nil {
+			highCrestDeficit = diagnostics.LA2AHighCrestDeficit
+		}
 		fmt.Fprintf(f, "        High-crest override: not needed (deficit %.1f dB)\n",
-			cfg.LA2AHighCrestDeficit)
+			highCrestDeficit)
 	}
 }
 
 // formatDeesserFilter outputs deesser filter details
-func formatDeesserFilter(f *os.File, cfg *processor.FilterChainConfig, m *processor.AudioMeasurements, prefix string) {
+func formatDeesserFilter(f *os.File, cfg *processor.EffectiveFilterConfig, m *processor.AudioMeasurements, prefix string) {
 	if !cfg.DeessEnabled {
 		fmt.Fprintf(f, "%sdeesser: DISABLED\n", prefix)
 		return
@@ -926,7 +940,7 @@ func formatDeesserFilter(f *os.File, cfg *processor.FilterChainConfig, m *proces
 }
 
 // formatDownmixFilter outputs downmix filter details
-func formatDownmixFilter(f *os.File, cfg *processor.FilterChainConfig, prefix string) {
+func formatDownmixFilter(f *os.File, cfg *processor.EffectiveFilterConfig, prefix string) {
 	if !cfg.DownmixEnabled {
 		fmt.Fprintf(f, "%sdownmix: DISABLED\n", prefix)
 		return
@@ -935,7 +949,7 @@ func formatDownmixFilter(f *os.File, cfg *processor.FilterChainConfig, prefix st
 }
 
 // formatAnalysisFilter outputs analysis filter details
-func formatAnalysisFilter(f *os.File, cfg *processor.FilterChainConfig, prefix string) {
+func formatAnalysisFilter(f *os.File, cfg *processor.EffectiveFilterConfig, prefix string) {
 	if !cfg.AnalysisEnabled {
 		fmt.Fprintf(f, "%sanalysis: DISABLED\n", prefix)
 		return
@@ -944,7 +958,7 @@ func formatAnalysisFilter(f *os.File, cfg *processor.FilterChainConfig, prefix s
 }
 
 // formatResampleFilter outputs resample filter details
-func formatResampleFilter(f *os.File, cfg *processor.FilterChainConfig, prefix string) {
+func formatResampleFilter(f *os.File, cfg *processor.EffectiveFilterConfig, prefix string) {
 	if !cfg.ResampleEnabled {
 		fmt.Fprintf(f, "%sresample: DISABLED\n", prefix)
 		return
@@ -1008,8 +1022,8 @@ func writeProcessingSummary(f *os.File, data ReportData) {
 }
 
 // writeFilterChainApplied outputs the filter chain section.
-func writeFilterChainApplied(f *os.File, config *processor.FilterChainConfig, measurements *processor.AudioMeasurements) {
-	formatFilterChain(f, config, measurements)
+func writeFilterChainApplied(f *os.File, config *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, measurements *processor.AudioMeasurements) {
+	formatFilterChain(f, config, diagnostics, measurements)
 	fmt.Fprintln(f, "")
 }
 
@@ -1884,7 +1898,7 @@ func formatRejectionSummary(reasonCounts map[string]int, order []string) string 
 
 // writeDiagnosticPeakLimiter outputs the Pass 4 pre-limiting diagnostics.
 // The peak limiter creates headroom before loudnorm so it can apply full linear gain.
-func writeDiagnosticPeakLimiter(f *os.File, result *processor.NormalisationResult, config *processor.FilterChainConfig) {
+func writeDiagnosticPeakLimiter(f *os.File, result *processor.NormalisationResult, config *processor.EffectiveFilterConfig) {
 	if result == nil || result.Skipped {
 		return
 	}
@@ -1968,7 +1982,7 @@ func writeDiagnosticPeakLimiter(f *os.File, result *processor.NormalisationResul
 }
 
 // writeDiagnosticLoudnorm outputs detailed loudnorm normalisation diagnostics.
-func writeDiagnosticLoudnorm(f *os.File, result *processor.NormalisationResult, config *processor.FilterChainConfig) {
+func writeDiagnosticLoudnorm(f *os.File, result *processor.NormalisationResult, config *processor.EffectiveFilterConfig) {
 	if result == nil || !config.LoudnormEnabled {
 		return
 	}

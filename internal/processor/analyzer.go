@@ -691,8 +691,6 @@ func createAnalysisFilterGraph(
 
 	analysisConfig := deriveEffectiveFilterConfig(config)
 	analysisConfig.FilterOrder = cloneFilterOrder(Pass1FilterOrder)
-	analysisConfig.Measurements = context.Measurements
-	analysisConfig.Pass = context.Pass
 
 	return setupFilterGraph(decCtx, analysisConfig.BuildFilterSpec())
 }

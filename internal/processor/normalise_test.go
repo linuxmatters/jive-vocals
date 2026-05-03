@@ -481,7 +481,7 @@ func (e *loudnormTestEncoder) Close() error {
 }
 
 func defaultNormalisationTestConfig() *EffectiveFilterConfig {
-	return effectiveFromFilterChainConfig(DefaultEffectiveFilterConfig())
+	return DefaultEffectiveFilterConfig()
 }
 
 func loudnormApplicationTestConfig() *EffectiveFilterConfig {
@@ -1344,7 +1344,7 @@ func TestBuildLoudnormFilterSpec_Adeclick(t *testing.T) {
 	})
 }
 
-func TestBuildLoudnormFilterSpecIgnoresPassStateAndDiagnostics(t *testing.T) {
+func TestBuildLoudnormFilterSpecIgnoresNonNormalisationFields(t *testing.T) {
 	measurement := &LoudnormMeasurement{
 		InputI:       -24.0,
 		InputTP:      -5.0,
@@ -1354,27 +1354,18 @@ func TestBuildLoudnormFilterSpecIgnoresPassStateAndDiagnostics(t *testing.T) {
 	}
 
 	base := defaultNormalisationTestConfig()
+	assertNoStaleEffectiveConfigFields(t)
 	controlSpec := buildLoudnormFilterSpec(base, measurement, 0, -1.0, false)
 
-	withPassState := *base
-	withPassState.Pass = PassAnalysis
-	withPassState.Measurements = &AudioMeasurements{InputI: -99.0}
-	withPassState.AdaptiveDiagnostics = AdaptiveDiagnostics{
-		DS201LPReason:            "diagnostic-only low-pass reason",
-		DS201GateClampReason:     "diagnostic-only gate reason",
-		LA2AHighCrestActive:      true,
-		LA2AHighCrestDeficit:     12.0,
-		LA2AHighCrestSeverity:    0.8,
-		LA2AHighCrestProjectedTP: -0.5,
-	}
-	withPassState.FilterOrder = []FilterID{FilterAnalysis}
-	withPassState.DS201LPFreq = 12000
-	withPassState.DS201GateRatio = 4.0
-	withPassState.LA2AThreshold = -30.0
+	withUnrelatedFilterFields := *base
+	withUnrelatedFilterFields.FilterOrder = []FilterID{FilterAnalysis}
+	withUnrelatedFilterFields.DS201LPFreq = 12000
+	withUnrelatedFilterFields.DS201GateRatio = 4.0
+	withUnrelatedFilterFields.LA2AThreshold = -30.0
 
-	gotSpec := buildLoudnormFilterSpec(&withPassState, measurement, 0, -1.0, false)
+	gotSpec := buildLoudnormFilterSpec(&withUnrelatedFilterFields, measurement, 0, -1.0, false)
 	if gotSpec != controlSpec {
-		t.Fatalf("buildLoudnormFilterSpec() changed when pass state or diagnostics changed\ncontrol: %s\ngot:     %s", controlSpec, gotSpec)
+		t.Fatalf("buildLoudnormFilterSpec() changed when unrelated filter fields changed\ncontrol: %s\ngot:     %s", controlSpec, gotSpec)
 	}
 }
 

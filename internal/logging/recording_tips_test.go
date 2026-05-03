@@ -585,7 +585,7 @@ func TestTipProximityEffect(t *testing.T) {
 func TestTipSibilance(t *testing.T) {
 	tests := []struct {
 		name          string
-		config        *processor.FilterChainConfig
+		config        *processor.EffectiveFilterConfig
 		centroid      float64
 		rolloff       float64
 		speechProfile *processor.SpeechCandidateMetrics
@@ -593,21 +593,21 @@ func TestTipSibilance(t *testing.T) {
 	}{
 		{
 			name:     "high de-esser bright speech",
-			config:   &processor.FilterChainConfig{DeessIntensity: 0.6},
+			config:   &processor.EffectiveFilterConfig{DeessIntensity: 0.6},
 			centroid: 4500.0,
 			rolloff:  11000.0,
 			wantTip:  true,
 		},
 		{
 			name:     "low de-esser",
-			config:   &processor.FilterChainConfig{DeessIntensity: 0.3},
+			config:   &processor.EffectiveFilterConfig{DeessIntensity: 0.3},
 			centroid: 4500.0,
 			rolloff:  11000.0,
 			wantTip:  false,
 		},
 		{
 			name:     "de-esser at boundary no tip",
-			config:   &processor.FilterChainConfig{DeessIntensity: 0.5},
+			config:   &processor.EffectiveFilterConfig{DeessIntensity: 0.5},
 			centroid: 4500.0,
 			rolloff:  11000.0,
 			wantTip:  false,
@@ -621,21 +621,21 @@ func TestTipSibilance(t *testing.T) {
 		},
 		{
 			name:     "dark voice no sibilance",
-			config:   &processor.FilterChainConfig{DeessIntensity: 0.6},
+			config:   &processor.EffectiveFilterConfig{DeessIntensity: 0.6},
 			centroid: 3000.0,
 			rolloff:  11000.0,
 			wantTip:  false,
 		},
 		{
 			name:     "low rolloff no sibilance",
-			config:   &processor.FilterChainConfig{DeessIntensity: 0.6},
+			config:   &processor.EffectiveFilterConfig{DeessIntensity: 0.6},
 			centroid: 4500.0,
 			rolloff:  9000.0,
 			wantTip:  false,
 		},
 		{
 			name:     "speech profile overrides full-file",
-			config:   &processor.FilterChainConfig{DeessIntensity: 0.6},
+			config:   &processor.EffectiveFilterConfig{DeessIntensity: 0.6},
 			centroid: 3000.0,
 			rolloff:  9000.0,
 			speechProfile: &processor.SpeechCandidateMetrics{
@@ -645,7 +645,7 @@ func TestTipSibilance(t *testing.T) {
 		},
 		{
 			name:     "speech profile zero values use full-file",
-			config:   &processor.FilterChainConfig{DeessIntensity: 0.6},
+			config:   &processor.EffectiveFilterConfig{DeessIntensity: 0.6},
 			centroid: 4500.0,
 			rolloff:  11000.0,
 			speechProfile: &processor.SpeechCandidateMetrics{
@@ -839,7 +839,7 @@ func TestGenerateRecordingTips(t *testing.T) {
 	tests := []struct {
 		name             string
 		measurements     *processor.AudioMeasurements
-		config           *processor.FilterChainConfig
+		config           *processor.EffectiveFilterConfig
 		wantRuleIDs      []string // these RuleIDs must be present
 		excludeRuleIDs   []string // these RuleIDs must NOT be present
 		checkFirstRuleID string   // if set, first tip must have this RuleID
@@ -917,6 +917,23 @@ func TestGenerateRecordingTips(t *testing.T) {
 				return m
 			}(),
 			wantEmpty: true,
+		},
+		{
+			name: "sibilance uses effective de-esser tuning",
+			measurements: func() *processor.AudioMeasurements {
+				m := &processor.AudioMeasurements{}
+				m.InputI = -20.0
+				m.InputTP = -6.0
+				m.InputLRA = 8.0
+				m.AstatsNoiseFloor = -70.0
+				m.CrestFactor = 12.0
+				m.NoiseReductionHeadroom = 25.0
+				m.SpectralCentroid = 4500.0
+				m.SpectralRolloff = 11000.0
+				return m
+			}(),
+			config:      &processor.EffectiveFilterConfig{DeessIntensity: 0.6},
+			wantRuleIDs: []string{"sibilance"},
 		},
 		{
 			name: "mutual exclusion clipping suppresses level_too_quiet",

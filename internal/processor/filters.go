@@ -4,7 +4,6 @@ package processor
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"strings"
 	"time"
 
@@ -288,142 +287,9 @@ const (
 	PassNormalising PassNumber = 4
 )
 
-// FilterChainConfig holds configuration for the audio processing filter chain
-type FilterChainConfig struct {
-	// Pass indicates which processing pass is being executed (1 = analysis, 2 = processing)
-	// Used by filters that need pass-specific behaviour
-	Pass PassNumber
-
-	// Downmix (pan) - stereo to mono conversion
-	// Applied first to ensure all downstream filters work with mono
-	DownmixEnabled bool
-
-	// Analysis (ebur128 + astats + aspectralstats) - audio measurement collection
-	// Captures loudness, dynamics, spectral characteristics
-	AnalysisEnabled bool
-
-	// SilenceScanDuration caps how much of the input is examined when collecting
-	// silence candidates for room-tone election. Zero is the sentinel meaning
-	// "scan whole file" (current behaviour); a positive value restricts silence
-	// candidate collection to intervals before this input time. Loudness, true
-	// peak, LRA, spectral statistics, and speech detection always remain
-	// whole-file regardless of this cap.
-	SilenceScanDuration time.Duration
-
-	// Resample (aformat) - output format standardisation
-	// Pass 2 only - ensures consistent output format
-	ResampleEnabled    bool
-	ResampleSampleRate int    // Output sample rate (default: 44100)
-	ResampleFormat     string // Output sample format (default: s16)
-	ResampleFrameSize  int    // Samples per frame (default: 4096)
-
-	// DS201-Inspired High-Pass Filter (highpass) - removes subsonic rumble
-	// Part of the DS201 side-chain composite: removes rumble before gate detection
-	DS201HPEnabled   bool    // Enable DS201 high-pass filter
-	DS201HPFreq      float64 // Hz, cutoff frequency (removes frequencies below this)
-	DS201HPPoles     int     // Filter poles: 1=6dB/oct (gentle), 2=12dB/oct (standard)
-	DS201HPWidth     float64 // Q factor: 0.707=Butterworth (default), lower=gentler rolloff
-	DS201HPMix       float64 // Wet/dry mix (0-1, 1=full filter, 0.7=subtle for warm voices)
-	DS201HPTransform string  // Filter transform: "tdii" (best accuracy), "zdf", etc.
-
-	// DS201-Inspired Low-Pass Filter (lowpass) - removes ultrasonic noise
-	// Part of the DS201 side-chain composite: prevents HF noise from triggering gate
-	// Enabled adaptively based on content type and HF noise indicators
-	DS201LPEnabled   bool    // Enable DS201 low-pass filter
-	DS201LPFreq      float64 // Hz, cutoff frequency (removes frequencies above this)
-	DS201LPPoles     int     // Filter poles: 1=6dB/oct (gentle), 2=12dB/oct (standard)
-	DS201LPWidth     float64 // Q factor: 0.707=Butterworth (default)
-	DS201LPMix       float64 // Wet/dry mix (0-1, 1=full filter)
-	DS201LPTransform string  // Filter transform: "tdii" (best accuracy), "zdf", etc.
-
-	// NoiseRemove - anlmdn + compand noise reduction
-	// Non-Local Means denoiser (anlmdn) with a compand for residual suppression.
-	// Production runs anlmdn at the source sample rate with r=0.0020 and m=3,
-	// validated by the matrix spike at .bench/anlmdn-matrix-spike.
-	NoiseRemoveEnabled          bool    // Enable anlmdn+compand noise reduction
-	NoiseRemoveCompandEnabled   bool    // Enable compand residual suppression (false = anlmdn-only)
-	NoiseRemoveStrength         float64 // anlmdn strength (0.00001 = minimum, kept constant)
-	NoiseRemovePatchSec         float64 // Patch size in seconds (context window for similarity)
-	NoiseRemoveResearchSec      float64 // Research radius in seconds (search window for matching)
-	NoiseRemoveSmooth           float64 // Smoothing factor for weights (1-1000)
-	NoiseRemoveCompandThreshold float64 // Expansion threshold (dB) - set to measured noise floor
-	NoiseRemoveCompandExpansion float64 // Expansion depth (dB) - gap between input floor and target floor
-	NoiseRemoveCompandAttack    float64 // Attack time (seconds) - fixed at 5ms for speech
-	NoiseRemoveCompandDecay     float64 // Decay time (seconds) - fixed at 100ms for speech
-	NoiseRemoveCompandKnee      float64 // Soft knee (dB) - fixed at 6dB for transparency
-
-	// DS201-Inspired Gate (agate) - Drawmer DS201 style soft expander
-	// Uses gentle ratio (2:1-4:1) rather than DS201's hard gate for natural speech transitions.
-	// Minimum 10ms attack prevents click artifacts from rapid gain changes.
-	DS201GateEnabled   bool    // Enable DS201-style gate
-	DS201GateThreshold float64 // Activation threshold (0.0-1.0, linear)
-	DS201GateRatio     float64 // Reduction ratio - soft expander (2:1-4:1), not hard gate
-	DS201GateAttack    float64 // Attack time (ms) - minimum 10ms to avoid click artifacts
-	DS201GateRelease   float64 // Release time (ms) - includes +50ms to compensate for no Hold param
-	DS201GateRange     float64 // Level of gain reduction below threshold (0.0-1.0)
-	DS201GateKnee      float64 // Knee curve softness (1.0-8.0) - soft knee for natural transitions
-	DS201GateMakeup    float64 // Makeup gain after gating (1.0-64.0)
-	DS201GateDetection string  // Level detection mode: "rms" (default, smoother) or "peak" (tighter)
-
-	// LA-2A Compressor - Teletronix LA-2A style optical compression
-	// The LA-2A is legendary for its gentle, program-dependent character from the T4 optical cell.
-	LA2AEnabled   bool    // Enable LA-2A compressor
-	LA2AThreshold float64 // dB, compression threshold (stored in dB, converted to linear)
-	LA2ARatio     float64 // Compression ratio (1.0-20.0)
-	LA2AAttack    float64 // Attack time (ms) - LA-2A has fixed ~10ms attack
-	LA2ARelease   float64 // Release time (ms) - LA-2A has program-dependent two-stage release
-	LA2AMakeup    float64 // dB, makeup gain (stored in dB, converted to linear)
-	LA2AKnee      float64 // Knee curve softness (1.0-8.0) - T4 cell provides inherent soft knee
-	LA2AMix       float64 // Wet/dry mix (0.0-1.0, 1.0 = 100% compressed)
-
-	// De-esser (deesser) - removes harsh sibilance automatically
-	DeessEnabled   bool    // Enable deesser filter
-	DeessIntensity float64 // 0.0-1.0, intensity for triggering de-essing (0=off, 1=max)
-	DeessAmount    float64 // 0.0-1.0, amount of ducking on treble (how much to reduce)
-	DeessFreq      float64 // 0.0-1.0, how much original frequency content to keep
-
-	// Target values (for reference only)
-	TargetI   float64 // LUFS target reference (podcast standard: -16)
-	TargetTP  float64 // dBTP, true peak ceiling reference
-	TargetLRA float64 // LU, loudness range reference
-
-	// Filter chain order - controls the sequence of filters in the processing chain
-	// Use Pass2FilterOrder or customise for experimentation
-	FilterOrder []FilterID
-
-	// Pass 1 measurements (nil for first pass)
-	Measurements *AudioMeasurements
-
-	// Temporary compatibility for report consumers until diagnostics are routed
-	// explicitly through ProcessingResult.
-	AdaptiveDiagnostics
-
-	// Adeclick - Click/pop repair filter (Pass 4)
-	// Detects and repairs waveform discontinuities through interpolation
-	// Applied after loudnorm to catch clicks from limiter and gain changes
-	AdeclickEnabled   bool    // Enable adeclick filter (default: true in Pass 4)
-	AdeclickThreshold float64 // Detection sensitivity (0.1-8.0, lower=more sensitive)
-	AdeclickWindow    float64 // Analysis window in ms (10-100)
-	AdeclickOverlap   float64 // Window overlap percentage (50-95)
-	AdeclickMethod    string  // Interpolation method ("" = default "a" = average; "s" = spline)
-
-	// Loudnorm (Pass 3) - EBU R128 dynamic loudness normalisation
-	// Replaces simple volume gain + limiting with integrated dynamic normalisation
-	// Uses two-pass mode with measurements from Pass 2 for optimal transparency
-	LoudnormEnabled   bool    // Enable loudnorm in Pass 3 (default: true)
-	LoudnormTargetI   float64 // Target integrated loudness (LUFS), default: -16.0
-	LoudnormTargetTP  float64 // Target true peak (dBTP), default: -1.5
-	LoudnormTargetLRA float64 // Target loudness range (LU), default: 11.0
-	LoudnormDualMono  bool    // Treat mono as dual-mono (CRITICAL for mono files)
-	LoudnormLinear    bool    // Prefer linear mode (falls back to dynamic if needed)
-}
-
-// EffectiveFilterConfig is the per-file filter-builder input. During the
-// compatibility phase it embeds FilterChainConfig, but assembly helpers populate
-// only caller defaults and adaptive filter values.
-type EffectiveFilterConfig struct {
-	FilterChainConfig
-}
+// EffectiveFilterConfig is the per-file filter-builder input.
+// It excludes diagnostics and pass execution state.
+type EffectiveFilterConfig filterConfigDefaults
 
 // DefaultFilterConfig returns the scientifically-tuned caller-owned defaults for
 // podcast spoken word audio processing.
@@ -530,29 +396,12 @@ func DefaultFilterConfig() *BaseFilterConfig {
 	}}
 }
 
-func DefaultEffectiveFilterConfig() *FilterChainConfig {
-	return derivePerFileConfig(DefaultFilterConfig())
-}
-
-func derivePerFileConfig(base *BaseFilterConfig) *FilterChainConfig {
-	effective := deriveEffectiveFilterConfig(base)
-	if effective == nil {
-		return nil
-	}
-	return &effective.FilterChainConfig
+func DefaultEffectiveFilterConfig() *EffectiveFilterConfig {
+	return deriveEffectiveFilterConfig(DefaultFilterConfig())
 }
 
 func deriveEffectiveFilterConfig(base *BaseFilterConfig) *EffectiveFilterConfig {
 	return assembleEffectiveFilterConfig(base, deriveAdaptiveFilterResult(base))
-}
-
-func effectiveFromFilterChainConfig(config *FilterChainConfig) *EffectiveFilterConfig {
-	if config == nil {
-		return nil
-	}
-	effective := &EffectiveFilterConfig{FilterChainConfig: *config}
-	effective.FilterOrder = cloneFilterOrder(config.FilterOrder)
-	return effective
 }
 
 func deriveAdaptiveFilterResult(base *BaseFilterConfig) *AdaptiveFilterResult {
@@ -570,9 +419,9 @@ func assembleEffectiveFilterConfig(base *BaseFilterConfig, adaptive *AdaptiveFil
 	}
 
 	effective := &EffectiveFilterConfig{}
-	copyFilterDefaults(&effective.FilterChainConfig, &base.filterConfigDefaults)
+	copyFilterDefaults(effective, &base.filterConfigDefaults)
 	if adaptive != nil {
-		copyFilterDefaults(&effective.FilterChainConfig, &adaptive.filterConfigDefaults)
+		copyFilterDefaults(effective, &adaptive.filterConfigDefaults)
 	}
 	effective.FilterOrder = cloneFilterOrder(base.FilterOrder)
 
@@ -595,18 +444,8 @@ func cloneFilterOrder(order []FilterID) []FilterID {
 	return append([]FilterID(nil), order...)
 }
 
-func copyFilterDefaults(dst *FilterChainConfig, src *filterConfigDefaults) {
-	dstValue := reflect.ValueOf(dst).Elem()
-	srcValue := reflect.ValueOf(src).Elem()
-	srcType := srcValue.Type()
-
-	for i := 0; i < srcValue.NumField(); i++ {
-		name := srcType.Field(i).Name
-		field := dstValue.FieldByName(name)
-		if field.IsValid() && field.CanSet() {
-			field.Set(srcValue.Field(i))
-		}
-	}
+func copyFilterDefaults(dst *EffectiveFilterConfig, src *filterConfigDefaults) {
+	*dst = EffectiveFilterConfig(cloneFilterDefaults(src))
 }
 
 // DbToLinear converts decibel value to linear amplitude.
@@ -976,54 +815,6 @@ func (cfg *EffectiveFilterConfig) BuildFilterSpec() string {
 	}
 
 	return strings.Join(filters, ",")
-}
-
-func (cfg *FilterChainConfig) buildDownmixFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildDownmixFilter()
-}
-
-func (cfg *FilterChainConfig) buildAnalysisFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildAnalysisFilter()
-}
-
-func (cfg *FilterChainConfig) buildResampleFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildResampleFilter()
-}
-
-func (cfg *FilterChainConfig) buildRequiredOutputFormatFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildRequiredOutputFormatFilter()
-}
-
-func (cfg *FilterChainConfig) buildDS201HighpassFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildDS201HighpassFilter()
-}
-
-func (cfg *FilterChainConfig) buildDS201LowPassFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildDS201LowPassFilter()
-}
-
-func (cfg *FilterChainConfig) buildNoiseRemoveFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildNoiseRemoveFilter()
-}
-
-func (cfg *FilterChainConfig) buildDS201GateFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildDS201GateFilter()
-}
-
-func (cfg *FilterChainConfig) buildLA2ACompressorFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildLA2ACompressorFilter()
-}
-
-func (cfg *FilterChainConfig) buildDeesserFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildDeesserFilter()
-}
-
-func (cfg *FilterChainConfig) buildAdeclickFilter() string {
-	return effectiveFromFilterChainConfig(cfg).buildAdeclickFilter()
-}
-
-func (cfg *FilterChainConfig) BuildFilterSpec() string {
-	return effectiveFromFilterChainConfig(cfg).BuildFilterSpec()
 }
 
 func (cfg *BaseFilterConfig) BuildFilterSpec() string {

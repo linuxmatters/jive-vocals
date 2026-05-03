@@ -29,7 +29,7 @@ func makeReportData(t *testing.T) ReportData {
 		Result: &processor.ProcessingResult{
 			Measurements:         makeInputMeasurements(),
 			FilteredMeasurements: makeOutputMeasurements(-20.2, -2.1, 6.4, makeSilenceSample(-64.0), makeSpeechSample(-24.0)),
-			Config:               &processor.EffectiveFilterConfig{FilterChainConfig: *config},
+			Config:               config,
 			NormResult: &processor.NormalisationResult{
 				InputLUFS:  -20.2,
 				OutputLUFS: -16.0,
@@ -229,6 +229,132 @@ func TestGenerateReport_AudioMetricTables(t *testing.T) {
 		"Speech Region Analysis",
 		"Spectral Centroid",
 		"2400",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("report missing %q", want)
+		}
+	}
+}
+
+func TestGenerateReport_FilterChainUsesProcessingDiagnostics(t *testing.T) {
+	data := makeReportData(t)
+	data.Result.Diagnostics = &processor.AdaptiveDiagnostics{
+		DS201LPContentType:  processor.ContentSpeech,
+		DS201LPReason:       "rolloff/centroid gap",
+		DS201LPRolloffRatio: 3.10,
+
+		DS201GateAggression:          0.72,
+		DS201GateDynamicRange:        18.4,
+		DS201GateQuietSpeechEstimate: -38.2,
+		DS201GateSpeechSeparation:    17.1,
+		DS201GateSpeechHeadroom:      -4.5,
+		DS201GateThresholdUnclamped:  -42.8,
+		DS201GateClampReason:         "quiet speech ceiling",
+		DS201GateGentleMode:          true,
+
+		LA2AHighCrestActive:      true,
+		LA2AHighCrestDeficit:     5.6,
+		LA2AHighCrestSeverity:    0.78,
+		LA2AHighCrestProjectedTP: 3.4,
+	}
+
+	output := generateReportText(t, data)
+
+	for _, want := range []string{
+		"Rationale: rolloff/centroid gap",
+		"Content type: speech",
+		"Rolloff/centroid ratio: 3.10 > 2.5",
+		"DS201 gate: threshold",
+		"[gentle mode]",
+		"Aggression: 0.72 (separation 17.1 dB)",
+		"Quiet speech: -38.2 dB, Dynamic range: 18.4 dB",
+		"Clamped by: quiet speech ceiling (unclamped: -42.8 dB)",
+		"Headroom above quiet speech: 4.5 dB",
+		"High-crest override: ACTIVE (deficit 5.6 dB, severity 0.78)",
+		"Projected TP: 3.4 dBTP",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("report missing %q", want)
+		}
+	}
+
+	for _, stale := range []string{
+		"stale config lowpass reason",
+		"Content type: music",
+		"Rolloff/centroid ratio: 9.99",
+		"stale config clamp",
+		"High-crest override: not needed (deficit 0.1 dB)",
+	} {
+		if strings.Contains(output, stale) {
+			t.Errorf("report used stale config diagnostic %q", stale)
+		}
+	}
+}
+
+func TestGenerateReport_FilterChainReportsDeesser(t *testing.T) {
+	data := makeReportData(t)
+	data.Result.Config.DeessEnabled = true
+	data.Result.Config.DeessIntensity = 0.42
+	data.Result.Config.DeessAmount = 0.55
+	data.Result.Config.DeessFreq = 0.65
+
+	output := generateReportText(t, data)
+
+	for _, want := range []string{
+		"deesser: intensity 42%, amount 55%, freq 65%",
+		"Rationale: normal voice",
+		"spectral centroid: 2400 Hz (speech region)",
+		"spectral rolloff: 6200 Hz (speech region)",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("report missing %q", want)
+		}
+	}
+}
+
+func TestGenerateReport_LoudnormAndPeakLimiterSections(t *testing.T) {
+	data := makeReportData(t)
+	data.Result.NormResult = &processor.NormalisationResult{
+		InputLUFS:         -28.0,
+		InputTP:           -8.0,
+		OutputLUFS:        -16.1,
+		OutputTP:          -1.3,
+		GainApplied:       0.25,
+		WithinTarget:      true,
+		RequestedTargetI:  -16.0,
+		EffectiveTargetI:  -16.0,
+		LimiterEnabled:    true,
+		LimiterCeiling:    -12.0,
+		LimiterGain:       12.0,
+		Pass3FilterPrefix: "alimiter=level_in=1:level_out=1:limit=0.251188:attack=5:release=100:asc=1:asc_level=0.8", // #nosec G101 -- FFmpeg filter fixture, not a credential.
+		LoudnormStats: &processor.LoudnormStats{
+			InputThresh:       "-38.00",
+			OutputThresh:      "-26.00",
+			NormalizationType: "linear",
+			TargetOffset:      "-0.05",
+		},
+		FinalMeasurements: makeOutputMeasurements(
+			-16.1,
+			-1.3,
+			5.8,
+			makeSilenceSample(-61.0),
+			makeSpeechSample(-19.8),
+		),
+	}
+
+	output := generateReportText(t, data)
+
+	for _, want := range []string{
+		"Diagnostic: Peak Limiter",
+		"Status: ACTIVE",
+		"Limiter Ceiling:   -12.0 dBTP",
+		"Pass 3 measurement:",
+		"Diagnostic: Loudnorm",
+		"Target I:   -16.0 LUFS",
+		"Mode:       Linear (target adjusted to prevent dynamic fallback)",
+		"FFmpeg diagnostics:",
+		"Norm Type:       linear",
+		"Result: ✓ Within target",
 	} {
 		if !strings.Contains(output, want) {
 			t.Errorf("report missing %q", want)

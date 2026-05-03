@@ -260,12 +260,7 @@ func TestProcessAudio(t *testing.T) {
 	if result.Diagnostics == nil {
 		t.Fatal("ProcessAudio returned nil diagnostics")
 	}
-	if result.Config.Measurements != result.Measurements {
-		t.Fatal("result config Measurements does not point at Pass 1 measurements")
-	}
-	if result.Config.Pass != PassProcessing {
-		t.Errorf("result config Pass = %d, want %d", result.Config.Pass, PassProcessing)
-	}
+	assertNoStaleEffectiveConfigFields(t)
 	if !reflect.DeepEqual(result.Config.FilterOrder, Pass2FilterOrder) {
 		t.Errorf("result config FilterOrder = %v, want %v", result.Config.FilterOrder, Pass2FilterOrder)
 	}
@@ -400,9 +395,7 @@ func TestAnalyzeOnlyDetailedTimings(t *testing.T) {
 	if result.Diagnostics == nil {
 		t.Fatal("AnalyzeOnlyDetailed returned nil diagnostics")
 	}
-	if result.Config.Measurements != result.Measurements {
-		t.Fatal("result config Measurements does not point at Pass 1 measurements")
-	}
+	assertNoStaleEffectiveConfigFields(t)
 	if !reflect.DeepEqual(config.FilterOrder, baseFilterOrder) {
 		t.Errorf("base FilterOrder = %v, want %v", config.FilterOrder, baseFilterOrder)
 	}
@@ -432,16 +425,6 @@ func TestFilterChainBuilder(t *testing.T) {
 	// Should contain filter chain
 	if filterSpec == "" {
 		t.Error("Filter spec is empty")
-	}
-
-	// Test Pass 2 (processing) filter spec with measurements
-	config.Measurements = &AudioMeasurements{
-		InputI:       -23.4,
-		InputTP:      -3.2,
-		InputLRA:     8.7,
-		InputThresh:  -45.0,
-		TargetOffset: 0.5,
-		NoiseFloor:   -60.0,
 	}
 
 	// Enable additional filters for Pass 2 test

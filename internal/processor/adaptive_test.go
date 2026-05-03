@@ -40,9 +40,7 @@ func TestAdaptConfigReturnsEffectiveConfig(t *testing.T) {
 	if diagnostics == nil {
 		t.Fatal("AdaptConfig returned nil diagnostics")
 	}
-	if effective.Measurements != measurements {
-		t.Fatal("effective Measurements was not set to Pass 1 measurements")
-	}
+	assertNoStaleEffectiveConfigFields(t)
 
 	if !reflect.DeepEqual(base.FilterOrder, []FilterID{FilterDeesser, FilterAnalysis}) {
 		t.Errorf("base FilterOrder = %v, want unchanged custom order", base.FilterOrder)
@@ -54,9 +52,6 @@ func TestAdaptConfigReturnsEffectiveConfig(t *testing.T) {
 		t.Errorf("base TargetI = %.1f, want unchanged -18.0", base.TargetI)
 	}
 
-	if effective.Pass != 0 {
-		t.Errorf("effective Pass = %d, want cleared pass state", effective.Pass)
-	}
 	if !reflect.DeepEqual(effective.FilterOrder, base.FilterOrder) {
 		t.Errorf("effective FilterOrder = %v, want copied base order %v", effective.FilterOrder, base.FilterOrder)
 	}
@@ -73,7 +68,7 @@ func TestAdaptConfigReturnsEffectiveConfig(t *testing.T) {
 	if diagnostics.DS201LPReason != "music content detected" {
 		t.Errorf("diagnostics DS201LPReason = %q, want music content detected", diagnostics.DS201LPReason)
 	}
-	assertCompatibilityDiagnosticsClear(t, &effective.FilterChainConfig)
+	assertNoStaleEffectiveConfigFields(t)
 }
 
 func TestAdaptConfigOrderIndependence(t *testing.T) {
@@ -933,7 +928,7 @@ func TestTuneDS201LowPass(t *testing.T) {
 					diagnostics.DS201LPReason, tt.wantReason, tt.desc)
 			}
 
-			assertCompatibilityDiagnosticsClear(t, config)
+			assertNoStaleEffectiveConfigFields(t)
 
 			if tt.wantEnabled && tt.wantFreqMin > 0 {
 				if config.DS201LPFreq < tt.wantFreqMin || config.DS201LPFreq > tt.wantFreqMax {
@@ -1667,7 +1662,7 @@ func TestTuneDS201Gate(t *testing.T) {
 			t.Fatalf("expected gentle mode to tune builder values, ratio=%.1f knee=%.1f",
 				config.DS201GateRatio, config.DS201GateKnee)
 		}
-		assertCompatibilityDiagnosticsClear(t, config)
+		assertNoStaleEffectiveConfigFields(t)
 	})
 
 	t.Run("fresh diagnostics without speech metrics", func(t *testing.T) {
@@ -1696,7 +1691,7 @@ func TestTuneDS201Gate(t *testing.T) {
 	})
 }
 
-func tuneDS201GateForTest(config *FilterChainConfig, measurements *AudioMeasurements) *AdaptiveDiagnostics {
+func tuneDS201GateForTest(config *EffectiveFilterConfig, measurements *AudioMeasurements) *AdaptiveDiagnostics {
 	diagnostics := &AdaptiveDiagnostics{}
 	tuneDS201Gate(config, diagnostics, measurements)
 	return diagnostics
@@ -1861,7 +1856,7 @@ func TestSanitizeFloat(t *testing.T) {
 }
 
 func TestSanitizeConfig(t *testing.T) {
-	// Tests for sanitizeConfig which sanitizes all tunable parameters in FilterChainConfig
+	// Tests for sanitizeConfig which sanitizes all tunable parameters in EffectiveFilterConfig
 	// Uses defaults from adaptive.go:
 	// defaultHighpassFreq   = 80.0
 	// defaultDeessIntensity = 0.0
@@ -1872,20 +1867,20 @@ func TestSanitizeConfig(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		config FilterChainConfig // input config
-		want   FilterChainConfig // expected after sanitization
+		config EffectiveFilterConfig // input config
+		want   EffectiveFilterConfig // expected after sanitization
 	}{
 		// Clean config should pass through unchanged
 		{
 			name: "valid config passes through unchanged",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
 				LA2AThreshold:      -24.0,
 				DS201GateThreshold: 0.02,
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
@@ -1897,14 +1892,14 @@ func TestSanitizeConfig(t *testing.T) {
 		// NaN in each field
 		{
 			name: "NaN HighpassFreq gets default",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        math.NaN(),
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
 				LA2AThreshold:      -24.0,
 				DS201GateThreshold: 0.02,
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        80.0, // defaultHighpassFreq
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
@@ -1914,14 +1909,14 @@ func TestSanitizeConfig(t *testing.T) {
 		},
 		{
 			name: "NaN DeessIntensity gets default",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     math.NaN(),
 				LA2ARatio:          3.0,
 				LA2AThreshold:      -24.0,
 				DS201GateThreshold: 0.02,
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.0, // defaultDeessIntensity
 				LA2ARatio:          3.0,
@@ -1931,14 +1926,14 @@ func TestSanitizeConfig(t *testing.T) {
 		},
 		{
 			name: "NaN LA2ARatio gets default",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          math.NaN(),
 				LA2AThreshold:      -24.0,
 				DS201GateThreshold: 0.02,
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0, // defaultLA2ARatio (LA-2A inspired)
@@ -1948,14 +1943,14 @@ func TestSanitizeConfig(t *testing.T) {
 		},
 		{
 			name: "NaN LA2AThreshold gets default",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
 				LA2AThreshold:      math.NaN(),
 				DS201GateThreshold: 0.02,
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
@@ -1965,14 +1960,14 @@ func TestSanitizeConfig(t *testing.T) {
 		},
 		{
 			name: "NaN GateThreshold gets default",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
 				LA2AThreshold:      -24.0,
 				DS201GateThreshold: math.NaN(),
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
@@ -1984,14 +1979,14 @@ func TestSanitizeConfig(t *testing.T) {
 		// Inf cases
 		{
 			name: "positive Inf values get defaults",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        math.Inf(1),
 				DeessIntensity:     math.Inf(1),
 				LA2ARatio:          math.Inf(1),
 				LA2AThreshold:      math.Inf(1),
 				DS201GateThreshold: math.Inf(1),
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        80.0,
 				DeessIntensity:     0.0,
 				LA2ARatio:          3.0,   // LA-2A inspired
@@ -2001,14 +1996,14 @@ func TestSanitizeConfig(t *testing.T) {
 		},
 		{
 			name: "negative Inf values get defaults",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        math.Inf(-1),
 				DeessIntensity:     math.Inf(-1),
 				LA2ARatio:          math.Inf(-1),
 				LA2AThreshold:      math.Inf(-1),
 				DS201GateThreshold: math.Inf(-1),
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        80.0,
 				DeessIntensity:     0.0,
 				LA2ARatio:          3.0,   // LA-2A inspired
@@ -2021,14 +2016,14 @@ func TestSanitizeConfig(t *testing.T) {
 		// (other fields allow zero/negative values)
 		{
 			name: "zero GateThreshold gets default",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.0, // zero is valid for DeessIntensity
 				LA2ARatio:          3.0,
 				LA2AThreshold:      -24.0,
 				DS201GateThreshold: 0.0, // zero is NOT valid for GateThreshold
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.0,
 				LA2ARatio:          3.0,
@@ -2038,14 +2033,14 @@ func TestSanitizeConfig(t *testing.T) {
 		},
 		{
 			name: "negative GateThreshold gets default",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
 				LA2AThreshold:      -24.0,
 				DS201GateThreshold: -0.5, // negative is NOT valid for GateThreshold
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
@@ -2058,14 +2053,14 @@ func TestSanitizeConfig(t *testing.T) {
 		// (sanitizeFloat doesn't treat zero specially)
 		{
 			name: "zero values for non-GateThreshold fields pass through",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        0.0, // passes through (edge case: probably invalid, but sanitize doesn't clamp)
 				DeessIntensity:     0.0, // valid: de-essing disabled
 				LA2ARatio:          0.0, // passes through (edge case: probably invalid)
 				LA2AThreshold:      0.0, // passes through (0 dB threshold)
 				DS201GateThreshold: 0.02,
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        0.0,
 				DeessIntensity:     0.0,
 				LA2ARatio:          0.0,
@@ -2077,14 +2072,14 @@ func TestSanitizeConfig(t *testing.T) {
 		// Negative values for fields that legitimately use them
 		{
 			name: "negative LA2AThreshold passes through (valid dB value)",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
 				LA2AThreshold:      -40.0, // very aggressive threshold
 				DS201GateThreshold: 0.02,
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
@@ -2096,14 +2091,14 @@ func TestSanitizeConfig(t *testing.T) {
 		// All fields NaN - complete fallback to defaults
 		{
 			name: "all NaN values get all defaults",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        math.NaN(),
 				DeessIntensity:     math.NaN(),
 				LA2ARatio:          math.NaN(),
 				LA2AThreshold:      math.NaN(),
 				DS201GateThreshold: math.NaN(),
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        80.0,
 				DeessIntensity:     0.0,
 				LA2ARatio:          3.0,   // LA-2A inspired
@@ -2115,14 +2110,14 @@ func TestSanitizeConfig(t *testing.T) {
 		// Very small positive GateThreshold passes through
 		{
 			name: "very small positive GateThreshold passes through",
-			config: FilterChainConfig{
+			config: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
 				LA2AThreshold:      -24.0,
 				DS201GateThreshold: 1e-10, // very small but positive
 			},
-			want: FilterChainConfig{
+			want: EffectiveFilterConfig{
 				DS201HPFreq:        100.0,
 				DeessIntensity:     0.3,
 				LA2ARatio:          3.0,
@@ -2686,7 +2681,7 @@ func TestApplyHighCrestOverrides(t *testing.T) {
 				assertClose(t, "LA2AHighCrestDeficit", diagnostics.LA2AHighCrestDeficit, tt.wantDeficit, 0.01)
 				assertClose(t, "LA2AHighCrestSeverity", diagnostics.LA2AHighCrestSeverity, tt.wantSeverity, 0.001)
 				assertClose(t, "LA2AHighCrestProjectedTP", diagnostics.LA2AHighCrestProjectedTP, tt.wantProjectedTP, 0.01)
-				assertCompatibilityDiagnosticsClear(t, config)
+				assertNoStaleEffectiveConfigFields(t)
 
 				// When inactive, overrides must be zero-valued
 				if !tt.wantActive {
@@ -2755,7 +2750,7 @@ func TestApplyHighCrestOverrides(t *testing.T) {
 				assertClose(t, "RatioFloor", overrides.RatioFloor, tt.wantRatioFloor, 0.01)
 				assertClose(t, "ReleaseFloor", overrides.ReleaseFloor, tt.wantReleaseFloor, 0.01)
 				assertClose(t, "KneeFloor", overrides.KneeFloor, tt.wantKneeFloor, 0.01)
-				assertCompatibilityDiagnosticsClear(t, config)
+				assertNoStaleEffectiveConfigFields(t)
 			})
 		}
 	})
@@ -2793,7 +2788,7 @@ func TestApplyHighCrestOverrides(t *testing.T) {
 
 			assertClose(t, "deficit", diagnostics.LA2AHighCrestDeficit, tt.wantDeficit, 0.01)
 			assertClose(t, "severity", diagnostics.LA2AHighCrestSeverity, tt.wantSeverity, 0.001)
-			assertCompatibilityDiagnosticsClear(t, config)
+			assertNoStaleEffectiveConfigFields(t)
 		}
 	})
 
@@ -2818,7 +2813,7 @@ func TestApplyHighCrestOverrides(t *testing.T) {
 		}
 		assertClose(t, "deficit", diagnostics.LA2AHighCrestDeficit, -16.3, 0.01)
 		assertClose(t, "projectedTP", diagnostics.LA2AHighCrestProjectedTP, 1.7, 0.01)
-		assertCompatibilityDiagnosticsClear(t, config)
+		assertNoStaleEffectiveConfigFields(t)
 	})
 }
 
@@ -2873,7 +2868,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 		}
 		assertClose(t, "deficit", diagnostics.LA2AHighCrestDeficit, 2.6, 0.1)
 		assertClose(t, "severity", diagnostics.LA2AHighCrestSeverity, 0.433, 0.01)
-		assertCompatibilityDiagnosticsClear(t, config)
+		assertNoStaleEffectiveConfigFields(t)
 
 		// Override floors: ratio >= 3.8, threshold <= -27.0
 		// Sub-tuners may push further, but not back above the floor.
@@ -2924,7 +2919,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 		if diagnostics.LA2AHighCrestActive {
 			t.Error("expected LA2AHighCrestActive=false for Marius-like input")
 		}
-		assertCompatibilityDiagnosticsClear(t, config)
+		assertNoStaleEffectiveConfigFields(t)
 
 		// Capture the values
 		ratioWithOverrides := config.LA2ARatio
@@ -2938,7 +2933,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 		config2.LoudnormTargetTP = -2.0
 		diagnostics2 := &AdaptiveDiagnostics{}
 		tuneLA2ACompressor(config2, diagnostics2, measurements)
-		assertCompatibilityDiagnosticsClear(t, config2)
+		assertNoStaleEffectiveConfigFields(t)
 
 		assertClose(t, "ratio", ratioWithOverrides, config2.LA2ARatio, 0.001)
 		assertClose(t, "threshold", thresholdWithOverrides, config2.LA2AThreshold, 0.001)
@@ -2988,7 +2983,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 					t.Errorf("deficit > 0 (%.2f) with hot InputTP (%.1f dBTP) - invariant violated",
 						diagnostics.LA2AHighCrestDeficit, tt.inputTP)
 				}
-				assertCompatibilityDiagnosticsClear(t, config)
+				assertNoStaleEffectiveConfigFields(t)
 			})
 		}
 	})
@@ -3020,7 +3015,7 @@ func TestTuneLA2ACompressorHighCrest(t *testing.T) {
 			t.Fatal("expected LA2AHighCrestActive=true for maximum severity input")
 		}
 		assertClose(t, "severity", diagnostics.LA2AHighCrestSeverity, 1.0, 0.001)
-		assertCompatibilityDiagnosticsClear(t, config)
+		assertNoStaleEffectiveConfigFields(t)
 
 		// At severity 1.0, floors are: threshold=-40, ratio=5.0, release=350, knee=6.0
 		// Sub-tuners may push further but not below the floor.

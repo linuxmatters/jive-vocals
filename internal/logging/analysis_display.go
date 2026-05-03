@@ -29,7 +29,14 @@ type analysisMetricSpec struct {
 
 // DisplayAnalysisResults outputs Pass 1 analysis results to the console.
 // Used by --analysis-only mode for rapid inspection without full processing.
-func DisplayAnalysisResults(w io.Writer, inputPath string, metadata *audio.Metadata, measurements *processor.AudioMeasurements, config *processor.FilterChainConfig, timings ...AnalysisTimings) {
+func DisplayAnalysisResults(w io.Writer, inputPath string, metadata *audio.Metadata, measurements *processor.AudioMeasurements, config *processor.EffectiveFilterConfig, timings ...AnalysisTimings) {
+	DisplayAnalysisResultsWithDiagnostics(w, inputPath, metadata, measurements, config, nil, timings...)
+}
+
+// DisplayAnalysisResultsWithDiagnostics outputs Pass 1 analysis results using
+// the effective per-file filter config and separately routed adaptive
+// diagnostics.
+func DisplayAnalysisResultsWithDiagnostics(w io.Writer, inputPath string, metadata *audio.Metadata, measurements *processor.AudioMeasurements, config *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, timings ...AnalysisTimings) {
 	if measurements == nil {
 		fmt.Fprintf(w, "No analysis data available for %s\n", filepath.Base(inputPath))
 		return
@@ -41,7 +48,7 @@ func DisplayAnalysisResults(w io.Writer, inputPath string, metadata *audio.Metad
 	writeAnalysisSilenceDetection(w, measurements)
 	writeAnalysisSpeechDetection(w, measurements)
 	writeAnalysisDerivedMeasurements(w, measurements)
-	writeAnalysisFilterAdaptation(w, measurements, config)
+	writeAnalysisFilterAdaptation(w, measurements, config, diagnostics)
 	writeAnalysisSpectralSummary(w, measurements)
 	writeAnalysisTips(w, measurements, config)
 
@@ -118,12 +125,25 @@ func writeAnalysisDerivedMeasurements(w io.Writer, measurements *processor.Audio
 	fmt.Fprintln(w)
 }
 
-func writeAnalysisFilterAdaptation(w io.Writer, measurements *processor.AudioMeasurements, config *processor.FilterChainConfig) {
+func writeAnalysisFilterAdaptation(w io.Writer, measurements *processor.AudioMeasurements, config *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics) {
 	writeAnalysisSection(w, "FILTER ADAPTATION")
 	if config != nil {
 		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
 			{"Highpass", fmt.Sprintf("%.0f Hz (from spectral analysis)", config.DS201HPFreq)},
 		})
+		if config.DS201LPEnabled {
+			lowpassValue := fmt.Sprintf("%.0f Hz", config.DS201LPFreq)
+			if diagnostics != nil && diagnostics.DS201LPReason != "" {
+				lowpassValue += fmt.Sprintf(" (%s)", diagnostics.DS201LPReason)
+			}
+			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+				{"Lowpass", lowpassValue},
+			})
+		} else if diagnostics != nil && diagnostics.DS201LPReason != "" {
+			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+				{"Lowpass", fmt.Sprintf("disabled (%s)", diagnostics.DS201LPReason)},
+			})
+		}
 		if measurements.NoiseProfile != nil {
 			gateThresholdDB := processor.LinearToDb(config.DS201GateThreshold)
 			gateDesc := "(from noise floor)"
@@ -134,6 +154,11 @@ func writeAnalysisFilterAdaptation(w io.Writer, measurements *processor.AudioMea
 				{"Gate Threshold", fmt.Sprintf("%.1f dB %s", gateThresholdDB, gateDesc)},
 				{"Gate Ratio", fmt.Sprintf("%.1f:1", config.DS201GateRatio)},
 			})
+			if diagnostics != nil && diagnostics.DS201GateClampReason != "" && diagnostics.DS201GateClampReason != "none" {
+				writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+					{"Gate Clamp", fmt.Sprintf("%s (unclamped %.1f dB)", diagnostics.DS201GateClampReason, diagnostics.DS201GateThresholdUnclamped)},
+				})
+			}
 		}
 		if config.NoiseRemoveCompandEnabled {
 			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
@@ -158,6 +183,11 @@ func writeAnalysisFilterAdaptation(w io.Writer, measurements *processor.AudioMea
 			{"LA-2A Thresh", fmt.Sprintf("%.0f dB", config.LA2AThreshold)},
 			{"LA-2A Ratio", fmt.Sprintf("%.1f:1", config.LA2ARatio)},
 		})
+		if diagnostics != nil && diagnostics.LA2AHighCrestActive {
+			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+				{"LA-2A Crest", fmt.Sprintf("high-crest override active (deficit %.1f dB, severity %.2f)", diagnostics.LA2AHighCrestDeficit, diagnostics.LA2AHighCrestSeverity)},
+			})
+		}
 	}
 }
 
@@ -178,7 +208,7 @@ func writeAnalysisSpectralSummary(w io.Writer, measurements *processor.AudioMeas
 	})
 }
 
-func writeAnalysisTips(w io.Writer, measurements *processor.AudioMeasurements, config *processor.FilterChainConfig) {
+func writeAnalysisTips(w io.Writer, measurements *processor.AudioMeasurements, config *processor.EffectiveFilterConfig) {
 	tips := GenerateRecordingTips(measurements, config)
 	fmt.Fprintln(w)
 	writeAnalysisSection(w, "RECORDING TIPS")
