@@ -36,7 +36,7 @@ internal/
 │   ├── filters.go          # FilterChainConfig, filter builder funcs, BuildFilterSpec(), DefaultFilterConfig()
 │   ├── frame_processor.go  # runFilterGraph(), FrameLoopConfig - shared filter graph execution
 │   ├── normalise.go        # ApplyNormalisation() - Pass 3/4: loudnorm measurement + application
-│   └── processor.go        # ProcessAudio(), AnalyzeOnly() - pass orchestration
+│   └── processor.go        # ProcessAudio(), AnalyzeOnlyDetailed() - pass orchestration
 ├── logging/
 │   ├── analysis_display.go # DisplayAnalysisResults() - console output for --analysis-only mode
 │   ├── recording_tips.go   # Actionable recording advice from measurements
@@ -52,7 +52,7 @@ internal/
 
 **Data flow (processing):** `main.go` spawns goroutine → `ProcessAudio()` → Pass 1 (`AnalyzeAudio`) → `AdaptConfig()` → Pass 2 (filter chain) → Pass 3/4 (`ApplyNormalisation`) → `GenerateReport()` writes an always-on processing report → sends `ui.*Msg` to TUI via `tea.Program.Send()`.
 
-**Data flow (analysis-only):** `main.go` → `runAnalysisOnly()` → `AnalyzeOnly()` → Pass 1 + `AdaptConfig()` → `AnalysisModel` TUI shows progress → `DisplayAnalysisResults()` prints report to console. No output files created.
+**Data flow (analysis-only):** `main.go` → `runAnalysisOnly()` → `AnalyzeOnlyDetailed()` → Pass 1 + `AdaptConfig()` → `AnalysisModel` TUI shows progress → `DisplayAnalysisResults()` prints report to console. No output files created.
 
 ## Audio processing pipeline
 
