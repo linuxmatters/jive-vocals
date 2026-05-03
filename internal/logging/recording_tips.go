@@ -22,7 +22,7 @@ const MaxRecordingTips = 5
 
 // GenerateRecordingTips analyses audio measurements and returns prioritised
 // recording improvement suggestions.
-func GenerateRecordingTips(m *processor.AudioMeasurements, config *processor.FilterChainConfig) []RecordingTip {
+func GenerateRecordingTips(m *processor.AudioMeasurements, config *processor.EffectiveFilterConfig) []RecordingTip {
 	if m == nil {
 		return nil
 	}
@@ -30,7 +30,7 @@ func GenerateRecordingTips(m *processor.AudioMeasurements, config *processor.Fil
 	var tips []RecordingTip
 	firedRules := make(map[string]bool)
 
-	rules := []func(*processor.AudioMeasurements, *processor.FilterChainConfig) *RecordingTip{
+	rules := []func(*processor.AudioMeasurements, *processor.EffectiveFilterConfig) *RecordingTip{
 		tipLevelTooHot,
 		tipLevelTooQuiet,
 		tipLevelQuiet,
@@ -124,7 +124,7 @@ func wrapText(text string, maxWidth int, indent string) string {
 // Uses SpeechProfile.RMSLevel when available (speech RMS < -42 dBFS),
 // falling back to InputI < -30 LUFS when no speech profile exists.
 // Gain target is -24 dBFS for speech RMS, -16 LUFS for InputI fallback.
-func tipLevelTooQuiet(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipLevelTooQuiet(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	var gainNeeded float64
 	if m.SpeechProfile != nil {
 		speechRMS := m.SpeechProfile.RMSLevel
@@ -165,7 +165,7 @@ func tipLevelTooQuiet(m *processor.AudioMeasurements, _ *processor.FilterChainCo
 // Uses SpeechProfile.RMSLevel when available (speech RMS between -42 and -36 dBFS),
 // falling back to InputI between -30 and -24 LUFS when no speech profile exists.
 // Gain target is -24 dBFS for speech RMS, -16 LUFS for InputI fallback.
-func tipLevelQuiet(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipLevelQuiet(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	var gainNeeded float64
 	if m.SpeechProfile != nil {
 		speechRMS := m.SpeechProfile.RMSLevel
@@ -204,7 +204,7 @@ func tipLevelQuiet(m *processor.AudioMeasurements, _ *processor.FilterChainConfi
 
 // tipLevelTooHot fires when true peak approaches or exceeds 0 dBTP.
 // InputTP > 0.0 means actual clipping; > -1.0 means dangerously close.
-func tipLevelTooHot(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipLevelTooHot(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	if m.InputTP <= -1.0 {
 		return nil
 	}
@@ -244,7 +244,7 @@ func tipLevelTooHot(m *processor.AudioMeasurements, _ *processor.FilterChainConf
 // tipBackgroundNoise fires when the noise floor is elevated.
 // Uses NoiseProfile.MeasuredNoiseFloor when available, falling back to AstatsNoiseFloor.
 // Thresholds align with adaptive.go: -45 dBFS (la2aNoiseFloorNoisy), -55 dBFS (midpoint).
-func tipBackgroundNoise(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipBackgroundNoise(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	noiseFloor := m.AstatsNoiseFloor
 	if m.NoiseProfile != nil {
 		noiseFloor = m.NoiseProfile.MeasuredNoiseFloor
@@ -270,7 +270,7 @@ func tipBackgroundNoise(m *processor.AudioMeasurements, _ *processor.FilterChain
 // tipMainsHum fires when silence regions show tonal noise characteristics.
 // Requires NoiseProfile with low entropy (< 0.30, matching silenceEntropyTonal in adaptive.go),
 // low flatness (< 0.3, confirming tonal character), and audible noise (> -65 dBFS).
-func tipMainsHum(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipMainsHum(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	if m.NoiseProfile == nil {
 		return nil
 	}
@@ -290,7 +290,7 @@ func tipMainsHum(m *processor.AudioMeasurements, _ *processor.FilterChainConfig)
 // Requires both SpeechProfile and NoiseProfile to be present.
 // Thresholds: NoiseReductionHeadroom < 15 dB (below minSNRMargin of 20 dB in analyzer.go)
 // AND SpeechProfile.RMSLevel < -30 dBFS.
-func tipTooFarFromMic(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipTooFarFromMic(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	if m.SpeechProfile == nil || m.NoiseProfile == nil {
 		return nil
 	}
@@ -309,7 +309,7 @@ func tipTooFarFromMic(m *processor.AudioMeasurements, _ *processor.FilterChainCo
 // Thresholds from adaptive.go: spectralDecreaseVeryWarm = -0.10,
 // spectralDecreaseWarm = -0.05. Skewness > 2.5 is tip-specific (stricter
 // than adaptive.go's spectralSkewnessLFEmphasis = 1.0).
-func tipProximityEffect(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipProximityEffect(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	decrease := m.SpectralDecrease
 	skewness := m.SpectralSkewness
 	if m.SpeechProfile != nil {
@@ -332,10 +332,10 @@ func tipProximityEffect(m *processor.AudioMeasurements, _ *processor.FilterChain
 
 // tipSibilance fires when the adaptive de-esser was set to high intensity,
 // confirmed by bright speech spectral characteristics.
-// Checks FilterChainConfig.DeessIntensity > 0.5 (deessIntensityNormal in adaptive.go),
+// Checks EffectiveFilterConfig.DeessIntensity > 0.5 (deessIntensityNormal in adaptive.go),
 // speech centroid > 4000 Hz (centroidBright), and speech rolloff > 10000 Hz.
 // Prefers SpeechProfile metrics when available, falling back to full-file metrics.
-func tipSibilance(m *processor.AudioMeasurements, config *processor.FilterChainConfig) *RecordingTip {
+func tipSibilance(m *processor.AudioMeasurements, config *processor.EffectiveFilterConfig) *RecordingTip {
 	if config == nil || config.DeessIntensity <= 0.5 {
 		return nil
 	}
@@ -363,7 +363,7 @@ func tipSibilance(m *processor.AudioMeasurements, config *processor.FilterChainC
 
 // tipDynamicRange fires when the loudness range is very wide (InputLRA > 18 LU),
 // indicating inconsistent speaking volume or microphone distance.
-func tipDynamicRange(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipDynamicRange(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	if m.InputLRA <= 18.0 {
 		return nil
 	}
@@ -378,7 +378,7 @@ func tipDynamicRange(m *processor.AudioMeasurements, _ *processor.FilterChainCon
 // indicating aggressive AGC or prior processing has damaged the audio.
 // Threshold: CrestFactor < 6 dB (brickwalled per Spectral-Metrics-Reference.md).
 // CrestFactor == 0 is treated as unmeasured and skipped.
-func tipOverCompressed(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipOverCompressed(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	crest := m.CrestFactor
 	if m.SpeechProfile != nil && m.SpeechProfile.CrestFactor > 0 {
 		crest = m.SpeechProfile.CrestFactor
@@ -397,7 +397,7 @@ func tipOverCompressed(m *processor.AudioMeasurements, _ *processor.FilterChainC
 // tipPoorSNR fires when the noise-to-speech gap is critically small.
 // Threshold: NoiseReductionHeadroom < 10 dB (half of minSNRMargin 20 dB).
 // NoiseReductionHeadroom == 0 is treated as unmeasured and skipped.
-func tipPoorSNR(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipPoorSNR(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	if m.NoiseReductionHeadroom >= 10.0 || m.NoiseReductionHeadroom == 0 {
 		return nil
 	}
@@ -413,7 +413,7 @@ func tipPoorSNR(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) 
 // Threshold: CrestFactor > 20 dB (well above spoken word optimal 9-14 dB).
 // CrestFactor == 0 is treated as unmeasured and skipped.
 // Prefers SpeechProfile.CrestFactor when available, falling back to full-file CrestFactor.
-func tipHighCrestFactor(m *processor.AudioMeasurements, _ *processor.FilterChainConfig) *RecordingTip {
+func tipHighCrestFactor(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	crest := m.CrestFactor
 	if m.SpeechProfile != nil && m.SpeechProfile.CrestFactor > 0 {
 		crest = m.SpeechProfile.CrestFactor

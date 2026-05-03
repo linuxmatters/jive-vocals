@@ -15,13 +15,13 @@ import (
 const fullbenchFixtureEnv = "JIVETALKING_BENCH_FIXTURE"
 
 type fullbenchAdaptedSetup struct {
-	Config       *FilterChainConfig
+	Config       *EffectiveFilterConfig
 	Measurements *AudioMeasurements
 }
 
 type fullbenchPass2Seed struct {
 	OutputPath         string
-	Config             *FilterChainConfig
+	Config             *EffectiveFilterConfig
 	InputMeasurements  *AudioMeasurements
 	OutputMeasurements *OutputMeasurements
 	InputMetadata      InputMetadata
@@ -60,6 +60,10 @@ type fullbenchPass4AblationVariant struct {
 	RequiresLimiter     bool
 	ExtractMeasurements bool
 	BuildSpec           func(*fullbenchLoudnormSetup) string
+}
+
+func newFullbenchEffectiveTestConfig() *EffectiveFilterConfig {
+	return deriveEffectiveFilterConfig(newTestBaseConfig())
 }
 
 func resolveFullbenchFixture(tb testing.TB) string {
@@ -409,7 +413,7 @@ func extractFullbenchFilterClause(spec, prefix string) string {
 }
 
 func TestFullbenchPass2AblationSpecs(t *testing.T) {
-	config := newTestConfig()
+	config := newFullbenchEffectiveTestConfig()
 	config.DownmixEnabled = true
 	config.DS201HPEnabled = true
 	config.DS201LPEnabled = true
@@ -487,7 +491,7 @@ func TestFullbenchPass2AblationSpecs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			variant := variantByName[tt.name]
-			spec := variant.BuildSpec(effectiveFromFilterChainConfig(config))
+			spec := variant.BuildSpec(config)
 			assertFullbenchSpecContains(t, spec, tt.wantPresent)
 			assertFullbenchSpecExcludes(t, spec, tt.wantAbsent)
 			if variant.ExtractMeasurements != tt.extractMeasurements {
@@ -498,7 +502,7 @@ func TestFullbenchPass2AblationSpecs(t *testing.T) {
 }
 
 func TestFullbenchPass2WithoutAnlmdnPreservesOrder(t *testing.T) {
-	config := newTestConfig()
+	config := newFullbenchEffectiveTestConfig()
 	config.DownmixEnabled = true
 	config.DS201HPEnabled = true
 	config.DS201LPEnabled = true
@@ -512,7 +516,7 @@ func TestFullbenchPass2WithoutAnlmdnPreservesOrder(t *testing.T) {
 	config.ResampleEnabled = true
 	config.FilterOrder = Pass2FilterOrder
 
-	spec := buildFullbenchPass2WithoutAnlmdnSpec(effectiveFromFilterChainConfig(config))
+	spec := buildFullbenchPass2WithoutAnlmdnSpec(config)
 
 	assertFullbenchSpecExcludes(t, spec, []string{"anlmdn="})
 	assertFullbenchSpecContains(t, spec, []string{"compand="})
@@ -533,7 +537,7 @@ func TestFullbenchPass2WithoutAnlmdnPreservesOrder(t *testing.T) {
 }
 
 func TestFullbenchLoudnormClauseMatchesProduction(t *testing.T) {
-	config := newTestConfig()
+	config := newFullbenchEffectiveTestConfig()
 	config.AdeclickEnabled = true
 	config.LoudnormTargetI = -17.25
 	config.LoudnormTargetTP = -2.25
@@ -550,10 +554,10 @@ func TestFullbenchLoudnormClauseMatchesProduction(t *testing.T) {
 	productionConfig := *config
 	productionConfig.AdeclickEnabled = false
 	productionClause := extractFullbenchFilterClause(
-		buildLoudnormFilterSpec(effectiveFromFilterChainConfig(&productionConfig), measurement, 0, 0, false),
+		buildLoudnormFilterSpec(&productionConfig, measurement, 0, 0, false),
 		"loudnorm=",
 	)
-	benchmarkClause := buildFullbenchLoudnormClause(effectiveFromFilterChainConfig(config), measurement)
+	benchmarkClause := buildFullbenchLoudnormClause(config, measurement)
 
 	if benchmarkClause != productionClause {
 		t.Fatalf("benchmark loudnorm clause drifted from production\nbenchmark:  %s\nproduction: %s", benchmarkClause, productionClause)
@@ -577,7 +581,7 @@ func TestFullbenchLoudnormClauseMatchesProduction(t *testing.T) {
 }
 
 func TestFullbenchPass4AblationSpecs(t *testing.T) {
-	config := newTestConfig()
+	config := newFullbenchEffectiveTestConfig()
 	config.AdeclickEnabled = true
 	config.ResampleEnabled = false
 	measurement := &LoudnormMeasurement{
@@ -589,7 +593,7 @@ func TestFullbenchPass4AblationSpecs(t *testing.T) {
 	}
 	loudnorm := &fullbenchLoudnormSetup{
 		Measurement:       measurement,
-		EffectiveConfig:   effectiveFromFilterChainConfig(config),
+		EffectiveConfig:   config,
 		Pass3FilterPrefix: buildPreLimiterPrefix(0, -12.0, true),
 		LimiterNeeded:     true,
 		LimiterCeiling:    -12.0,
@@ -670,7 +674,7 @@ func TestFullbenchPass4AblationSpecs(t *testing.T) {
 }
 
 func TestFullbenchPass4LimiterVariantOmitsInactivePrefix(t *testing.T) {
-	config := newTestConfig()
+	config := newFullbenchEffectiveTestConfig()
 	measurement := &LoudnormMeasurement{
 		InputI:       -20.0,
 		InputTP:      -8.0,
@@ -680,7 +684,7 @@ func TestFullbenchPass4LimiterVariantOmitsInactivePrefix(t *testing.T) {
 	}
 	loudnorm := &fullbenchLoudnormSetup{
 		Measurement:     measurement,
-		EffectiveConfig: effectiveFromFilterChainConfig(config),
+		EffectiveConfig: config,
 	}
 
 	for _, variant := range fullbenchPass4AblationVariants() {
@@ -746,7 +750,7 @@ func TestRunFullbenchFilterSpecSyntheticSmoke(t *testing.T) {
 	})
 	defer cleanupTestAudio(t, inputPath)
 
-	config := newTestConfig()
+	config := newFullbenchEffectiveTestConfig()
 	config.AnalysisEnabled = true
 	config.ResampleEnabled = true
 	config.FilterOrder = Pass2FilterOrder
@@ -794,9 +798,8 @@ func BenchmarkPass2FilterAblations(b *testing.B) {
 	for _, variant := range fullbenchPass2AblationVariants() {
 		b.Run(variant.Name, func(b *testing.B) {
 			config := *adapted.Config
-			config.Pass = PassProcessing
-			config.FilterOrder = Pass2FilterOrder
-			spec := variant.BuildSpec(effectiveFromFilterChainConfig(&config))
+			config.FilterOrder = append([]FilterID(nil), Pass2FilterOrder...)
+			spec := variant.BuildSpec(&config)
 			if spec == "" {
 				b.Fatal("Pass 2 ablation filter spec must not be empty")
 			}
@@ -915,11 +918,10 @@ func setupFullbenchAdaptedConfig(tb testing.TB, inputPath string) *fullbenchAdap
 		tb.Fatal("fullbench adapted setup returned incomplete analysis result")
 	}
 
-	analysisResult.Config.Pass = PassProcessing
-	analysisResult.Config.FilterOrder = Pass2FilterOrder
+	analysisResult.Config.FilterOrder = append([]FilterID(nil), Pass2FilterOrder...)
 
 	return &fullbenchAdaptedSetup{
-		Config:       &analysisResult.Config.FilterChainConfig,
+		Config:       analysisResult.Config,
 		Measurements: analysisResult.Measurements,
 	}
 }
@@ -932,8 +934,7 @@ func setupFullbenchPass2Seed(tb testing.TB, inputPath string, adapted *fullbench
 	}
 
 	config := *adapted.Config
-	config.Pass = PassProcessing
-	config.FilterOrder = Pass2FilterOrder
+	config.FilterOrder = append([]FilterID(nil), Pass2FilterOrder...)
 	config.AnalysisEnabled = true
 
 	outputPath := filepath.Join(tb.TempDir(), "fullbench-pass2-seed.flac")
@@ -981,7 +982,7 @@ func setupFullbenchLoudnormMeasurement(tb testing.TB, seed *fullbenchPass2Seed) 
 	}
 
 	filterPrefix := buildPreLimiterPrefix(preGainDB, limiterCeiling, limiterNeeded)
-	measurement, err := measureWithLoudnorm(seed.OutputPath, effectiveFromFilterChainConfig(&config), filterPrefix, nil)
+	measurement, err := measureWithLoudnorm(seed.OutputPath, &config, filterPrefix, nil)
 	if err != nil {
 		tb.Fatalf("failed to prepare fullbench loudnorm measurement: %v", err)
 	}
@@ -1004,7 +1005,7 @@ func setupFullbenchLoudnormMeasurement(tb testing.TB, seed *fullbenchPass2Seed) 
 
 	return &fullbenchLoudnormSetup{
 		Measurement:       measurement,
-		EffectiveConfig:   effectiveFromFilterChainConfig(&effectiveConfig),
+		EffectiveConfig:   &effectiveConfig,
 		Pass3FilterPrefix: filterPrefix,
 		PreGainDB:         preGainDB,
 		LimiterCeiling:    limiterCeiling,
@@ -1045,12 +1046,7 @@ func TestFullbenchSetupHelpersSyntheticSmoke(t *testing.T) {
 	if adapted.Measurements == nil {
 		t.Fatal("expected Pass 1 measurements")
 	}
-	if adapted.Config.Measurements != adapted.Measurements {
-		t.Fatal("adapted config does not reference Pass 1 measurements")
-	}
-	if adapted.Config.Pass != PassProcessing {
-		t.Fatalf("adapted config pass mismatch: got %d, want %d", adapted.Config.Pass, PassProcessing)
-	}
+	assertNoStaleEffectiveConfigFields(t)
 
 	pass2Seed := setupFullbenchPass2Seed(t, inputPath, adapted)
 	if pass2Seed.OutputMeasurements == nil {

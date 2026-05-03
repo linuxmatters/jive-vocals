@@ -44,15 +44,16 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 			if progress != nil {
 				t.Fatal("progress callback should be nil for non-TTY output")
 			}
-			effective, _ := processor.AdaptConfig(cfg, makeAnalysisOnlyTestMeasurements())
+			effective, diagnostics := processor.AdaptConfig(cfg, makeAnalysisOnlyTestMeasurements())
 			return &processor.AnalysisResult{
 				Measurements:       makeAnalysisOnlyTestMeasurements(),
 				Config:             effective,
+				Diagnostics:        diagnostics,
 				AnalysisDuration:   2 * time.Second,
 				AdaptationDuration: 100 * time.Millisecond,
 			}, nil
 		},
-		displayResults: logging.DisplayAnalysisResults,
+		displayResults: logging.DisplayAnalysisResultsWithDiagnostics,
 		printError: func(message string) {
 			t.Fatalf("printError called: %s", message)
 		},
@@ -89,9 +90,14 @@ func TestRunAnalysisOnlyWithDeps_UsesPerFileResultConfig(t *testing.T) {
 	resultConfigs[0].DS201HPFreq = 60.0
 	resultConfigs[1].DS201HPFreq = 100.0
 	secondFilterOrder := append([]processor.FilterID(nil), resultConfigs[1].FilterOrder...)
+	resultDiagnostics := []*processor.AdaptiveDiagnostics{
+		{DS201LPReason: "first"},
+		{DS201LPReason: "second"},
+	}
 
 	var analyzedConfigs []*processor.BaseFilterConfig
-	var displayedConfigs []*processor.FilterChainConfig
+	var displayedConfigs []*processor.EffectiveFilterConfig
+	var displayedDiagnostics []*processor.AdaptiveDiagnostics
 
 	runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, analysisOnlyDeps{
 		stdout: &output,
@@ -119,12 +125,14 @@ func TestRunAnalysisOnlyWithDeps_UsesPerFileResultConfig(t *testing.T) {
 			return &processor.AnalysisResult{
 				Measurements:       makeAnalysisOnlyTestMeasurements(),
 				Config:             resultConfigs[index],
+				Diagnostics:        resultDiagnostics[index],
 				AnalysisDuration:   2 * time.Second,
 				AdaptationDuration: 100 * time.Millisecond,
 			}, nil
 		},
-		displayResults: func(w io.Writer, inputPath string, metadata *audio.Metadata, measurements *processor.AudioMeasurements, config *processor.FilterChainConfig, timings ...logging.AnalysisTimings) {
+		displayResults: func(w io.Writer, inputPath string, metadata *audio.Metadata, measurements *processor.AudioMeasurements, config *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, timings ...logging.AnalysisTimings) {
 			displayedConfigs = append(displayedConfigs, config)
+			displayedDiagnostics = append(displayedDiagnostics, diagnostics)
 			if len(displayedConfigs) == 1 {
 				config.FilterOrder[0] = processor.FilterAnalysis
 			}
@@ -144,8 +152,11 @@ func TestRunAnalysisOnlyWithDeps_UsesPerFileResultConfig(t *testing.T) {
 		t.Fatalf("displayed config count = %d, want %d", len(displayedConfigs), len(resultConfigs))
 	}
 	for i := range resultConfigs {
-		if displayedConfigs[i] != &resultConfigs[i].FilterChainConfig {
-			t.Fatalf("displayed config %d = %p, want AnalysisResult.Config %p", i, displayedConfigs[i], &resultConfigs[i].FilterChainConfig)
+		if displayedConfigs[i] != resultConfigs[i] {
+			t.Fatalf("displayed config %d = %p, want AnalysisResult.Config %p", i, displayedConfigs[i], resultConfigs[i])
+		}
+		if displayedDiagnostics[i] != resultDiagnostics[i] {
+			t.Fatalf("displayed diagnostics %d = %p, want AnalysisResult.Diagnostics %p", i, displayedDiagnostics[i], resultDiagnostics[i])
 		}
 	}
 	if !reflect.DeepEqual(resultConfigs[1].FilterOrder, secondFilterOrder) {

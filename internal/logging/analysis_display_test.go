@@ -240,6 +240,7 @@ DERIVED MEASUREMENTS
 
 FILTER ADAPTATION
   Highpass:       85 Hz (from spectral analysis)
+  Lowpass:        16000 Hz
   Gate Threshold: -51.2 dB (with breath reduction)
   Gate Ratio:     3.0:1
   NR Threshold:   -53 dB
@@ -270,6 +271,54 @@ ANALYSIS TIMINGS
 `
 	if got := buf.String(); got != want {
 		t.Fatalf("DisplayAnalysisResults output mismatch\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+func TestDisplayAnalysisResultsWithDiagnostics_UsesEffectiveConfigAndDiagnostics(t *testing.T) {
+	m := makeFullAnalysisMeasurements()
+	config := processor.DefaultEffectiveFilterConfig()
+	config.DS201LPEnabled = false
+	config.DeessIntensity = 0.62
+	config.DS201GateThreshold = processor.DbToLinear(-48.2)
+	config.DS201GateRatio = 3.5
+	config.LA2AThreshold = -26
+	config.LA2ARatio = 4.2
+	effective := config
+	diagnostics := &processor.AdaptiveDiagnostics{
+		DS201LPReason:               "rolloff/centroid gap",
+		DS201GateClampReason:        "quiet speech ceiling",
+		DS201GateThresholdUnclamped: -44.5,
+		LA2AHighCrestActive:         true,
+		LA2AHighCrestDeficit:        5.6,
+		LA2AHighCrestSeverity:       0.78,
+	}
+
+	var buf bytes.Buffer
+	DisplayAnalysisResultsWithDiagnostics(&buf, "/tmp/test.wav", makeMinimalMetadata(), m, effective, diagnostics)
+	output := buf.String()
+
+	for _, want := range []string{
+		"Lowpass:        disabled (rolloff/centroid gap)",
+		"Gate Threshold: -48.2 dB (with breath reduction)",
+		"Gate Ratio:     3.5:1",
+		"Gate Clamp:     quiet speech ceiling (unclamped -44.5 dB)",
+		"De-esser:       62% intensity",
+		"LA-2A Thresh:   -26 dB",
+		"LA-2A Ratio:    4.2:1",
+		"LA-2A Crest:    high-crest override active (deficit 5.6 dB, severity 0.78)",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("analysis output missing %q", want)
+		}
+	}
+
+	for _, stale := range []string{
+		"stale config lowpass reason",
+		"stale config gate clamp",
+	} {
+		if strings.Contains(output, stale) {
+			t.Errorf("analysis output used stale config diagnostics %q", stale)
+		}
 	}
 }
 

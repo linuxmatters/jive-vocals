@@ -92,8 +92,7 @@ func ProcessAudio(inputPath string, config *BaseFilterConfig, progressCallback f
 	// Generate output filename: input.flac → input-processed.flac
 	outputPath := generateOutputPath(inputPath)
 
-	// Set Pass 2 configuration for filter chain
-	effectiveConfig.Pass = PassProcessing
+	// Set Pass 2 filter chain order
 	effectiveConfig.FilterOrder = append([]FilterID(nil), Pass2FilterOrder...)
 
 	// Track output measurements from Pass 2 (filtered but not yet normalised)

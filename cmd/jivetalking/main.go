@@ -193,7 +193,7 @@ type analysisOnlyDeps struct {
 	openMetadata    func(string) (*audio.Metadata, error)
 	runWithTUI      func(string, *processor.BaseFilterConfig, func(string, ...any)) (*processor.AnalysisResult, error)
 	analyzeDetailed func(string, *processor.BaseFilterConfig, func(processor.PassNumber, string, float64, float64, *processor.AudioMeasurements)) (*processor.AnalysisResult, error)
-	displayResults  func(io.Writer, string, *audio.Metadata, *processor.AudioMeasurements, *processor.FilterChainConfig, ...logging.AnalysisTimings)
+	displayResults  func(io.Writer, string, *audio.Metadata, *processor.AudioMeasurements, *processor.EffectiveFilterConfig, *processor.AdaptiveDiagnostics, ...logging.AnalysisTimings)
 	printError      func(string)
 }
 
@@ -204,7 +204,7 @@ func defaultAnalysisOnlyDeps() analysisOnlyDeps {
 		openMetadata:    openAudioMetadata,
 		runWithTUI:      runAnalysisWithTUI,
 		analyzeDetailed: processor.AnalyzeOnlyDetailed,
-		displayResults:  logging.DisplayAnalysisResults,
+		displayResults:  logging.DisplayAnalysisResultsWithDiagnostics,
 		printError:      cli.PrintError,
 	}
 }
@@ -321,11 +321,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 			Analysis:   analysisResult.AnalysisDuration,
 			Adaptation: analysisResult.AdaptationDuration,
 		}
-		var displayConfig *processor.FilterChainConfig
-		if analysisResult.Config != nil {
-			displayConfig = &analysisResult.Config.FilterChainConfig
-		}
-		deps.displayResults(deps.stdout, inputPath, metadata, analysisResult.Measurements, displayConfig, timings)
+		deps.displayResults(deps.stdout, inputPath, metadata, analysisResult.Measurements, analysisResult.Config, analysisResult.Diagnostics, timings)
 	}
 }
 

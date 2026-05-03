@@ -87,10 +87,10 @@ func newTestBaseConfig() *BaseFilterConfig {
 	}}
 }
 
-// newTestConfig creates a minimal effective FilterChainConfig for builder and
-// tuner tests that operate after seed assembly.
-func newTestConfig() *FilterChainConfig {
-	return derivePerFileConfig(newTestBaseConfig())
+// newTestConfig creates a minimal effective config for builder and tuner tests
+// that operate after seed assembly.
+func newTestConfig() *EffectiveFilterConfig {
+	return deriveEffectiveFilterConfig(newTestBaseConfig())
 }
 
 func TestBuildFilterSpec(t *testing.T) {
@@ -271,7 +271,7 @@ func TestBuildFilterSpec(t *testing.T) {
 func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 	tests := []struct {
 		name   string
-		config *FilterChainConfig
+		config *EffectiveFilterConfig
 		want   string
 	}{
 		{
@@ -291,7 +291,7 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 		},
 		{
 			name: "low-pass disabled",
-			config: func() *FilterChainConfig {
+			config: func() *EffectiveFilterConfig {
 				config := newTestConfig()
 				config.DS201LPEnabled = false
 				config.FilterOrder = []FilterID{FilterDS201LowPass}
@@ -301,7 +301,7 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 		},
 		{
 			name: "low-pass enabled",
-			config: func() *FilterChainConfig {
+			config: func() *EffectiveFilterConfig {
 				config := newTestConfig()
 				config.DS201LPEnabled = true
 				config.DS201LPFreq = 14500.0
@@ -316,7 +316,7 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 		},
 		{
 			name: "gate tuned",
-			config: func() *FilterChainConfig {
+			config: func() *EffectiveFilterConfig {
 				config := newTestConfig()
 				config.DS201GateEnabled = true
 				config.DS201GateThreshold = 0.003162
@@ -334,7 +334,7 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 		},
 		{
 			name: "LA-2A high-crest tuned values",
-			config: func() *FilterChainConfig {
+			config: func() *EffectiveFilterConfig {
 				config := newTestConfig()
 				config.LA2AEnabled = true
 				config.LA2AThreshold = -30.0
@@ -351,7 +351,7 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 		},
 		{
 			name: "noise-remove compand disabled",
-			config: func() *FilterChainConfig {
+			config: func() *EffectiveFilterConfig {
 				config := newTestConfig()
 				config.NoiseRemoveEnabled = true
 				config.NoiseRemoveCompandEnabled = false
@@ -362,7 +362,7 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 		},
 		{
 			name: "noise-remove compand enabled",
-			config: func() *FilterChainConfig {
+			config: func() *EffectiveFilterConfig {
 				config := newTestConfig()
 				config.NoiseRemoveEnabled = true
 				config.NoiseRemoveCompandEnabled = true
@@ -376,7 +376,7 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 		},
 		{
 			name: "de-esser disabled",
-			config: func() *FilterChainConfig {
+			config: func() *EffectiveFilterConfig {
 				config := newTestConfig()
 				config.DeessEnabled = true
 				config.DeessIntensity = 0
@@ -387,7 +387,7 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 		},
 		{
 			name: "de-esser enabled",
-			config: func() *FilterChainConfig {
+			config: func() *EffectiveFilterConfig {
 				config := newTestConfig()
 				config.DeessEnabled = true
 				config.DeessIntensity = 0.6
@@ -1032,32 +1032,21 @@ func TestAssembleEffectiveFilterConfig(t *testing.T) {
 		t.Fatal("effective FilterOrder mutation changed adaptive FilterOrder")
 	}
 
-	if effective.Pass != 0 {
-		t.Errorf("Pass = %d, want 0", effective.Pass)
-	}
-	if effective.Measurements != nil {
-		t.Errorf("Measurements = %p, want nil", effective.Measurements)
-	}
-	assertCompatibilityDiagnosticsClear(t, &effective.FilterChainConfig)
+	assertNoStaleEffectiveConfigFields(t)
 }
 
-func TestDerivePerFileConfig(t *testing.T) {
+func TestDeriveEffectiveFilterConfig(t *testing.T) {
 	base := DefaultFilterConfig()
 	base.FilterOrder = []FilterID{FilterDeesser, FilterAnalysis}
 	base.TargetI = -18.0
 	base.SilenceScanDuration = 2 * time.Second
 	base.NoiseRemoveCompandThreshold = -48.0
 
-	derived := derivePerFileConfig(base)
+	derived := deriveEffectiveFilterConfig(base)
 	if derived == nil {
-		t.Fatal("derivePerFileConfig returned nil")
+		t.Fatal("deriveEffectiveFilterConfig returned nil")
 	}
-	if derived.Pass != 0 {
-		t.Errorf("Pass = %d, want 0", derived.Pass)
-	}
-	if derived.Measurements != nil {
-		t.Errorf("Measurements = %p, want nil", derived.Measurements)
-	}
+	assertNoStaleEffectiveConfigFields(t)
 	if !reflect.DeepEqual(derived.FilterOrder, base.FilterOrder) {
 		t.Errorf("FilterOrder = %v, want %v", derived.FilterOrder, base.FilterOrder)
 	}
@@ -1077,21 +1066,32 @@ func TestDerivePerFileConfig(t *testing.T) {
 			derived.NoiseRemoveCompandThreshold, base.NoiseRemoveCompandThreshold)
 	}
 
-	assertCompatibilityDiagnosticsClear(t, derived)
-
 	if !reflect.DeepEqual(base.FilterOrder, []FilterID{FilterDeesser, FilterAnalysis}) ||
 		base.TargetI != -18.0 ||
 		base.SilenceScanDuration != 2*time.Second ||
 		base.NoiseRemoveCompandThreshold != -48.0 {
-		t.Error("derivePerFileConfig mutated caller-owned defaults")
+		t.Error("deriveEffectiveFilterConfig mutated caller-owned defaults")
 	}
 }
 
-func assertCompatibilityDiagnosticsClear(t *testing.T, config *FilterChainConfig) {
+func assertNoStaleEffectiveConfigFields(t *testing.T) {
 	t.Helper()
 
-	if config.AdaptiveDiagnostics != (AdaptiveDiagnostics{}) {
-		t.Errorf("compatibility diagnostics populated on filter config: %+v", config.AdaptiveDiagnostics)
+	configType := reflect.TypeFor[EffectiveFilterConfig]()
+	for _, field := range []string{
+		"Pass",
+		"Measurements",
+		"OutputAnalysisEnabled",
+		"DS201LPReason",
+		"DS201GateClampReason",
+		"LA2AHighCrestActive",
+		"LA2AHighCrestDeficit",
+		"LA2AHighCrestSeverity",
+		"LA2AHighCrestProjectedTP",
+	} {
+		if _, ok := configType.FieldByName(field); ok {
+			t.Errorf("EffectiveFilterConfig contains stale field %s", field)
+		}
 	}
 }
 
