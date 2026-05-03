@@ -22,6 +22,11 @@ type AnalysisTimings struct {
 	ReportOutput time.Duration
 }
 
+type analysisMetricSpec struct {
+	Label string
+	Value string
+}
+
 // DisplayAnalysisResults outputs Pass 1 analysis results to the console.
 // Used by --analysis-only mode for rapid inspection without full processing.
 func DisplayAnalysisResults(w io.Writer, inputPath string, metadata *audio.Metadata, measurements *processor.AudioMeasurements, config *processor.FilterChainConfig, timings ...AnalysisTimings) {
@@ -31,205 +36,149 @@ func DisplayAnalysisResults(w io.Writer, inputPath string, metadata *audio.Metad
 	}
 	reportOutputStart := time.Now()
 
-	// Header
+	writeAnalysisHeader(w, inputPath, metadata)
+	writeAnalysisLoudnessAndDynamics(w, measurements)
+	writeAnalysisSilenceDetection(w, measurements)
+	writeAnalysisSpeechDetection(w, measurements)
+	writeAnalysisDerivedMeasurements(w, measurements)
+	writeAnalysisFilterAdaptation(w, measurements, config)
+	writeAnalysisSpectralSummary(w, measurements)
+	writeAnalysisTips(w, measurements, config)
+
+	if len(timings) > 0 && hasAnalysisTimings(timings[0]) {
+		fmt.Fprintln(w)
+		writeAnalysisTimingSection(w, completeAnalysisTimings(timings[0], reportOutputStart))
+	}
+}
+
+func writeAnalysisHeader(w io.Writer, inputPath string, metadata *audio.Metadata) {
 	fmt.Fprintln(w, strings.Repeat("=", 70))
 	fmt.Fprintf(w, "ANALYSIS: %s\n", filepath.Base(inputPath))
 	fmt.Fprintln(w, strings.Repeat("=", 70))
-
-	// File info
-	fmt.Fprintf(w, "Duration:    %s\n", formatDurationHMS(metadata.Duration))
+	fmt.Fprintf(w, "Duration:    %s\n", formatDuration(time.Duration(metadata.Duration*float64(time.Second))))
 	fmt.Fprintf(w, "Sample Rate: %d Hz\n", metadata.SampleRate)
 	fmt.Fprintf(w, "Channels:    %s\n", channelName(metadata.Channels))
 	fmt.Fprintln(w)
+}
 
-	// Loudness section
+func writeAnalysisLoudnessAndDynamics(w io.Writer, measurements *processor.AudioMeasurements) {
 	writeAnalysisSection(w, "LOUDNESS")
-	fmt.Fprintf(w, "  Integrated:     %.1f LUFS\n", measurements.InputI)
-	fmt.Fprintf(w, "  True Peak:      %.1f dBTP\n", measurements.InputTP)
-	fmt.Fprintf(w, "  Loudness Range: %.1f LU\n", measurements.InputLRA)
+	writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+		{"Integrated", fmt.Sprintf("%.1f LUFS", measurements.InputI)},
+		{"True Peak", fmt.Sprintf("%.1f dBTP", measurements.InputTP)},
+		{"Loudness Range", fmt.Sprintf("%.1f LU", measurements.InputLRA)},
+	})
 	fmt.Fprintln(w)
 
-	// Dynamics section
 	writeAnalysisSection(w, "DYNAMICS")
-	fmt.Fprintf(w, "  RMS Level:      %.1f dBFS\n", measurements.RMSLevel)
-	fmt.Fprintf(w, "  Peak Level:     %.1f dBFS\n", measurements.PeakLevel)
-	fmt.Fprintf(w, "  Dynamic Range:  %.1f dB\n", measurements.DynamicRange)
 	crestFactor := measurements.PeakLevel - measurements.RMSLevel
 	crestSource := "full-file"
 	if measurements.SpeechProfile != nil && measurements.SpeechProfile.CrestFactor > 0 {
 		crestFactor = measurements.SpeechProfile.CrestFactor
 		crestSource = "speech"
 	}
-	fmt.Fprintf(w, "  Crest Factor:   %.1f dB (%s)\n", crestFactor, crestSource)
+	writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+		{"RMS Level", fmt.Sprintf("%.1f dBFS", measurements.RMSLevel)},
+		{"Peak Level", fmt.Sprintf("%.1f dBFS", measurements.PeakLevel)},
+		{"Dynamic Range", fmt.Sprintf("%.1f dB", measurements.DynamicRange)},
+		{"Crest Factor", fmt.Sprintf("%.1f dB (%s)", crestFactor, crestSource)},
+	})
 	fmt.Fprintln(w)
+}
 
-	// Silence detection section
+func writeAnalysisSilenceDetection(w io.Writer, measurements *processor.AudioMeasurements) {
 	writeAnalysisSection(w, "SILENCE DETECTION")
 	fmt.Fprintf(w, "  Threshold:      %.1f dB (%.1f dBFS room tone estimate + 1 dB)\n",
 		measurements.SilenceDetectLevel, measurements.PreScanNoiseFloor)
 
-	if len(measurements.SilenceCandidates) > 0 { //nolint:gocritic // ifElseChain: complex display logic unsuitable for switch
-		fmt.Fprintf(w, "  Candidates:     %d evaluated\n", len(measurements.SilenceCandidates))
-		electedCandidate, displayCandidates := rankedSilenceCandidateEntries(measurements)
-		if summary := candidateDisplaySummary(len(measurements.SilenceCandidates), electedCandidate != nil, len(displayCandidates)); summary != "" {
-			fmt.Fprintf(w, "  Displayed:      %s\n", summary)
-		}
-
-		if measurements.VoiceActivated {
-			fmt.Fprintln(w, "  Voice-activated recording detected")
-		}
-		if electedCandidate != nil || len(displayCandidates) > 0 {
-			fmt.Fprintln(w)
-			if electedCandidate != nil {
-				i := electedCandidate.index
-				c := electedCandidate.candidate
-				fmt.Fprintf(w, "  #%d: %.1fs at %s (elected)\n",
-					i+1, c.Region.Duration.Seconds(), formatTimestamp(c.Region.Start))
-				if measurements.NoiseProfile.WasRefined {
-					fmt.Fprintf(w, "      Refined:     %.1fs at %s (golden sub-region)\n",
-						measurements.NoiseProfile.Duration.Seconds(), formatTimestamp(measurements.NoiseProfile.Start))
-				}
-				writeSilenceCandidateMetrics(w, c)
-				fmt.Fprintln(w)
-			}
-			for _, entry := range displayCandidates {
-				i := entry.index
-				c := entry.candidate
-				writeCompactAnalysisSilenceCandidateRow(w, i, c)
-				fmt.Fprintln(w)
-			}
-		}
-
-		// Rejection summary: count zero-scored candidates by reason
-		writeSilenceRejectionSummary(w, measurements.SilenceCandidates)
-	} else if measurements.NoiseProfile != nil {
-		fmt.Fprintf(w, "  Sample:         %.1fs at %s\n",
-			measurements.NoiseProfile.Duration.Seconds(), formatTimestamp(measurements.NoiseProfile.Start))
-		fmt.Fprintf(w, "  Noise Floor:    %.1f dBFS\n", measurements.NoiseProfile.MeasuredNoiseFloor)
-	} else {
-		fmt.Fprintln(w, "  No silence detected")
-		if measurements.VoiceActivated {
-			fmt.Fprintln(w, "  Voice-activated recording detected")
-		}
-	}
+	writeAnalysisSilenceCandidates(w, measurements)
 	fmt.Fprintln(w)
+}
 
-	// Speech detection section
+func writeAnalysisSpeechDetection(w io.Writer, measurements *processor.AudioMeasurements) {
 	writeAnalysisSection(w, "SPEECH DETECTION")
-	if len(measurements.SpeechCandidates) > 0 { //nolint:gocritic // ifElseChain: complex display logic unsuitable for switch
-		fmt.Fprintf(w, "  Candidates:     %d evaluated\n", len(measurements.SpeechCandidates))
-		electedCandidate, displayCandidates := rankedSpeechCandidateEntries(measurements)
-		if summary := candidateDisplaySummary(len(measurements.SpeechCandidates), electedCandidate != nil, len(displayCandidates)); summary != "" {
-			fmt.Fprintf(w, "  Displayed:      %s\n", summary)
-		}
-		fmt.Fprintln(w)
-
-		if electedCandidate != nil {
-			i := electedCandidate.index
-			c := electedCandidate.candidate
-			fmt.Fprintf(w, "  #%d: %.1fs at %s (elected)\n",
-				i+1, c.Region.Duration.Seconds(), formatTimestamp(c.Region.Start))
-
-			if c.WasRefined {
-				fmt.Fprintf(w, "      Refined:     %.1fs at %s -> %.1fs at %s (golden sub-region)\n",
-					c.OriginalDuration.Seconds(),
-					formatTimestamp(c.OriginalStart),
-					c.Region.Duration.Seconds(),
-					formatTimestamp(c.Region.Start))
-			}
-
-			fmt.Fprintf(w, "      Score:       %.2f\n", c.Score)
-			fmt.Fprintf(w, "      RMS Level:   %.1f dBFS\n", c.RMSLevel)
-			fmt.Fprintf(w, "      Crest:       %.1f dB\n", c.CrestFactor)
-			fmt.Fprintf(w, "      Centroid:    %.0f Hz (%s)\n", c.Spectral.Centroid, interpretCentroid(c.Spectral.Centroid))
-			fmt.Fprintf(w, "      Kurtosis:    %.1f (%s)\n", c.Spectral.Kurtosis, interpretKurtosis(c.Spectral.Kurtosis))
-			if c.VoicingDensity > 0 {
-				fmt.Fprintf(w, "      Voicing:     %.0f%%\n", c.VoicingDensity*100)
-			}
-			fmt.Fprintln(w)
-		}
-		for _, entry := range displayCandidates {
-			i := entry.index
-			c := entry.candidate
-			writeCompactAnalysisSpeechCandidateRow(w, i, c)
-			fmt.Fprintln(w)
-		}
-		writeSpeechRejectionSummary(w, measurements.SpeechCandidates)
-	} else if measurements.SpeechProfile != nil {
-		fmt.Fprintf(w, "  Sample:         %.1fs at %s\n",
-			measurements.SpeechProfile.Region.Duration.Seconds(),
-			formatTimestamp(measurements.SpeechProfile.Region.Start))
-		fmt.Fprintf(w, "  RMS Level:      %.1f dBFS\n", measurements.SpeechProfile.RMSLevel)
-	} else {
-		fmt.Fprintln(w, "  No speech profile available")
-	}
+	writeAnalysisSpeechCandidates(w, measurements)
 	fmt.Fprintln(w)
+}
 
-	// Derived measurements section
+func writeAnalysisDerivedMeasurements(w io.Writer, measurements *processor.AudioMeasurements) {
 	writeAnalysisSection(w, "DERIVED MEASUREMENTS")
 	if measurements.NoiseProfile != nil {
-		fmt.Fprintf(w, "  Noise Floor:    %.1f dBFS (from elected silence)\n", measurements.NoiseProfile.MeasuredNoiseFloor)
-		// SuggestedGateThreshold is stored as linear amplitude, convert to dB
 		suggestedGateDB := processor.LinearToDb(measurements.SuggestedGateThreshold)
-		fmt.Fprintf(w, "  Gate Baseline:  %.1f dB (noise floor + margin)\n", suggestedGateDB)
-		fmt.Fprintf(w, "  NR Headroom:    %.1f dB (noise-to-speech gap)\n", measurements.NoiseReductionHeadroom)
+		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+			{"Noise Floor", fmt.Sprintf("%.1f dBFS (from elected silence)", measurements.NoiseProfile.MeasuredNoiseFloor)},
+			{"Gate Baseline", fmt.Sprintf("%.1f dB (noise floor + margin)", suggestedGateDB)},
+			{"NR Headroom", fmt.Sprintf("%.1f dB (noise-to-speech gap)", measurements.NoiseReductionHeadroom)},
+		})
 	} else {
-		fmt.Fprintf(w, "  Noise Floor:    %.1f dBFS (%s)\n", measurements.NoiseFloor, noiseFloorSourceLabel(measurements.NoiseFloorSource))
+		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+			{"Noise Floor", fmt.Sprintf("%.1f dBFS (%s)", measurements.NoiseFloor, noiseFloorSourceLabel(measurements.NoiseFloorSource))},
+		})
 	}
 	fmt.Fprintln(w)
+}
 
-	// Filter adaptation section
+func writeAnalysisFilterAdaptation(w io.Writer, measurements *processor.AudioMeasurements, config *processor.FilterChainConfig) {
 	writeAnalysisSection(w, "FILTER ADAPTATION")
 	if config != nil {
-		fmt.Fprintf(w, "  Highpass:       %.0f Hz (from spectral analysis)\n", config.DS201HPFreq)
+		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+			{"Highpass", fmt.Sprintf("%.0f Hz (from spectral analysis)", config.DS201HPFreq)},
+		})
 		if measurements.NoiseProfile != nil {
 			gateThresholdDB := processor.LinearToDb(config.DS201GateThreshold)
-			// Determine threshold description based on whether SpeechProfile was used
 			gateDesc := "(from noise floor)"
 			if measurements.SpeechProfile != nil {
 				gateDesc = "(with breath reduction)"
 			}
-			fmt.Fprintf(w, "  Gate Threshold: %.1f dB %s\n", gateThresholdDB, gateDesc)
-			fmt.Fprintf(w, "  Gate Ratio:     %.1f:1\n", config.DS201GateRatio)
+			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+				{"Gate Threshold", fmt.Sprintf("%.1f dB %s", gateThresholdDB, gateDesc)},
+				{"Gate Ratio", fmt.Sprintf("%.1f:1", config.DS201GateRatio)},
+			})
 		}
 		if config.NoiseRemoveCompandEnabled {
-			fmt.Fprintf(w, "  NR Threshold:   %.0f dB\n", config.NoiseRemoveCompandThreshold)
-			fmt.Fprintf(w, "  NR Expansion:   %.0f dB\n", config.NoiseRemoveCompandExpansion)
+			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+				{"NR Threshold", fmt.Sprintf("%.0f dB", config.NoiseRemoveCompandThreshold)},
+				{"NR Expansion", fmt.Sprintf("%.0f dB", config.NoiseRemoveCompandExpansion)},
+			})
 		} else {
-			fmt.Fprintln(w, "  NR Compander:   disabled")
+			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+				{"NR Compander", "disabled"},
+			})
 		}
 		if config.DeessIntensity > 0 {
-			fmt.Fprintf(w, "  De-esser:       %.0f%% intensity\n", config.DeessIntensity*100)
+			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+				{"De-esser", fmt.Sprintf("%.0f%% intensity", config.DeessIntensity*100)},
+			})
 		} else {
-			fmt.Fprintf(w, "  De-esser:       disabled (no sibilance detected)\n")
+			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+				{"De-esser", "disabled (no sibilance detected)"},
+			})
 		}
-		fmt.Fprintf(w, "  LA-2A Thresh:   %.0f dB\n", config.LA2AThreshold)
-		fmt.Fprintf(w, "  LA-2A Ratio:    %.1f:1\n", config.LA2ARatio)
+		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+			{"LA-2A Thresh", fmt.Sprintf("%.0f dB", config.LA2AThreshold)},
+			{"LA-2A Ratio", fmt.Sprintf("%.1f:1", config.LA2ARatio)},
+		})
 	}
+}
 
-	// Spectral summary (all spectral metrics from aspectralstats)
+func writeAnalysisSpectralSummary(w io.Writer, measurements *processor.AudioMeasurements) {
 	writeAnalysisSection(w, "SPECTRAL SUMMARY")
+	writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+		{"Centroid", fmt.Sprintf("%.0f Hz (%s)", measurements.SpectralCentroid, interpretCentroid(measurements.SpectralCentroid))},
+		{"Spread", fmt.Sprintf("%.0f Hz (%s)", measurements.SpectralSpread, interpretSpread(measurements.SpectralSpread))},
+		{"Rolloff", fmt.Sprintf("%.0f Hz (%s)", measurements.SpectralRolloff, interpretRolloff(measurements.SpectralRolloff))},
+		{"Flatness", fmt.Sprintf("%.3f (%s)", measurements.SpectralFlatness, interpretFlatness(measurements.SpectralFlatness))},
+		{"Kurtosis", fmt.Sprintf("%.1f (%s)", measurements.SpectralKurtosis, interpretKurtosis(measurements.SpectralKurtosis))},
+		{"Skewness", fmt.Sprintf("%.2f (%s)", measurements.SpectralSkewness, interpretSkewness(measurements.SpectralSkewness))},
+		{"Crest", fmt.Sprintf("%.1f (%s)", measurements.SpectralCrest, interpretCrest(measurements.SpectralCrest))},
+		{"Slope", fmt.Sprintf("%.2e (%s)", measurements.SpectralSlope, interpretSlope(measurements.SpectralSlope))},
+		{"Decrease", fmt.Sprintf("%.4f (%s)", measurements.SpectralDecrease, interpretDecrease(measurements.SpectralDecrease))},
+		{"Entropy", fmt.Sprintf("%.3f (%s)", measurements.SpectralEntropy, interpretEntropy(measurements.SpectralEntropy))},
+		{"Flux", fmt.Sprintf("%.4f (%s)", measurements.SpectralFlux, interpretFlux(measurements.SpectralFlux))},
+	})
+}
 
-	// Frequency distribution metrics
-	fmt.Fprintf(w, "  Centroid:       %.0f Hz (%s)\n", measurements.SpectralCentroid, interpretCentroid(measurements.SpectralCentroid))
-	fmt.Fprintf(w, "  Spread:         %.0f Hz (%s)\n", measurements.SpectralSpread, interpretSpread(measurements.SpectralSpread))
-	fmt.Fprintf(w, "  Rolloff:        %.0f Hz (%s)\n", measurements.SpectralRolloff, interpretRolloff(measurements.SpectralRolloff))
-
-	// Distribution shape metrics
-	fmt.Fprintf(w, "  Flatness:       %.3f (%s)\n", measurements.SpectralFlatness, interpretFlatness(measurements.SpectralFlatness))
-	fmt.Fprintf(w, "  Kurtosis:       %.1f (%s)\n", measurements.SpectralKurtosis, interpretKurtosis(measurements.SpectralKurtosis))
-	fmt.Fprintf(w, "  Skewness:       %.2f (%s)\n", measurements.SpectralSkewness, interpretSkewness(measurements.SpectralSkewness))
-	fmt.Fprintf(w, "  Crest:          %.1f (%s)\n", measurements.SpectralCrest, interpretCrest(measurements.SpectralCrest))
-
-	// Spectral slope/energy metrics
-	fmt.Fprintf(w, "  Slope:          %.2e (%s)\n", measurements.SpectralSlope, interpretSlope(measurements.SpectralSlope))
-	fmt.Fprintf(w, "  Decrease:       %.4f (%s)\n", measurements.SpectralDecrease, interpretDecrease(measurements.SpectralDecrease))
-
-	// Dynamics and disorder metrics
-	fmt.Fprintf(w, "  Entropy:        %.3f (%s)\n", measurements.SpectralEntropy, interpretEntropy(measurements.SpectralEntropy))
-	fmt.Fprintf(w, "  Flux:           %.4f (%s)\n", measurements.SpectralFlux, interpretFlux(measurements.SpectralFlux))
-
-	// Recording tips section
+func writeAnalysisTips(w io.Writer, measurements *processor.AudioMeasurements, config *processor.FilterChainConfig) {
 	tips := GenerateRecordingTips(measurements, config)
 	fmt.Fprintln(w)
 	writeAnalysisSection(w, "RECORDING TIPS")
@@ -241,22 +190,25 @@ func DisplayAnalysisResults(w io.Writer, inputPath string, metadata *audio.Metad
 			fmt.Fprintf(w, "  ⚠ %s\n", wrapped)
 		}
 	}
-
-	if len(timings) > 0 && hasAnalysisTimings(timings[0]) {
-		fmt.Fprintln(w)
-		writeAnalysisTimingSection(w, completeAnalysisTimings(timings[0], reportOutputStart))
-	}
 }
 
 func hasAnalysisTimings(timings AnalysisTimings) bool {
 	return timings.Analysis > 0 || timings.Adaptation > 0 || timings.ReportOutput > 0
 }
 
+func writeAnalysisMetricRows(w io.Writer, indent string, labelWidth int, rows []analysisMetricSpec) {
+	for _, row := range rows {
+		fmt.Fprintf(w, "%s%-*s %s\n", indent, labelWidth, row.Label+":", row.Value)
+	}
+}
+
 func writeAnalysisTimingSection(w io.Writer, timings AnalysisTimings) {
 	writeAnalysisSection(w, "ANALYSIS TIMINGS")
-	fmt.Fprintf(w, "  Analysis:      %s\n", formatDurationHMS(timings.Analysis.Seconds()))
-	fmt.Fprintf(w, "  Adaptation:    %s\n", formatDurationHMS(timings.Adaptation.Seconds()))
-	fmt.Fprintf(w, "  Report Output: %s\n", formatDurationHMS(timings.ReportOutput.Seconds()))
+	writeAnalysisMetricRows(w, "  ", 14, []analysisMetricSpec{
+		{"Analysis", formatDuration(timings.Analysis)},
+		{"Adaptation", formatDuration(timings.Adaptation)},
+		{"Report Output", formatDuration(timings.ReportOutput)},
+	})
 }
 
 func completeAnalysisTimings(timings AnalysisTimings, reportOutputStart time.Time) AnalysisTimings {
@@ -266,16 +218,167 @@ func completeAnalysisTimings(timings AnalysisTimings, reportOutputStart time.Tim
 	return timings
 }
 
+func writeAnalysisSilenceCandidates(w io.Writer, measurements *processor.AudioMeasurements) {
+	if len(measurements.SilenceCandidates) == 0 {
+		writeAnalysisSilenceFallback(w, measurements)
+		return
+	}
+
+	electedCandidate, displayCandidates := rankedSilenceCandidateEntries(measurements)
+	writeAnalysisCandidateFlow(
+		w,
+		len(measurements.SilenceCandidates),
+		electedCandidate,
+		displayCandidates,
+		func() {
+			if measurements.VoiceActivated {
+				fmt.Fprintln(w, "  Voice-activated recording detected")
+			}
+		},
+		func(w io.Writer, entry candidateDisplayEntry[processor.SilenceCandidateMetrics]) {
+			writeAnalysisSilenceCandidateMetrics(w, entry, measurements)
+		},
+		func(w io.Writer, entry candidateDisplayEntry[processor.SilenceCandidateMetrics]) {
+			writeCompactAnalysisSilenceCandidateRow(w, entry.index, entry.candidate)
+		},
+		func() {
+			writeSilenceRejectionSummary(w, measurements.SilenceCandidates)
+		},
+	)
+}
+
+func writeAnalysisSilenceFallback(w io.Writer, measurements *processor.AudioMeasurements) {
+	if measurements.NoiseProfile != nil {
+		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+			{"Sample", fmt.Sprintf("%.1fs at %s", measurements.NoiseProfile.Duration.Seconds(), formatTimestamp(measurements.NoiseProfile.Start))},
+			{"Noise Floor", fmt.Sprintf("%.1f dBFS", measurements.NoiseProfile.MeasuredNoiseFloor)},
+		})
+		return
+	}
+
+	fmt.Fprintln(w, "  No silence detected")
+	if measurements.VoiceActivated {
+		fmt.Fprintln(w, "  Voice-activated recording detected")
+	}
+}
+
+func writeAnalysisSpeechCandidates(w io.Writer, measurements *processor.AudioMeasurements) {
+	if len(measurements.SpeechCandidates) == 0 {
+		writeAnalysisSpeechFallback(w, measurements)
+		return
+	}
+
+	electedCandidate, displayCandidates := rankedSpeechCandidateEntries(measurements)
+	writeAnalysisCandidateFlow(
+		w,
+		len(measurements.SpeechCandidates),
+		electedCandidate,
+		displayCandidates,
+		nil,
+		writeAnalysisSpeechCandidateMetrics,
+		func(w io.Writer, entry candidateDisplayEntry[processor.SpeechCandidateMetrics]) {
+			writeCompactAnalysisSpeechCandidateRow(w, entry.index, entry.candidate)
+		},
+		func() {
+			writeSpeechRejectionSummary(w, measurements.SpeechCandidates)
+		},
+	)
+}
+
+func writeAnalysisSpeechFallback(w io.Writer, measurements *processor.AudioMeasurements) {
+	if measurements.SpeechProfile != nil {
+		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
+			{"Sample", fmt.Sprintf("%.1fs at %s", measurements.SpeechProfile.Region.Duration.Seconds(), formatTimestamp(measurements.SpeechProfile.Region.Start))},
+			{"RMS Level", fmt.Sprintf("%.1f dBFS", measurements.SpeechProfile.RMSLevel)},
+		})
+		return
+	}
+
+	fmt.Fprintln(w, "  No speech profile available")
+}
+
+func writeAnalysisCandidateFlow[T any](
+	w io.Writer,
+	totalCandidates int,
+	electedCandidate *candidateDisplayEntry[T],
+	displayCandidates []candidateDisplayEntry[T],
+	afterSummary func(),
+	writeElected func(io.Writer, candidateDisplayEntry[T]),
+	writeDisplayed func(io.Writer, candidateDisplayEntry[T]),
+	writeRejected func(),
+) {
+	fmt.Fprintf(w, "  Candidates:     %d evaluated\n", totalCandidates)
+	if summary := candidateDisplaySummary(totalCandidates, electedCandidate != nil, len(displayCandidates)); summary != "" {
+		fmt.Fprintf(w, "  Displayed:      %s\n", summary)
+	}
+	if afterSummary != nil {
+		afterSummary()
+	}
+
+	if electedCandidate != nil || len(displayCandidates) > 0 {
+		fmt.Fprintln(w)
+		if electedCandidate != nil {
+			writeElected(w, *electedCandidate)
+			fmt.Fprintln(w)
+		}
+		for _, entry := range displayCandidates {
+			writeDisplayed(w, entry)
+			fmt.Fprintln(w)
+		}
+	}
+
+	writeRejected()
+}
+
 // writeSilenceCandidateMetrics writes the metric lines for a single silence candidate.
 func writeSilenceCandidateMetrics(w io.Writer, c processor.SilenceCandidateMetrics) {
-	fmt.Fprintf(w, "      Score:       %.3f\n", c.Score)
-	fmt.Fprintf(w, "      RMS Level:   %.1f dBFS\n", c.RMSLevel)
-	fmt.Fprintf(w, "      Peak Level:  %.1f dBFS\n", c.PeakLevel)
-	fmt.Fprintf(w, "      Crest:       %.1f dB\n", c.CrestFactor)
-	fmt.Fprintf(w, "      Entropy:     %.3f (%s)\n", c.Spectral.Entropy, interpretEntropy(c.Spectral.Entropy))
-	fmt.Fprintf(w, "      Flatness:    %.3f (%s)\n", c.Spectral.Flatness, interpretFlatness(c.Spectral.Flatness))
-	fmt.Fprintf(w, "      Kurtosis:    %.1f (%s)\n", c.Spectral.Kurtosis, interpretKurtosis(c.Spectral.Kurtosis))
-	fmt.Fprintf(w, "      Centroid:    %.0f Hz\n", c.Spectral.Centroid)
+	writeAnalysisMetricRows(w, "      ", 12, []analysisMetricSpec{
+		{"Score", fmt.Sprintf("%.3f", c.Score)},
+		{"RMS Level", fmt.Sprintf("%.1f dBFS", c.RMSLevel)},
+		{"Peak Level", fmt.Sprintf("%.1f dBFS", c.PeakLevel)},
+		{"Crest", fmt.Sprintf("%.1f dB", c.CrestFactor)},
+		{"Entropy", fmt.Sprintf("%.3f (%s)", c.Spectral.Entropy, interpretEntropy(c.Spectral.Entropy))},
+		{"Flatness", fmt.Sprintf("%.3f (%s)", c.Spectral.Flatness, interpretFlatness(c.Spectral.Flatness))},
+		{"Kurtosis", fmt.Sprintf("%.1f (%s)", c.Spectral.Kurtosis, interpretKurtosis(c.Spectral.Kurtosis))},
+		{"Centroid", fmt.Sprintf("%.0f Hz", c.Spectral.Centroid)},
+	})
+}
+
+func writeAnalysisSilenceCandidateMetrics(w io.Writer, entry candidateDisplayEntry[processor.SilenceCandidateMetrics], measurements *processor.AudioMeasurements) {
+	c := entry.candidate
+	fmt.Fprintf(w, "  #%d: %.1fs at %s (elected)\n",
+		entry.index+1, c.Region.Duration.Seconds(), formatTimestamp(c.Region.Start))
+	if measurements.NoiseProfile.WasRefined {
+		fmt.Fprintf(w, "      Refined:     %.1fs at %s (golden sub-region)\n",
+			measurements.NoiseProfile.Duration.Seconds(), formatTimestamp(measurements.NoiseProfile.Start))
+	}
+	writeSilenceCandidateMetrics(w, c)
+}
+
+func writeAnalysisSpeechCandidateMetrics(w io.Writer, entry candidateDisplayEntry[processor.SpeechCandidateMetrics]) {
+	c := entry.candidate
+	fmt.Fprintf(w, "  #%d: %.1fs at %s (elected)\n",
+		entry.index+1, c.Region.Duration.Seconds(), formatTimestamp(c.Region.Start))
+
+	if c.WasRefined {
+		fmt.Fprintf(w, "      Refined:     %.1fs at %s -> %.1fs at %s (golden sub-region)\n",
+			c.OriginalDuration.Seconds(),
+			formatTimestamp(c.OriginalStart),
+			c.Region.Duration.Seconds(),
+			formatTimestamp(c.Region.Start))
+	}
+
+	rows := []analysisMetricSpec{
+		{"Score", fmt.Sprintf("%.2f", c.Score)},
+		{"RMS Level", fmt.Sprintf("%.1f dBFS", c.RMSLevel)},
+		{"Crest", fmt.Sprintf("%.1f dB", c.CrestFactor)},
+		{"Centroid", fmt.Sprintf("%.0f Hz (%s)", c.Spectral.Centroid, interpretCentroid(c.Spectral.Centroid))},
+		{"Kurtosis", fmt.Sprintf("%.1f (%s)", c.Spectral.Kurtosis, interpretKurtosis(c.Spectral.Kurtosis))},
+	}
+	if c.VoicingDensity > 0 {
+		rows = append(rows, analysisMetricSpec{"Voicing", fmt.Sprintf("%.0f%%", c.VoicingDensity*100)})
+	}
+	writeAnalysisMetricRows(w, "      ", 12, rows)
 }
 
 func writeCompactAnalysisSilenceCandidateRow(w io.Writer, index int, c processor.SilenceCandidateMetrics) {
@@ -341,23 +444,6 @@ func noiseFloorSourceLabel(source string) string {
 // writeAnalysisSection writes a section header for analysis output.
 func writeAnalysisSection(w io.Writer, title string) {
 	fmt.Fprintln(w, title)
-}
-
-// formatDurationHMS formats duration as "Xh Ym Zs" or "Ym Zs" or "Z.Xs".
-func formatDurationHMS(seconds float64) string {
-	if seconds < 60 {
-		return fmt.Sprintf("%.1fs", seconds)
-	}
-
-	totalSeconds := int(seconds)
-	hours := totalSeconds / 3600
-	minutes := (totalSeconds % 3600) / 60
-	secs := totalSeconds % 60
-
-	if hours > 0 {
-		return fmt.Sprintf("%dh %dm %ds", hours, minutes, secs)
-	}
-	return fmt.Sprintf("%dm %ds", minutes, secs)
 }
 
 // formatTimestamp formats a duration as a timestamp string (e.g., "1m 32s" or "24.0s").
