@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -118,6 +119,113 @@ func TestLoudnormCaptureSerialisesFullLifecycle(t *testing.T) {
 	}
 }
 
+func TestLoudnormCaptureSessionStopDiscardAfterStopDoesNotDoubleStop(t *testing.T) {
+	var callbackStops int
+	replaceLoudnormLogOps(t,
+		func() (int, error) { return 7, nil },
+		func(int) {},
+		func(callback ffmpeg.LogCallback) {
+			if callback == nil {
+				callbackStops++
+			}
+		},
+	)
+
+	capture := beginLoudnormCapture()
+	defer capture.StopDiscard()
+
+	loudnormLogCallback(nil, ffmpeg.AVLogInfo, loudnormCaptureTestJSON)
+	if _, err := capture.Stop(); err != nil {
+		t.Fatalf("capture.Stop() error = %v", err)
+	}
+
+	capture.StopDiscard()
+
+	if callbackStops != 1 {
+		t.Fatalf("stop callback count = %d, want 1", callbackStops)
+	}
+}
+
+func TestLoudnormCaptureSessionSerialisesFullLifecycle(t *testing.T) {
+	replaceLoudnormLogOps(t,
+		func() (int, error) { return 7, nil },
+		func(int) {},
+		func(ffmpeg.LogCallback) {},
+	)
+
+	first := beginLoudnormCapture()
+	defer first.StopDiscard()
+
+	secondStarted := make(chan *loudnormCaptureSession, 1)
+	go func() {
+		secondStarted <- beginLoudnormCapture()
+	}()
+
+	select {
+	case second := <-secondStarted:
+		second.StopDiscard()
+		t.Fatal("second capture started before first capture stopped")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	loudnormLogCallback(nil, ffmpeg.AVLogInfo, loudnormCaptureTestJSON)
+	if _, err := first.Stop(); err != nil {
+		t.Fatalf("first capture.Stop() error = %v", err)
+	}
+
+	var second *loudnormCaptureSession
+	select {
+	case second = <-secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("second capture did not start after first capture stopped")
+	}
+	defer second.StopDiscard()
+
+	loudnormLogCallback(nil, ffmpeg.AVLogInfo, loudnormCaptureTestJSON)
+	if _, err := second.Stop(); err != nil {
+		t.Fatalf("second capture.Stop() error = %v", err)
+	}
+}
+
+func TestLoudnormCaptureSessionMalformedJSONRestoresLogOps(t *testing.T) {
+	var (
+		callbackStops int
+		levels        []int
+	)
+	replaceLoudnormLogOps(t,
+		func() (int, error) { return 7, nil },
+		func(level int) {
+			levels = append(levels, level)
+		},
+		func(callback ffmpeg.LogCallback) {
+			if callback == nil {
+				callbackStops++
+			}
+		},
+	)
+
+	capture := beginLoudnormCapture()
+	defer capture.StopDiscard()
+
+	loudnormLogCallback(nil, ffmpeg.AVLogInfo, "{not-json}")
+	_, err := capture.Stop()
+	if err == nil {
+		t.Fatal("capture.Stop() error = nil, want malformed JSON error")
+	}
+	if !strings.Contains(err.Error(), "failed to parse loudnorm JSON") {
+		t.Fatalf("capture.Stop() error = %q, want malformed JSON context", err.Error())
+	}
+	if callbackStops != 1 {
+		t.Fatalf("stop callback count = %d, want 1", callbackStops)
+	}
+
+	gotLevels := fmt.Sprint(levels)
+	wantLevels := fmt.Sprintf("[%d 7]", ffmpeg.AVLogInfo)
+	if gotLevels != wantLevels {
+		t.Fatalf("log levels = %s, want %s", gotLevels, wantLevels)
+	}
+}
+
 func TestMeasureWithLoudnormStopsCaptureOnOpenError(t *testing.T) {
 	var callbackStops int
 	replaceLoudnormLogOps(t,
@@ -204,6 +312,476 @@ func TestMeasureWithLoudnormLoopErrorFreesGraphBeforeStoppingCapture(t *testing.
 	if gotOrder != "free,stop" {
 		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
 	}
+}
+
+type loudnormCleanupRecorder struct {
+	mu     sync.Mutex
+	order  []string
+	levels []int
+	stops  int
+}
+
+func (r *loudnormCleanupRecorder) record(value string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.order = append(r.order, value)
+}
+
+func (r *loudnormCleanupRecorder) recordLevel(level int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.levels = append(r.levels, level)
+}
+
+func (r *loudnormCleanupRecorder) recordStop() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stops++
+	r.order = append(r.order, "stop")
+}
+
+func (r *loudnormCleanupRecorder) freeCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var total int
+	for _, entry := range r.order {
+		if entry == "free" {
+			total++
+		}
+	}
+	return total
+}
+
+func (r *loudnormCleanupRecorder) orderString() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return strings.Join(r.order, ",")
+}
+
+func (r *loudnormCleanupRecorder) stopCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.stops
+}
+
+func (r *loudnormCleanupRecorder) levelString() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return fmt.Sprint(r.levels)
+}
+
+func installLoudnormCleanupRecorder(t *testing.T) *loudnormCleanupRecorder {
+	t.Helper()
+
+	recorder := &loudnormCleanupRecorder{}
+	replaceLoudnormLogOps(t,
+		func() (int, error) { return 7, nil },
+		func(level int) {
+			recorder.recordLevel(level)
+		},
+		func(callback ffmpeg.LogCallback) {
+			if callback == nil {
+				recorder.recordStop()
+			}
+		},
+	)
+	return recorder
+}
+
+func requireLoudnormCaptureStoppedOnce(t *testing.T, recorder *loudnormCleanupRecorder) {
+	t.Helper()
+
+	if recorder.stopCount() != 1 {
+		t.Fatalf("capture stop count = %d, want 1", recorder.stopCount())
+	}
+
+	wantLevels := fmt.Sprintf("[%d 7]", ffmpeg.AVLogInfo)
+	if gotLevels := recorder.levelString(); gotLevels != wantLevels {
+		t.Fatalf("log levels = %s, want %s", gotLevels, wantLevels)
+	}
+}
+
+func replaceApplyLoudnormGraphFree(t *testing.T, recorder *loudnormCleanupRecorder, emitJSON bool) {
+	t.Helper()
+
+	oldFree := loudnormAVFilterGraphFree
+	loudnormAVFilterGraphFree = func(graph **ffmpeg.AVFilterGraph) {
+		recorder.record("free")
+		if emitJSON {
+			loudnormLogCallback(nil, ffmpeg.AVLogInfo, loudnormCaptureTestJSON)
+		}
+		if graph != nil && *graph != nil {
+			oldFree(graph)
+		}
+	}
+	t.Cleanup(func() {
+		loudnormAVFilterGraphFree = oldFree
+	})
+}
+
+func replaceApplyLoudnormSetupFilterGraph(
+	t *testing.T,
+	setup func(*ffmpeg.AVCodecContext, string) (*ffmpeg.AVFilterGraph, *ffmpeg.AVFilterContext, *ffmpeg.AVFilterContext, error),
+) {
+	t.Helper()
+
+	oldSetup := loudnormSetupFilterGraph
+	loudnormSetupFilterGraph = setup
+	t.Cleanup(func() {
+		loudnormSetupFilterGraph = oldSetup
+	})
+}
+
+func replaceApplyLoudnormCreateEncoder(
+	t *testing.T,
+	create func(string, *audio.Metadata, *ffmpeg.AVFilterContext) (loudnormOutputEncoder, error),
+) {
+	t.Helper()
+
+	oldCreate := loudnormCreateEncoder
+	loudnormCreateEncoder = create
+	t.Cleanup(func() {
+		loudnormCreateEncoder = oldCreate
+	})
+}
+
+func replaceApplyLoudnormRename(t *testing.T, rename func(string, string) error) {
+	t.Helper()
+
+	oldRename := loudnormRename
+	loudnormRename = rename
+	t.Cleanup(func() {
+		loudnormRename = oldRename
+	})
+}
+
+type loudnormTestEncoder struct {
+	flushErr error
+	closeErr error
+}
+
+func (e *loudnormTestEncoder) WriteFrame(*ffmpeg.AVFrame) error {
+	return nil
+}
+
+func (e *loudnormTestEncoder) Flush() error {
+	return e.flushErr
+}
+
+func (e *loudnormTestEncoder) Close() error {
+	return e.closeErr
+}
+
+func loudnormApplicationTestConfig() *FilterChainConfig {
+	config := DefaultFilterConfig()
+	config.AdeclickEnabled = false
+	return config
+}
+
+func loudnormApplicationTestMeasurement() *LoudnormMeasurement {
+	return &LoudnormMeasurement{
+		InputI:       -23.0,
+		InputTP:      -4.0,
+		InputLRA:     5.0,
+		InputThresh:  -33.0,
+		TargetOffset: 0.0,
+	}
+}
+
+func generateLoudnormApplicationTestAudio(t *testing.T) string {
+	t.Helper()
+
+	testFile := generateTestAudio(t, TestAudioOptions{
+		DurationSecs: 0.2,
+		SampleRate:   44100,
+		ToneFreq:     440.0,
+		ToneLevel:    -18.0,
+		Dir:          t.TempDir(),
+	})
+	t.Cleanup(func() {
+		cleanupTestAudio(t, testFile)
+	})
+	return testFile
+}
+
+func applyLoudnormTest(
+	t *testing.T,
+	inputPath string,
+) (float64, float64, *OutputMeasurements, *LoudnormStats, time.Duration, error) {
+	t.Helper()
+
+	return applyLoudnormAndMeasure(
+		inputPath,
+		loudnormApplicationTestConfig(),
+		loudnormApplicationTestMeasurement(),
+		nil,
+		0,
+		0,
+		false,
+		nil,
+	)
+}
+
+func TestApplyLoudnormAndMeasureStopsCaptureOnOpenError(t *testing.T) {
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, false)
+
+	_, _, _, _, _, err := applyLoudnormTest(t, "/does/not/exist.wav")
+	if err == nil {
+		t.Fatal("applyLoudnormAndMeasure() error = nil, want open error")
+	}
+	if !strings.Contains(err.Error(), "failed to open input") {
+		t.Fatalf("applyLoudnormAndMeasure() error = %q, want open context", err.Error())
+	}
+	if recorder.freeCount() != 0 {
+		t.Fatalf("graph free count = %d, want 0", recorder.freeCount())
+	}
+	requireLoudnormCaptureStoppedOnce(t, recorder)
+}
+
+func TestApplyLoudnormAndMeasureSetupErrorStopsCaptureWithoutFree(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, false)
+
+	setupErr := errors.New("injected setup failure")
+	replaceApplyLoudnormSetupFilterGraph(t, func(
+		*ffmpeg.AVCodecContext,
+		string,
+	) (*ffmpeg.AVFilterGraph, *ffmpeg.AVFilterContext, *ffmpeg.AVFilterContext, error) {
+		return nil, nil, nil, setupErr
+	})
+
+	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	if !errors.Is(err, setupErr) {
+		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped setup error", err)
+	}
+	if !strings.Contains(err.Error(), "failed to create filter graph") {
+		t.Fatalf("applyLoudnormAndMeasure() error = %q, want filter graph context", err.Error())
+	}
+	if recorder.freeCount() != 0 {
+		t.Fatalf("graph free count = %d, want 0", recorder.freeCount())
+	}
+	requireLoudnormCaptureStoppedOnce(t, recorder)
+}
+
+func TestApplyLoudnormAndMeasureEncoderCreationErrorFreesGraphBeforeStoppingCapture(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, true)
+
+	createErr := errors.New("injected encoder creation failure")
+	replaceApplyLoudnormCreateEncoder(t, func(
+		string,
+		*audio.Metadata,
+		*ffmpeg.AVFilterContext,
+	) (loudnormOutputEncoder, error) {
+		return nil, createErr
+	})
+
+	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	if !errors.Is(err, createErr) {
+		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped encoder creation error", err)
+	}
+	if !strings.Contains(err.Error(), "failed to create encoder") {
+		t.Fatalf("applyLoudnormAndMeasure() error = %q, want encoder context", err.Error())
+	}
+	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
+		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
+	}
+	requireLoudnormCaptureStoppedOnce(t, recorder)
+}
+
+func TestApplyLoudnormAndMeasureLoopErrorFreesGraphBeforeStoppingCapture(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, true)
+	replaceApplyLoudnormCreateEncoder(t, func(
+		string,
+		*audio.Metadata,
+		*ffmpeg.AVFilterContext,
+	) (loudnormOutputEncoder, error) {
+		return &loudnormTestEncoder{}, nil
+	})
+
+	runErr := errors.New("injected application loop failure")
+	oldRun := loudnormRunFilterGraph
+	loudnormRunFilterGraph = func(
+		reader *audio.Reader,
+		bufferSrcCtx, bufferSinkCtx *ffmpeg.AVFilterContext,
+		config FrameLoopConfig,
+	) error {
+		return runErr
+	}
+	t.Cleanup(func() {
+		loudnormRunFilterGraph = oldRun
+	})
+
+	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	if !errors.Is(err, runErr) {
+		t.Fatalf("applyLoudnormAndMeasure() error = %v, want loop error", err)
+	}
+	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
+		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
+	}
+	requireLoudnormCaptureStoppedOnce(t, recorder)
+}
+
+func TestApplyLoudnormAndMeasureFlushErrorFreesGraphBeforeStoppingCapture(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, true)
+
+	flushErr := errors.New("injected flush failure")
+	replaceApplyLoudnormCreateEncoder(t, func(
+		string,
+		*audio.Metadata,
+		*ffmpeg.AVFilterContext,
+	) (loudnormOutputEncoder, error) {
+		return &loudnormTestEncoder{flushErr: flushErr}, nil
+	})
+
+	oldRun := loudnormRunFilterGraph
+	loudnormRunFilterGraph = func(
+		reader *audio.Reader,
+		bufferSrcCtx, bufferSinkCtx *ffmpeg.AVFilterContext,
+		config FrameLoopConfig,
+	) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		loudnormRunFilterGraph = oldRun
+	})
+
+	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	if !errors.Is(err, flushErr) {
+		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped flush error", err)
+	}
+	if !strings.Contains(err.Error(), "failed to flush encoder") {
+		t.Fatalf("applyLoudnormAndMeasure() error = %q, want flush context", err.Error())
+	}
+	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
+		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
+	}
+	requireLoudnormCaptureStoppedOnce(t, recorder)
+}
+
+func TestApplyLoudnormAndMeasureCloseErrorFreesGraphBeforeStoppingCapture(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, true)
+
+	closeErr := errors.New("injected close failure")
+	replaceApplyLoudnormCreateEncoder(t, func(
+		string,
+		*audio.Metadata,
+		*ffmpeg.AVFilterContext,
+	) (loudnormOutputEncoder, error) {
+		return &loudnormTestEncoder{closeErr: closeErr}, nil
+	})
+
+	oldRun := loudnormRunFilterGraph
+	loudnormRunFilterGraph = func(
+		reader *audio.Reader,
+		bufferSrcCtx, bufferSinkCtx *ffmpeg.AVFilterContext,
+		config FrameLoopConfig,
+	) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		loudnormRunFilterGraph = oldRun
+	})
+
+	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped close error", err)
+	}
+	if !strings.Contains(err.Error(), "failed to close encoder") {
+		t.Fatalf("applyLoudnormAndMeasure() error = %q, want close context", err.Error())
+	}
+	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
+		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
+	}
+	requireLoudnormCaptureStoppedOnce(t, recorder)
+}
+
+func TestApplyLoudnormAndMeasureRenameErrorFreesGraphBeforeStoppingCapture(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, true)
+	replaceApplyLoudnormCreateEncoder(t, func(
+		string,
+		*audio.Metadata,
+		*ffmpeg.AVFilterContext,
+	) (loudnormOutputEncoder, error) {
+		return &loudnormTestEncoder{}, nil
+	})
+
+	oldRun := loudnormRunFilterGraph
+	loudnormRunFilterGraph = func(
+		reader *audio.Reader,
+		bufferSrcCtx, bufferSinkCtx *ffmpeg.AVFilterContext,
+		config FrameLoopConfig,
+	) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		loudnormRunFilterGraph = oldRun
+	})
+
+	renameErr := errors.New("injected rename failure")
+	replaceApplyLoudnormRename(t, func(oldPath, newPath string) error {
+		if filepath.Dir(oldPath) != filepath.Dir(testFile) {
+			t.Fatalf("temp file dir = %q, want %q", filepath.Dir(oldPath), filepath.Dir(testFile))
+		}
+		if !strings.HasSuffix(oldPath, ".loudnorm.tmp.flac") {
+			t.Fatalf("temp file path = %q, want .loudnorm.tmp.flac suffix", oldPath)
+		}
+		if newPath != testFile {
+			t.Fatalf("rename target = %q, want %q", newPath, testFile)
+		}
+		return renameErr
+	})
+
+	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	if !errors.Is(err, renameErr) {
+		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped rename error", err)
+	}
+	if !strings.Contains(err.Error(), "failed to rename output") {
+		t.Fatalf("applyLoudnormAndMeasure() error = %q, want rename context", err.Error())
+	}
+	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
+		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
+	}
+	requireLoudnormCaptureStoppedOnce(t, recorder)
+}
+
+func TestApplyLoudnormAndMeasureSuccessFreesGraphBeforeStoppingCapture(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, true)
+
+	finalLUFS, _, finalMeasurements, stats, _, err := applyLoudnormTest(t, testFile)
+	if err != nil {
+		t.Fatalf("applyLoudnormAndMeasure() error = %v", err)
+	}
+	if stats == nil {
+		t.Fatal("loudnorm stats = nil, want parsed stats")
+	}
+	if stats.OutputI != "-16.0" {
+		t.Fatalf("stats.OutputI = %q, want -16.0", stats.OutputI)
+	}
+	if finalMeasurements == nil {
+		t.Fatal("final measurements = nil, want measurements")
+	}
+	if math.IsNaN(finalLUFS) {
+		t.Fatal("final LUFS is NaN")
+	}
+	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
+		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
+	}
+	requireLoudnormCaptureStoppedOnce(t, recorder)
 }
 
 func TestCalculateLinearModeTarget(t *testing.T) {

@@ -58,7 +58,18 @@ var (
 	loudnormAVLogSetCallback  = ffmpeg.AVLogSetCallback
 	loudnormAVFilterGraphFree = ffmpeg.AVFilterGraphFree
 	loudnormRunFilterGraph    = runFilterGraph
+	loudnormSetupFilterGraph  = setupFilterGraph
+	loudnormCreateEncoder     = func(outputPath string, metadata *audio.Metadata, bufferSinkCtx *ffmpeg.AVFilterContext) (loudnormOutputEncoder, error) {
+		return createOutputEncoder(outputPath, metadata, bufferSinkCtx)
+	}
+	loudnormRename = os.Rename
 )
+
+type loudnormOutputEncoder interface {
+	WriteFrame(*ffmpeg.AVFrame) error
+	Flush() error
+	Close() error
+}
 
 // loudnormLogCallback captures loudnorm JSON output from FFmpeg's logging system.
 // loudnorm outputs JSON at AV_LOG_INFO level when print_format=json is set.
@@ -121,6 +132,36 @@ func stopLoudnormCapture() (*LoudnormStats, error) {
 	return &stats, nil
 }
 
+type loudnormCaptureSession struct {
+	mu      sync.Mutex
+	stopped bool
+}
+
+func beginLoudnormCapture() *loudnormCaptureSession {
+	startLoudnormCapture()
+	return &loudnormCaptureSession{}
+}
+
+func (session *loudnormCaptureSession) Stop() (*LoudnormStats, error) {
+	if session == nil {
+		return nil, nil
+	}
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+
+	if session.stopped {
+		return nil, nil
+	}
+	session.stopped = true
+
+	return stopLoudnormCapture()
+}
+
+func (session *loudnormCaptureSession) StopDiscard() {
+	_, _ = session.Stop()
+}
+
 // LoudnormMeasurement holds the results from loudnorm's first pass (measurement mode).
 // This is populated by measureWithLoudnorm() which reads the Pass 2 output file
 // and runs loudnorm without encoding to get the measurements needed for second pass.
@@ -152,12 +193,12 @@ type LoudnormMeasurement struct {
 //   - err: Error if measurement failed
 func measureWithLoudnorm(inputPath string, config *FilterChainConfig, filterPrefix string, progressCallback func(pass PassNumber, passName string, progress float64, level float64, measurements *AudioMeasurements)) (*LoudnormMeasurement, error) {
 	// Start capturing loudnorm log output
-	startLoudnormCapture()
+	capture := beginLoudnormCapture()
+	defer capture.StopDiscard()
 
 	// Open input file
 	reader, metadata, err := audio.OpenAudioFile(inputPath)
 	if err != nil {
-		_, _ = stopLoudnormCapture() // Clean up capture
 		return nil, fmt.Errorf("failed to open input: %w", err)
 	}
 	defer reader.Close()
@@ -189,7 +230,6 @@ func measureWithLoudnorm(inputPath string, config *FilterChainConfig, filterPref
 		filterSpec,
 	)
 	if err != nil {
-		_, _ = stopLoudnormCapture() // Clean up capture
 		return nil, fmt.Errorf("failed to create filter graph: %w", err)
 	}
 	// Note: We free the filter graph explicitly to trigger loudnorm JSON output
@@ -213,7 +253,7 @@ func measureWithLoudnorm(inputPath string, config *FilterChainConfig, filterPref
 	loudnormAVFilterGraphFree(&filterGraph)
 
 	// Capture loudnorm stats from log output
-	stats, err := stopLoudnormCapture()
+	stats, err := capture.Stop()
 	if loopErr != nil {
 		return nil, fmt.Errorf("loudnorm measurement loop failed: %w", loopErr)
 	}
@@ -596,11 +636,12 @@ func applyLoudnormAndMeasure(
 	progressCallback func(pass PassNumber, passName string, progress float64, level float64, measurements *AudioMeasurements),
 ) (float64, float64, *OutputMeasurements, *LoudnormStats, time.Duration, error) {
 	// Start capturing loudnorm's JSON output for diagnostics
-	startLoudnormCapture()
+	capture := beginLoudnormCapture()
+	defer capture.StopDiscard()
 
 	// Helper to stop capture and return stats (may be nil if capture failed)
 	getLoudnormStats := func() *LoudnormStats {
-		stats, _ := stopLoudnormCapture()
+		stats, _ := capture.Stop()
 		return stats
 	}
 
@@ -618,7 +659,7 @@ func applyLoudnormAndMeasure(
 	filterSpec := buildLoudnormFilterSpec(config, measurement, preGainDB, ceiling, needsLimiting)
 
 	// Create filter graph
-	filterGraph, bufferSrcCtx, bufferSinkCtx, err := setupFilterGraph(
+	filterGraph, bufferSrcCtx, bufferSinkCtx, err := loudnormSetupFilterGraph(
 		reader.GetDecoderContext(),
 		filterSpec,
 	)
@@ -629,7 +670,7 @@ func applyLoudnormAndMeasure(
 	// loudnorm outputs its JSON when the filter graph is freed.
 
 	// Create output encoder (same format as input)
-	encoder, err := createOutputEncoder(tempPath, metadata, bufferSinkCtx)
+	encoder, err := loudnormCreateEncoder(tempPath, metadata, bufferSinkCtx)
 	if err != nil {
 		loudnormAVFilterGraphFree(&filterGraph)
 		return 0.0, 0.0, nil, getLoudnormStats(), 0, fmt.Errorf("failed to create encoder: %w", err)
@@ -690,7 +731,7 @@ func applyLoudnormAndMeasure(
 	}
 
 	// Atomic rename: temp file → original file (in-place update)
-	if err := os.Rename(tempPath, inputPath); err != nil {
+	if err := loudnormRename(tempPath, inputPath); err != nil {
 		loudnormAVFilterGraphFree(&filterGraph)
 		return 0.0, 0.0, nil, getLoudnormStats(), 0, fmt.Errorf("failed to rename output: %w", err)
 	}
