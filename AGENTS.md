@@ -27,13 +27,13 @@ cmd/jivetalking/main.go     # CLI entry, Kong flags, starts TUI + processing gor
 internal/
 ├── audio/reader.go         # FFmpeg demuxer/decoder wrapper (Reader, Metadata, OpenAudioFile)
 ├── processor/
-│   ├── adaptive.go         # AdaptConfig() - tunes FilterChainConfig from Pass 1 measurements
+│   ├── adaptive.go         # AdaptConfig() - derives effective filter settings + diagnostics from Pass 1 measurements
 │   ├── analyzer.go         # AnalyzeAudio() - Pass 1: ebur128 + astats + aspectralstats; silence/speech detection
 │   ├── analyzer_candidates.go  # Silence candidate scoring and election
 │   ├── analyzer_metrics.go     # IntervalSample, SpectralMetrics, per-250ms metric accumulation
 │   ├── analyzer_output.go      # MeasureOutputRegions() - before/after region comparison
 │   ├── encoder.go          # Output file encoder wrapper
-│   ├── filters.go          # FilterChainConfig, filter builder funcs, BuildFilterSpec(), DefaultFilterConfig()
+│   ├── filters.go          # BaseFilterConfig, EffectiveFilterConfig, AdaptiveDiagnostics, filter builders, BuildFilterSpec(), DefaultFilterConfig()
 │   ├── frame_processor.go  # runFilterGraph(), FrameLoopConfig - shared filter graph execution
 │   ├── normalise.go        # ApplyNormalisation() - Pass 3/4: loudnorm measurement + application
 │   └── processor.go        # ProcessAudio(), AnalyzeOnlyDetailed() - pass orchestration
@@ -120,7 +120,7 @@ Two separate message sets exist for the two TUI modes.
 
 ## Adaptive processing
 
-`AdaptConfig()` in `adaptive.go` tunes `FilterChainConfig` from Pass 1 `AudioMeasurements`:
+`AdaptConfig()` in `adaptive.go` derives per-file filter state from Pass 1 `AudioMeasurements`: it accepts caller-owned `BaseFilterConfig` defaults, returns `EffectiveFilterConfig` for filter building, and returns `AdaptiveDiagnostics` for report-only adaptation explanations. Do not reintroduce `FilterChainConfig` or store pass execution state in config; use `ProcessingFilterContext` for pass-local state.
 
 - **DS201 highpass frequency:** 60-120Hz based on spectral decrease (warm/thin voice detection) and silence noise floor; warm voices use gentler Q (0.5) and reduced wet/dry mix
 - **DS201 lowpass:** Enabled adaptively based on content type and HF noise indicators (rolloff/centroid ratio)
