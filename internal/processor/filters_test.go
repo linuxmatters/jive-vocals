@@ -344,10 +344,6 @@ func TestBuildFilterSpecBehaviourBaseline(t *testing.T) {
 				config.LA2AMakeup = 0
 				config.LA2AKnee = 6.0
 				config.LA2AMix = 0.85
-				config.LA2AHighCrestActive = true
-				config.LA2AHighCrestDeficit = 2.6
-				config.LA2AHighCrestSeverity = 0.433
-				config.LA2AHighCrestProjectedTP = 0.6
 				config.FilterOrder = []FilterID{FilterLA2ACompressor}
 				return config
 			}(),
@@ -1045,30 +1041,7 @@ func TestAssembleEffectiveFilterConfig(t *testing.T) {
 	if effective.OutputAnalysisEnabled {
 		t.Error("OutputAnalysisEnabled = true, want false")
 	}
-	if effective.DS201LPContentType != 0 || effective.DS201LPReason != "" || effective.DS201LPRolloffRatio != 0 {
-		t.Errorf("low-pass diagnostics copied into effective config: type=%v reason=%q ratio=%.2f",
-			effective.DS201LPContentType, effective.DS201LPReason, effective.DS201LPRolloffRatio)
-	}
-	if effective.DS201GateGentleMode ||
-		effective.DS201GateAggression != 0 ||
-		effective.DS201GateDynamicRange != 0 ||
-		effective.DS201GateQuietSpeechEstimate != 0 ||
-		effective.DS201GateSpeechSeparation != 0 ||
-		effective.DS201GateSpeechHeadroom != 0 ||
-		effective.DS201GateThresholdUnclamped != 0 ||
-		effective.DS201GateClampReason != "" {
-		t.Errorf("gate diagnostics copied into effective config: %+v", effective)
-	}
-	if effective.LA2AHighCrestActive ||
-		effective.LA2AHighCrestDeficit != 0 ||
-		effective.LA2AHighCrestSeverity != 0 ||
-		effective.LA2AHighCrestProjectedTP != 0 {
-		t.Errorf("LA-2A diagnostics copied into effective config: active=%v deficit=%.2f severity=%.2f projected=%.2f",
-			effective.LA2AHighCrestActive,
-			effective.LA2AHighCrestDeficit,
-			effective.LA2AHighCrestSeverity,
-			effective.LA2AHighCrestProjectedTP)
-	}
+	assertCompatibilityDiagnosticsClear(t, &effective.FilterChainConfig)
 }
 
 func TestDerivePerFileConfig(t *testing.T) {
@@ -1111,36 +1084,21 @@ func TestDerivePerFileConfig(t *testing.T) {
 			derived.NoiseRemoveCompandThreshold, base.NoiseRemoveCompandThreshold)
 	}
 
-	if derived.DS201LPContentType != 0 || derived.DS201LPReason != "" || derived.DS201LPRolloffRatio != 0 {
-		t.Errorf("low-pass diagnostics not reset: type=%v reason=%q ratio=%.2f",
-			derived.DS201LPContentType, derived.DS201LPReason, derived.DS201LPRolloffRatio)
-	}
-	if derived.DS201GateGentleMode ||
-		derived.DS201GateAggression != 0 ||
-		derived.DS201GateDynamicRange != 0 ||
-		derived.DS201GateQuietSpeechEstimate != 0 ||
-		derived.DS201GateSpeechSeparation != 0 ||
-		derived.DS201GateSpeechHeadroom != 0 ||
-		derived.DS201GateThresholdUnclamped != 0 ||
-		derived.DS201GateClampReason != "" {
-		t.Errorf("gate diagnostics not reset: %+v", derived)
-	}
-	if derived.LA2AHighCrestActive ||
-		derived.LA2AHighCrestDeficit != 0 ||
-		derived.LA2AHighCrestSeverity != 0 ||
-		derived.LA2AHighCrestProjectedTP != 0 {
-		t.Errorf("LA-2A diagnostics not reset: active=%v deficit=%.2f severity=%.2f projected=%.2f",
-			derived.LA2AHighCrestActive,
-			derived.LA2AHighCrestDeficit,
-			derived.LA2AHighCrestSeverity,
-			derived.LA2AHighCrestProjectedTP)
-	}
+	assertCompatibilityDiagnosticsClear(t, derived)
 
 	if !reflect.DeepEqual(base.FilterOrder, []FilterID{FilterDeesser, FilterAnalysis}) ||
 		base.TargetI != -18.0 ||
 		base.SilenceScanDuration != 2*time.Second ||
 		base.NoiseRemoveCompandThreshold != -48.0 {
 		t.Error("derivePerFileConfig mutated caller-owned defaults")
+	}
+}
+
+func assertCompatibilityDiagnosticsClear(t *testing.T, config *FilterChainConfig) {
+	t.Helper()
+
+	if config.AdaptiveDiagnostics != (AdaptiveDiagnostics{}) {
+		t.Errorf("compatibility diagnostics populated on filter config: %+v", config.AdaptiveDiagnostics)
 	}
 }
 

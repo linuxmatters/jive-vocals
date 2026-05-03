@@ -398,33 +398,35 @@ func detectContentType(m *AudioMeasurements) ContentType {
 
 // AdaptConfig tunes all filter parameters based on Pass 1 measurements.
 // This is the main entry point for adaptive configuration.
-// It returns a per-file effective config without mutating the caller's base seed.
-func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) *FilterChainConfig {
-	effectiveConfig := derivePerFileConfig(config)
+// It returns per-file effective config and diagnostics without mutating the caller's base seed.
+func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) (*EffectiveFilterConfig, *AdaptiveDiagnostics) {
+	effectiveConfig := deriveEffectiveFilterConfig(config)
 	if effectiveConfig == nil {
-		return nil
+		return nil, nil
 	}
+	filterConfig := &effectiveConfig.FilterChainConfig
+	diagnostics := &AdaptiveDiagnostics{}
 
 	// Store measurements reference
-	effectiveConfig.Measurements = measurements
+	filterConfig.Measurements = measurements
 
 	// Tune each filter adaptively based on measurements
 	// Order matters: gate threshold calculated BEFORE denoise filters
-	tuneDS201HighPass(effectiveConfig, measurements) // Composite: highpass + hum notch
-	tuneDS201LowPass(effectiveConfig, measurements)  // Ultrasonic rejection (adaptive)
+	tuneDS201HighPass(filterConfig, measurements)             // Composite: highpass + hum notch
+	tuneDS201LowPass(filterConfig, diagnostics, measurements) // Ultrasonic rejection (adaptive)
 
 	// NoiseRemove: anlmdn + compand (primary noise reduction)
-	tuneNoiseRemove(effectiveConfig, measurements)
+	tuneNoiseRemove(filterConfig, measurements)
 
-	tuneDS201Gate(effectiveConfig, measurements) // DS201-style soft expander gate
-	tuneDeesser(effectiveConfig, measurements)
-	tuneLA2ACompressor(effectiveConfig, measurements)
+	tuneDS201Gate(filterConfig, diagnostics, measurements) // DS201-style soft expander gate
+	tuneDeesser(filterConfig, measurements)
+	tuneLA2ACompressor(filterConfig, diagnostics, measurements)
 	// tuneVolumaxLimiter removed - limiter moved to Pass 4, tuned from Pass 3 measurements
 
 	// Final safety checks
-	sanitizeConfig(effectiveConfig)
+	sanitizeConfig(filterConfig)
 
-	return effectiveConfig
+	return effectiveConfig, diagnostics
 }
 
 // tuneDS201HighPass adapts DS201-inspired highpass composite filter based on:
@@ -574,14 +576,17 @@ func tuneDS201HighPass(config *FilterChainConfig, measurements *AudioMeasurement
 // The DS201's LP filter prevents false gate triggers from ultrasonic noise.
 // Since we filter the audio path (not true sidechain), we must be conservative
 // to avoid audible HF loss.
-func tuneDS201LowPass(config *FilterChainConfig, m *AudioMeasurements) {
+func tuneDS201LowPass(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, m *AudioMeasurements) {
 	// Start disabled - only enable when we detect clear benefit
 	config.DS201LPEnabled = false
 	config.DS201LPFreq = ds201LPDefaultFreq
+	if diagnostics == nil {
+		diagnostics = &AdaptiveDiagnostics{}
+	}
 
 	// Detect content type
 	contentType := detectContentType(m)
-	config.DS201LPContentType = contentType
+	diagnostics.DS201LPContentType = contentType
 
 	// Calculate rolloff/centroid ratio for logging
 	rolloff := m.SpectralRolloff
@@ -591,23 +596,23 @@ func tuneDS201LowPass(config *FilterChainConfig, m *AudioMeasurements) {
 		centroid = preferSpeechMetric(centroid, m.SpeechProfile.Spectral.Centroid)
 	}
 	if centroid > 0 {
-		config.DS201LPRolloffRatio = rolloff / centroid
+		diagnostics.DS201LPRolloffRatio = rolloff / centroid
 	}
 
 	switch contentType {
 	case ContentMusic:
 		// Music: preserve full spectrum
-		config.DS201LPReason = "music content detected"
+		diagnostics.DS201LPReason = "music content detected"
 		return
 
 	case ContentMixed:
 		// Mixed content: disable to be safe
-		config.DS201LPReason = "mixed content, conservative"
+		diagnostics.DS201LPReason = "mixed content, conservative"
 		return
 
 	case ContentSpeech:
 		// Speech: check for HF noise indicators
-		tuneDS201LowPassForSpeech(config, m)
+		tuneDS201LowPassForSpeech(config, diagnostics, m)
 	}
 }
 
@@ -625,13 +630,13 @@ func tuneDS201LowPass(config *FilterChainConfig, m *AudioMeasurements) {
 // Constraints:
 //   - Never cut below 8kHz (sibilance lives at 4-8kHz, air/presence at 8-12kHz)
 //   - Conservative approach — preserves natural voice character
-func tuneDS201LowPassForSpeech(config *FilterChainConfig, m *AudioMeasurements) {
+func tuneDS201LowPassForSpeech(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, m *AudioMeasurements) {
 	// Default: DISABLED per spec — only activate when measurements indicate benefit
 	config.DS201LPEnabled = false
 	config.DS201LPFreq = ds201LPDefaultFreq
 	config.DS201LPPoles = 1 // 6dB/oct - gentle
 	config.DS201LPMix = 1.0
-	config.DS201LPReason = "no HF issues detected"
+	diagnostics.DS201LPReason = "no HF issues detected"
 
 	// Prefer speech-specific spectral metrics when available.
 	// Full-file averages are diluted by silence in multi-track recordings.
@@ -645,7 +650,7 @@ func tuneDS201LowPassForSpeech(config *FilterChainConfig, m *AudioMeasurements) 
 	// Condition 1: Voice already dark (rolloff < 8kHz)
 	// No benefit from lowpass — would only remove wanted content
 	if rolloff < lpRolloffDarkVoice {
-		config.DS201LPReason = "voice already dark (rolloff < 8kHz)"
+		diagnostics.DS201LPReason = "voice already dark (rolloff < 8kHz)"
 		return
 	}
 
@@ -661,7 +666,7 @@ func tuneDS201LowPassForSpeech(config *FilterChainConfig, m *AudioMeasurements) 
 		config.DS201LPFreq = cutoff
 		config.DS201LPPoles = 1 // 6dB/oct - very gentle for ultrasonic cleanup
 		config.DS201LPMix = 1.0
-		config.DS201LPReason = "ultrasonic cleanup (rolloff > 14kHz)"
+		diagnostics.DS201LPReason = "ultrasonic cleanup (rolloff > 14kHz)"
 		return
 	}
 
@@ -672,7 +677,7 @@ func tuneDS201LowPassForSpeech(config *FilterChainConfig, m *AudioMeasurements) 
 		config.DS201LPFreq = lpZCRCutoff
 		config.DS201LPPoles = 1 // 6dB/oct - gentle
 		config.DS201LPMix = 0.8 // Blend with dry for transparency
-		config.DS201LPReason = "high ZCR with low centroid (HF noise)"
+		diagnostics.DS201LPReason = "high ZCR with low centroid (HF noise)"
 		return
 	}
 
@@ -867,15 +872,17 @@ func tuneDeesserCentroidOnly(config *FilterChainConfig, measurements *AudioMeasu
 //   - Knee: based on spectral crest (dynamic content = soft knee)
 //   - Detection: RMS for tonal bleed/noisy silence, peak for clean recordings
 //   - Makeup: 1.0 (loudness normalisation handles level compensation)
-func tuneDS201Gate(config *FilterChainConfig, measurements *AudioMeasurements) {
-	config.DS201GateGentleMode = false
-	config.DS201GateAggression = 0
-	config.DS201GateDynamicRange = 0
-	config.DS201GateQuietSpeechEstimate = 0
-	config.DS201GateSpeechSeparation = 0
-	config.DS201GateSpeechHeadroom = 0
-	config.DS201GateThresholdUnclamped = 0
-	config.DS201GateClampReason = ""
+func tuneDS201Gate(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) {
+	if diagnostics != nil {
+		diagnostics.DS201GateGentleMode = false
+		diagnostics.DS201GateAggression = 0
+		diagnostics.DS201GateDynamicRange = 0
+		diagnostics.DS201GateQuietSpeechEstimate = 0
+		diagnostics.DS201GateSpeechSeparation = 0
+		diagnostics.DS201GateSpeechHeadroom = 0
+		diagnostics.DS201GateThresholdUnclamped = 0
+		diagnostics.DS201GateClampReason = ""
+	}
 
 	// Extract silence sample characteristics for gate tuning
 	var silenceEntropy, silenceCrest, silencePeak float64
@@ -924,7 +931,7 @@ func tuneDS201Gate(config *FilterChainConfig, measurements *AudioMeasurements) {
 	)
 
 	// Track threshold calculation diagnostics
-	if measurements.SpeechProfile != nil {
+	if measurements.SpeechProfile != nil && diagnostics != nil {
 		quietSpeech := measurements.SpeechProfile.RMSLevel - measurements.SpeechProfile.CrestFactor
 		separation := quietSpeech - measurements.NoiseFloor
 
@@ -950,13 +957,13 @@ func tuneDS201Gate(config *FilterChainConfig, measurements *AudioMeasurements) {
 			clampReason = "none"
 		}
 
-		config.DS201GateAggression = aggression
-		config.DS201GateDynamicRange = dynamicRange
-		config.DS201GateQuietSpeechEstimate = quietSpeech
-		config.DS201GateSpeechSeparation = separation
-		config.DS201GateThresholdUnclamped = thresholdUnclamped
-		config.DS201GateClampReason = clampReason
-		config.DS201GateSpeechHeadroom = quietSpeech - actualThreshold
+		diagnostics.DS201GateAggression = aggression
+		diagnostics.DS201GateDynamicRange = dynamicRange
+		diagnostics.DS201GateQuietSpeechEstimate = quietSpeech
+		diagnostics.DS201GateSpeechSeparation = separation
+		diagnostics.DS201GateThresholdUnclamped = thresholdUnclamped
+		diagnostics.DS201GateClampReason = clampReason
+		diagnostics.DS201GateSpeechHeadroom = quietSpeech - actualThreshold
 	}
 
 	// 3. Attack: based on MaxDifference, SpectralFlux, and SpectralCrest
@@ -1000,7 +1007,9 @@ func tuneDS201Gate(config *FilterChainConfig, measurements *AudioMeasurements) {
 	if lufsGap >= lufsGapExtreme && measurements.InputLRA < ds201GateGentleLRAThreshold {
 		config.DS201GateRatio = ds201GateGentleRatio
 		config.DS201GateKnee = ds201GateGentleKnee
-		config.DS201GateGentleMode = true
+		if diagnostics != nil {
+			diagnostics.DS201GateGentleMode = true
+		}
 	}
 }
 
@@ -1310,8 +1319,8 @@ func calculateDS201GateDetection(silenceEntropy, silenceCrestDB float64) string 
 //
 // This implementation uses spectral measurements to emulate program-dependent
 // behaviour that the optical T4 cell provides naturally.
-func tuneLA2ACompressor(config *FilterChainConfig, measurements *AudioMeasurements) {
-	overrides := applyHighCrestOverrides(config, measurements)
+func tuneLA2ACompressor(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) {
+	overrides := applyHighCrestOverrides(config, diagnostics, measurements)
 	tuneLA2AAttack(config, measurements)
 	tuneLA2ARelease(config, measurements, overrides)
 	tuneLA2ARatio(config, measurements, overrides)
@@ -1327,9 +1336,9 @@ func tuneLA2ACompressor(config *FilterChainConfig, measurements *AudioMeasuremen
 // calculateLimiterCeiling() in normalise.go using Pass 1 measurements as a
 // forward estimate.
 //
-// Diagnostic fields on config are always populated (active or not).
+// Diagnostic fields are always populated (active or not) when diagnostics is non-nil.
 // Returns zero-value la2aOverrides when no overrides are needed (deficit <= 0).
-func applyHighCrestOverrides(config *FilterChainConfig, measurements *AudioMeasurements) la2aOverrides {
+func applyHighCrestOverrides(config *FilterChainConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) la2aOverrides {
 	if measurements.SpeechProfile == nil {
 		debugLog("high-crest: SpeechProfile is nil, using full-file InputI/InputTP for deficit calculation")
 	}
@@ -1340,19 +1349,22 @@ func applyHighCrestOverrides(config *FilterChainConfig, measurements *AudioMeasu
 	idealCeiling := config.LoudnormTargetTP - gainRequired - safetyMarginDB
 	deficit := minLimiterCeilingDB - idealCeiling
 
-	// Always populate diagnostic fields
-	config.LA2AHighCrestDeficit = deficit
-	config.LA2AHighCrestProjectedTP = projectedTP
+	if diagnostics != nil {
+		diagnostics.LA2AHighCrestActive = false
+		diagnostics.LA2AHighCrestDeficit = deficit
+		diagnostics.LA2AHighCrestSeverity = 0
+		diagnostics.LA2AHighCrestProjectedTP = projectedTP
+	}
 
 	if deficit <= 0 {
-		config.LA2AHighCrestActive = false
-		config.LA2AHighCrestSeverity = 0
 		return la2aOverrides{}
 	}
 
 	severity := clamp(deficit/la2aHighCrestMaxDeficit, 0.0, 1.0)
-	config.LA2AHighCrestActive = true
-	config.LA2AHighCrestSeverity = severity
+	if diagnostics != nil {
+		diagnostics.LA2AHighCrestActive = true
+		diagnostics.LA2AHighCrestSeverity = severity
+	}
 
 	return la2aOverrides{
 		ThresholdFloor: lerp(-18.0, -40.0, severity),
