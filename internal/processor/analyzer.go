@@ -682,8 +682,9 @@ func createAnalysisFilterGraph(
 	// Configure for Pass 1 analysis
 	// Uses unified BuildFilterSpec() with Pass1FilterOrder:
 	// Downmix → Analysis
-	config.Pass = PassAnalysis
-	config.FilterOrder = Pass1FilterOrder
+	analysisConfig := derivePerFileConfig(config)
+	analysisConfig.Pass = PassAnalysis
+	analysisConfig.FilterOrder = Pass1FilterOrder
 
-	return setupFilterGraph(decCtx, config.BuildFilterSpec())
+	return setupFilterGraph(decCtx, analysisConfig.BuildFilterSpec())
 }
