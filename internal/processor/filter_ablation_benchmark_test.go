@@ -966,23 +966,8 @@ func setupFullbenchLoudnormMeasurement(tb testing.TB, seed *fullbenchPass2Seed) 
 	}
 
 	config := *seed.Config
-	limiterCeiling, limiterNeeded, limiterClamped := calculateLimiterCeiling(
-		seed.OutputMeasurements.OutputI,
-		seed.OutputMeasurements.OutputTP,
-		config.Loudnorm.TargetI,
-		config.Loudnorm.TargetTP,
-	)
-	preGainDB, reDerivedCeiling := calculatePreGain(
-		seed.OutputMeasurements.OutputI,
-		config.Loudnorm.TargetI,
-		config.Loudnorm.TargetTP,
-	)
-	if limiterClamped {
-		limiterCeiling = reDerivedCeiling
-	}
-
-	filterPrefix := buildPreLimiterPrefix(preGainDB, limiterCeiling, limiterNeeded)
-	measurement, err := measureWithLoudnorm(seed.OutputPath, &config, filterPrefix, nil)
+	limiter := planLimiterForLoudnorm(seed.OutputMeasurements, &config)
+	measurement, err := measureWithLoudnorm(seed.OutputPath, &config, limiter.pass3Prefix, nil)
 	if err != nil {
 		tb.Fatalf("failed to prepare fullbench loudnorm measurement: %v", err)
 	}
@@ -1006,11 +991,11 @@ func setupFullbenchLoudnormMeasurement(tb testing.TB, seed *fullbenchPass2Seed) 
 	return &fullbenchLoudnormSetup{
 		Measurement:       measurement,
 		EffectiveConfig:   &effectiveConfig,
-		Pass3FilterPrefix: filterPrefix,
-		PreGainDB:         preGainDB,
-		LimiterCeiling:    limiterCeiling,
-		LimiterNeeded:     limiterNeeded,
-		LimiterClamped:    limiterClamped,
+		Pass3FilterPrefix: limiter.pass3Prefix,
+		PreGainDB:         limiter.preGainDB,
+		LimiterCeiling:    limiter.ceilingDB,
+		LimiterNeeded:     limiter.needed,
+		LimiterClamped:    limiter.clamped,
 		LinearModeForced:  !linearPossible,
 	}
 }
