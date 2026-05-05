@@ -749,6 +749,50 @@ func TestMeasureWithLoudnormGeneratedAudioCapturesGraphFinalisationJSON(t *testi
 	}
 }
 
+func TestMeasureWithLoudnormProgressCadenceCapsAt099(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, true)
+	replaceApplyLoudnormSetupFilterGraph(t, func(
+		*ffmpeg.AVCodecContext,
+		string,
+	) (*ffmpeg.AVFilterGraph, *ffmpeg.AVFilterContext, *ffmpeg.AVFilterContext, error) {
+		return nil, nil, nil, nil
+	})
+
+	replaceLoudnormRunFilterGraph(t, func(
+		_ *audio.Reader,
+		_, _ *ffmpeg.AVFilterContext,
+		config FrameLoopConfig,
+	) error {
+		frame := ffmpeg.AVFrameAlloc()
+		defer ffmpeg.AVFrameFree(&frame)
+		frame.SetNbSamples(44100)
+
+		for range 100 {
+			config.OnInputFrame(frame)
+		}
+		return nil
+	})
+
+	var events []loudnormProgressEvent
+	_, err := measureWithLoudnorm(testFile, defaultNormalisationTestConfig(), "", func(pass PassNumber, passName string, progress float64, level float64, measurements *AudioMeasurements) {
+		events = append(events, loudnormProgressEvent{pass: pass, passName: passName, progress: progress})
+	})
+	if err != nil {
+		t.Fatalf("measureWithLoudnorm() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("progress events = %+v, want one cadence event", events)
+	}
+	requireLoudnormProgressEvent(t, events[0], loudnormProgressEvent{
+		pass:     PassMeasuring,
+		passName: "Measuring",
+		progress: 0.99,
+	})
+	requireLoudnormCaptureStoppedOnce(t, recorder)
+}
+
 type loudnormCleanupRecorder struct {
 	mu     sync.Mutex
 	order  []string
@@ -891,6 +935,19 @@ func replaceApplyLoudnormRename(t *testing.T, rename func(string, string) error)
 	})
 }
 
+func replaceLoudnormRunFilterGraph(
+	t *testing.T,
+	run func(*audio.Reader, *ffmpeg.AVFilterContext, *ffmpeg.AVFilterContext, FrameLoopConfig) error,
+) {
+	t.Helper()
+
+	oldRun := loudnormRunFilterGraph
+	loudnormRunFilterGraph = run
+	t.Cleanup(func() {
+		loudnormRunFilterGraph = oldRun
+	})
+}
+
 type loudnormTestEncoder struct {
 	writeFrame func(*ffmpeg.AVFrame) error
 	flush      func() error
@@ -963,6 +1020,26 @@ func generateLoudnormApplicationTestAudio(t *testing.T) string {
 	return testFile
 }
 
+type loudnormProgressEvent struct {
+	pass     PassNumber
+	passName string
+	progress float64
+}
+
+func requireLoudnormProgressEvent(t *testing.T, got loudnormProgressEvent, want loudnormProgressEvent) {
+	t.Helper()
+
+	if got.pass != want.pass {
+		t.Fatalf("progress pass = %d, want %d", got.pass, want.pass)
+	}
+	if got.passName != want.passName {
+		t.Fatalf("progress passName = %q, want %q", got.passName, want.passName)
+	}
+	if math.Abs(got.progress-want.progress) > 0.000001 {
+		t.Fatalf("progress value = %.6f, want %.6f", got.progress, want.progress)
+	}
+}
+
 func oldFixedLoudnormTempPath(inputPath string) string {
 	return strings.TrimSuffix(inputPath, filepath.Ext(inputPath)) + ".loudnorm.tmp.flac"
 }
@@ -1000,26 +1077,21 @@ func requireNoLoudnormTempFiles(t *testing.T, inputPath string) {
 func applyLoudnormTest(
 	t *testing.T,
 	inputPath string,
-) (float64, float64, *OutputMeasurements, *LoudnormStats, time.Duration, error) {
+) (*loudnormApplicationResult, error) {
 	t.Helper()
 
-	return applyLoudnormAndMeasure(
-		inputPath,
-		loudnormApplicationTestConfig(),
-		loudnormApplicationTestMeasurement(),
-		nil,
-		0,
-		0,
-		false,
-		nil,
-	)
+	return applyLoudnormAndMeasure(loudnormApplicationRequest{
+		inputPath:   inputPath,
+		config:      loudnormApplicationTestConfig(),
+		measurement: loudnormApplicationTestMeasurement(),
+	})
 }
 
 func TestApplyLoudnormAndMeasureDoesNotStartCaptureOnOpenError(t *testing.T) {
 	recorder := installLoudnormCleanupRecorder(t)
 	replaceApplyLoudnormGraphFree(t, recorder, false)
 
-	_, _, _, _, _, err := applyLoudnormTest(t, "/does/not/exist.wav")
+	_, err := applyLoudnormTest(t, "/does/not/exist.wav")
 	if err == nil {
 		t.Fatal("applyLoudnormAndMeasure() error = nil, want open error")
 	}
@@ -1047,7 +1119,7 @@ func TestApplyLoudnormAndMeasureSetupErrorDoesNotStartCaptureOrFreeGraph(t *test
 		return nil, nil, nil, setupErr
 	})
 
-	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	_, err := applyLoudnormTest(t, testFile)
 	if !errors.Is(err, setupErr) {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped setup error", err)
 	}
@@ -1080,7 +1152,7 @@ func TestApplyLoudnormAndMeasureEncoderCreationErrorFreesGraphBeforeStoppingCapt
 		return nil, createErr
 	})
 
-	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	_, err := applyLoudnormTest(t, testFile)
 	if !errors.Is(err, createErr) {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped encoder creation error", err)
 	}
@@ -1129,7 +1201,7 @@ func TestApplyLoudnormAndMeasureLoopErrorFreesGraphBeforeStoppingCapture(t *test
 		loudnormRunFilterGraph = oldRun
 	})
 
-	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	_, err := applyLoudnormTest(t, testFile)
 	if !errors.Is(err, runErr) {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v, want loop error", err)
 	}
@@ -1179,7 +1251,7 @@ func TestApplyLoudnormAndMeasureFlushErrorFreesGraphBeforeStoppingCapture(t *tes
 		loudnormRunFilterGraph = oldRun
 	})
 
-	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	_, err := applyLoudnormTest(t, testFile)
 	if !errors.Is(err, flushErr) {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped flush error", err)
 	}
@@ -1232,7 +1304,7 @@ func TestApplyLoudnormAndMeasureCloseErrorFreesGraphBeforeStoppingCapture(t *tes
 		loudnormRunFilterGraph = oldRun
 	})
 
-	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	_, err := applyLoudnormTest(t, testFile)
 	if !errors.Is(err, closeErr) {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped close error", err)
 	}
@@ -1291,7 +1363,7 @@ func TestApplyLoudnormAndMeasureRenameErrorFreesGraphBeforeStoppingCapture(t *te
 		return renameErr
 	})
 
-	_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+	_, err := applyLoudnormTest(t, testFile)
 	if !errors.Is(err, renameErr) {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v, want wrapped rename error", err)
 	}
@@ -1325,20 +1397,25 @@ func TestApplyLoudnormAndMeasureSuccessFreesGraphBeforeStoppingCapture(t *testin
 		return os.Rename(oldPath, newPath)
 	})
 
-	finalLUFS, _, finalMeasurements, stats, _, err := applyLoudnormTest(t, testFile)
+	result, err := applyLoudnormTest(t, testFile)
 	if err != nil {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v", err)
 	}
+	if result == nil {
+		t.Fatal("loudnorm application result = nil")
+	}
+	stats := result.loudnormStats
 	if stats == nil {
 		t.Fatal("loudnorm stats = nil, want parsed stats")
 	}
 	if stats.OutputI != "-16.0" {
 		t.Fatalf("stats.OutputI = %q, want -16.0", stats.OutputI)
 	}
+	finalMeasurements := result.finalMeasurements
 	if finalMeasurements == nil {
 		t.Fatal("final measurements = nil, want measurements")
 	}
-	if math.IsNaN(finalLUFS) {
+	if math.IsNaN(result.finalLUFS) {
 		t.Fatal("final LUFS is NaN")
 	}
 	if gotOrder := recorder.orderString(); gotOrder != "free,stop" {
@@ -1466,7 +1543,7 @@ func TestApplyLoudnormAndMeasureEncodingAndPublishRunOutsideCapture(t *testing.T
 
 	done := make(chan error, 1)
 	go func() {
-		_, _, _, _, _, err := applyLoudnormTest(t, testFile)
+		_, err := applyLoudnormTest(t, testFile)
 		done <- err
 	}()
 
@@ -1524,13 +1601,18 @@ func TestApplyLoudnormAndMeasureMissingPass4JSONReturnsNilStatsWithoutError(t *t
 		return os.Rename(oldPath, newPath)
 	})
 
-	_, _, finalMeasurements, stats, _, err := applyLoudnormTest(t, testFile)
+	result, err := applyLoudnormTest(t, testFile)
 	if err != nil {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v", err)
 	}
+	if result == nil {
+		t.Fatal("loudnorm application result = nil")
+	}
+	stats := result.loudnormStats
 	if stats != nil {
 		t.Fatalf("loudnorm stats = %+v, want nil", stats)
 	}
+	finalMeasurements := result.finalMeasurements
 	if finalMeasurements == nil {
 		t.Fatal("final measurements = nil, want measurements")
 	}
@@ -1560,13 +1642,18 @@ func TestApplyLoudnormAndMeasureMalformedPass4JSONReturnsNilStatsWithoutError(t 
 		return os.Rename(oldPath, newPath)
 	})
 
-	_, _, finalMeasurements, stats, _, err := applyLoudnormTest(t, testFile)
+	result, err := applyLoudnormTest(t, testFile)
 	if err != nil {
 		t.Fatalf("applyLoudnormAndMeasure() error = %v", err)
 	}
+	if result == nil {
+		t.Fatal("loudnorm application result = nil")
+	}
+	stats := result.loudnormStats
 	if stats != nil {
 		t.Fatalf("loudnorm stats = %+v, want nil", stats)
 	}
+	finalMeasurements := result.finalMeasurements
 	if finalMeasurements == nil {
 		t.Fatal("final measurements = nil, want measurements")
 	}
@@ -1574,6 +1661,89 @@ func TestApplyLoudnormAndMeasureMalformedPass4JSONReturnsNilStatsWithoutError(t 
 		t.Fatalf("cleanup order = %s, want free,stop", gotOrder)
 	}
 	requireLoudnormCaptureStoppedOnce(t, recorder)
+	requireNoLoudnormTempFiles(t, testFile)
+}
+
+func TestApplyNormalisationProgressCadenceGuard(t *testing.T) {
+	testFile := generateLoudnormApplicationTestAudio(t)
+	recorder := installLoudnormCleanupRecorder(t)
+	replaceApplyLoudnormGraphFree(t, recorder, true)
+	replaceApplyLoudnormSetupFilterGraph(t, func(
+		*ffmpeg.AVCodecContext,
+		string,
+	) (*ffmpeg.AVFilterGraph, *ffmpeg.AVFilterContext, *ffmpeg.AVFilterContext, error) {
+		return nil, nil, nil, nil
+	})
+	replaceApplyLoudnormCreateEncoder(t, func(
+		string,
+		*audio.Metadata,
+		*ffmpeg.AVFilterContext,
+	) (loudnormOutputEncoder, error) {
+		return &loudnormTestEncoder{}, nil
+	})
+	replaceApplyLoudnormRename(t, func(oldPath, _ string) error {
+		return os.Remove(oldPath)
+	})
+
+	var runCalls int
+	replaceLoudnormRunFilterGraph(t, func(
+		_ *audio.Reader,
+		_, _ *ffmpeg.AVFilterContext,
+		config FrameLoopConfig,
+	) error {
+		runCalls++
+		frame := ffmpeg.AVFrameAlloc()
+		defer ffmpeg.AVFrameFree(&frame)
+		frame.SetNbSamples(44100)
+
+		for range 100 {
+			config.OnInputFrame(frame)
+			if runCalls == 2 {
+				if err := config.OnFrame(frame, frame); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+
+	var events []loudnormProgressEvent
+	_, err := ApplyNormalisation(
+		testFile,
+		defaultNormalisationTestConfig(),
+		&OutputMeasurements{OutputI: -20.0, OutputTP: -10.0},
+		nil,
+		func(pass PassNumber, passName string, progress float64, level float64, measurements *AudioMeasurements) {
+			events = append(events, loudnormProgressEvent{pass: pass, passName: passName, progress: progress})
+		},
+	)
+	if err != nil {
+		t.Fatalf("ApplyNormalisation() error = %v", err)
+	}
+	if runCalls != 2 {
+		t.Fatalf("loudnorm run calls = %d, want 2", runCalls)
+	}
+
+	want := []loudnormProgressEvent{
+		{pass: PassMeasuring, passName: "Measuring", progress: 0.0},
+		{pass: PassMeasuring, passName: "Measuring", progress: 0.99},
+		{pass: PassMeasuring, passName: "Measuring", progress: 1.0},
+		{pass: PassNormalising, passName: "Normalising", progress: 0.0},
+		{pass: PassNormalising, passName: "Normalising", progress: 0.99},
+		{pass: PassNormalising, passName: "Normalising", progress: 1.0},
+	}
+	if len(events) != len(want) {
+		t.Fatalf("progress events = %+v, want %+v", events, want)
+	}
+	for i := range want {
+		requireLoudnormProgressEvent(t, events[i], want[i])
+	}
+	if recorder.freeCount() != 2 {
+		t.Fatalf("graph free count = %d, want 2", recorder.freeCount())
+	}
+	if recorder.stopCount() != 2 {
+		t.Fatalf("capture stop count = %d, want 2", recorder.stopCount())
+	}
 	requireNoLoudnormTempFiles(t, testFile)
 }
 
@@ -2493,6 +2663,173 @@ func TestBuildPreLimiterPrefix(t *testing.T) {
 				if !strings.Contains(result, wantLimit) {
 					t.Errorf("expected %q in result %q", wantLimit, result)
 				}
+			}
+		})
+	}
+}
+
+func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
+	tests := []struct {
+		name           string
+		outputI        float64
+		outputTP       float64
+		measurement    LoudnormMeasurement
+		wantPass3      string
+		wantPass4      string
+		wantPass4Start string
+	}{
+		{
+			name:     "non-limited",
+			outputI:  -20.0,
+			outputTP: -10.0,
+			measurement: LoudnormMeasurement{
+				InputI:       -20.0,
+				InputTP:      -10.0,
+				InputLRA:     5.0,
+				InputThresh:  -30.0,
+				TargetOffset: 0.0,
+			},
+			wantPass3:      "",
+			wantPass4Start: "loudnorm=",
+			wantPass4:      "loudnorm=I=-16.00:TP=-2.00:LRA=20.0:measured_I=-20.00:measured_TP=-10.00:measured_LRA=5.00:measured_thresh=-30.00:offset=0.00:dual_mono=true:linear=true:print_format=json,adeclick=t=2.0:w=55:o=50:m=s,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
+		},
+		{
+			name:     "limited",
+			outputI:  -24.9,
+			outputTP: -5.0,
+			measurement: LoudnormMeasurement{
+				InputI:       -24.9,
+				InputTP:      -5.0,
+				InputLRA:     6.0,
+				InputThresh:  -35.0,
+				TargetOffset: -0.5,
+			},
+			wantPass3:      "alimiter=limit=0.239883:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8",
+			wantPass4Start: "alimiter=limit=0.239883:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=",
+			wantPass4:      "alimiter=limit=0.239883:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=I=-16.00:TP=-2.00:LRA=20.0:measured_I=-24.90:measured_TP=-5.00:measured_LRA=6.00:measured_thresh=-35.00:offset=-0.50:dual_mono=true:linear=true:print_format=json,adeclick=t=2.0:w=55:o=50:m=s,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
+		},
+		{
+			name:     "clamped pre-gain",
+			outputI:  -43.2,
+			outputTP: -18.6,
+			measurement: LoudnormMeasurement{
+				InputI:       -36.5,
+				InputTP:      -24.0,
+				InputLRA:     8.0,
+				InputThresh:  -46.5,
+				TargetOffset: -2.5,
+			},
+			wantPass3:      "volume=6.7dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8",
+			wantPass4Start: "volume=6.7dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=",
+			wantPass4:      "volume=6.7dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=I=-16.00:TP=-2.00:LRA=20.0:measured_I=-36.50:measured_TP=-24.00:measured_LRA=8.00:measured_thresh=-46.50:offset=-2.50:dual_mono=true:linear=true:print_format=json,adeclick=t=2.0:w=55:o=50:m=s,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := defaultNormalisationTestConfig()
+			output := &OutputMeasurements{
+				OutputI:  tt.outputI,
+				OutputTP: tt.outputTP,
+			}
+
+			limiter := planLimiterForLoudnorm(output, config)
+			if limiter.pass3Prefix != tt.wantPass3 {
+				t.Fatalf("pass 3 prefix = %q, want %q", limiter.pass3Prefix, tt.wantPass3)
+			}
+
+			gotPass4 := buildLoudnormFilterSpec(
+				config,
+				&tt.measurement,
+				limiter.preGainDB,
+				limiter.ceilingDB,
+				limiter.needed,
+			)
+			if !strings.HasPrefix(gotPass4, tt.wantPass4Start) {
+				t.Fatalf("pass 4 filter spec prefix = %q, want prefix %q", gotPass4, tt.wantPass4Start)
+			}
+			if gotPass4 != tt.wantPass4 {
+				t.Fatalf("pass 4 filter spec changed\ngot:  %s\nwant: %s", gotPass4, tt.wantPass4)
+			}
+		})
+	}
+}
+
+func TestPlanLimiterForLoudnormMatchesInlineCalculation(t *testing.T) {
+	tests := []struct {
+		name       string
+		outputI    float64
+		outputTP   float64
+		wantNeeded bool
+		wantClamp  bool
+	}{
+		{
+			name:       "non-limited",
+			outputI:    -20.0,
+			outputTP:   -10.0,
+			wantNeeded: false,
+			wantClamp:  false,
+		},
+		{
+			name:       "limited",
+			outputI:    -24.9,
+			outputTP:   -5.0,
+			wantNeeded: true,
+			wantClamp:  false,
+		},
+		{
+			name:       "clamped",
+			outputI:    -43.2,
+			outputTP:   -18.6,
+			wantNeeded: true,
+			wantClamp:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := defaultNormalisationTestConfig()
+			output := &OutputMeasurements{
+				OutputI:  tt.outputI,
+				OutputTP: tt.outputTP,
+			}
+
+			wantCeiling, wantNeeded, wantClamped := calculateLimiterCeiling(
+				output.OutputI,
+				output.OutputTP,
+				config.Loudnorm.TargetI,
+				config.Loudnorm.TargetTP,
+			)
+			wantPreGainDB, reDerivedCeiling := calculatePreGain(
+				output.OutputI,
+				config.Loudnorm.TargetI,
+				config.Loudnorm.TargetTP,
+			)
+			if wantClamped {
+				wantCeiling = reDerivedCeiling
+			}
+			wantGainDB := config.Loudnorm.TargetI - output.OutputI
+			wantPrefix := buildPreLimiterPrefix(wantPreGainDB, wantCeiling, wantNeeded)
+
+			got := planLimiterForLoudnorm(output, config)
+
+			if got.needed != wantNeeded || got.needed != tt.wantNeeded {
+				t.Fatalf("needed = %v, want inline %v and case %v", got.needed, wantNeeded, tt.wantNeeded)
+			}
+			if got.clamped != wantClamped || got.clamped != tt.wantClamp {
+				t.Fatalf("clamped = %v, want inline %v and case %v", got.clamped, wantClamped, tt.wantClamp)
+			}
+			if math.Abs(got.preGainDB-wantPreGainDB) > 0.01 {
+				t.Fatalf("preGainDB = %.2f, want %.2f", got.preGainDB, wantPreGainDB)
+			}
+			if math.Abs(got.ceilingDB-wantCeiling) > 0.01 {
+				t.Fatalf("ceilingDB = %.2f, want %.2f", got.ceilingDB, wantCeiling)
+			}
+			if math.Abs(got.gainDB-wantGainDB) > 0.01 {
+				t.Fatalf("gainDB = %.2f, want %.2f", got.gainDB, wantGainDB)
+			}
+			if got.pass3Prefix != wantPrefix {
+				t.Fatalf("pass3Prefix = %q, want %q", got.pass3Prefix, wantPrefix)
 			}
 		})
 	}
