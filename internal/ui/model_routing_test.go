@@ -61,7 +61,7 @@ func TestFileCompleteMsgIndexRouting(t *testing.T) {
 
 func TestUpdateOutOfRangeSafety(t *testing.T) {
 	m := NewModel([]string{"a.wav", "b.wav"})
-	want := m.Files
+	want := append([]FileProgress(nil), m.Files...)
 
 	indices := []int{-1, len(m.Files)}
 	for _, idx := range indices {
