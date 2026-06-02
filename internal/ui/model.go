@@ -56,7 +56,6 @@ type FileProgress struct {
 type Model struct {
 	// File queue
 	Files          []FileProgress
-	CurrentIndex   int
 	TotalFiles     int
 	CompletedFiles int
 	FailedFiles    int
@@ -82,10 +81,9 @@ func NewModel(inputFiles []string) Model {
 	}
 
 	return Model{
-		Files:        files,
-		CurrentIndex: -1, // No file processing yet
-		TotalFiles:   len(inputFiles),
-		StartTime:    time.Now(),
+		Files:      files,
+		TotalFiles: len(inputFiles),
+		StartTime:  time.Now(),
 	}
 }
 
@@ -109,30 +107,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ProgressMsg:
 		// Update the current file's progress
-		if m.CurrentIndex >= 0 && m.CurrentIndex < len(m.Files) {
-			m.Files[m.CurrentIndex] = updateFileProgress(m.Files[m.CurrentIndex], msg)
+		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			m.Files[msg.FileIndex] = updateFileProgress(m.Files[msg.FileIndex], msg)
 		}
 		return m, nil
 
 	case FileStartMsg:
 		// Start processing next file
-		m.CurrentIndex = msg.FileIndex
-		m.Files[m.CurrentIndex].Status = StatusAnalyzing
-		m.Files[m.CurrentIndex].StartTime = time.Now()
+		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			m.Files[msg.FileIndex].Status = StatusAnalyzing
+			m.Files[msg.FileIndex].StartTime = time.Now()
+		}
 		return m, nil
 
 	case FileCompleteMsg:
 		// Mark file as complete
-		if m.CurrentIndex >= 0 && m.CurrentIndex < len(m.Files) {
-			m.Files[m.CurrentIndex].Status = StatusComplete
-			m.Files[m.CurrentIndex].InputLUFS = msg.InputLUFS
-			m.Files[m.CurrentIndex].OutputLUFS = msg.OutputLUFS
-			m.Files[m.CurrentIndex].NoiseFloor = msg.NoiseFloor
-			m.Files[m.CurrentIndex].OutputPath = msg.OutputPath
-			m.Files[m.CurrentIndex].Error = msg.Error
+		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			m.Files[msg.FileIndex].Status = StatusComplete
+			m.Files[msg.FileIndex].InputLUFS = msg.InputLUFS
+			m.Files[msg.FileIndex].OutputLUFS = msg.OutputLUFS
+			m.Files[msg.FileIndex].NoiseFloor = msg.NoiseFloor
+			m.Files[msg.FileIndex].OutputPath = msg.OutputPath
+			m.Files[msg.FileIndex].Error = msg.Error
 
 			if msg.Error != nil {
-				m.Files[m.CurrentIndex].Status = StatusError
+				m.Files[msg.FileIndex].Status = StatusError
 				m.FailedFiles++
 			} else {
 				m.CompletedFiles++
@@ -153,7 +152,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) View() string {
 	// Debug: Show basic info even before window size is set
 	if m.Width == 0 {
-		return fmt.Sprintf("Initializing...\nFiles: %d\nCurrent: %d\n", len(m.Files), m.CurrentIndex)
+		return fmt.Sprintf("Initializing...\nFiles: %d\n", len(m.Files))
 	}
 
 	// Build the view based on current state

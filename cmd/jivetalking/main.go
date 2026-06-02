@@ -112,10 +112,9 @@ func main() {
 	if debugLog != nil {
 		defer debugLog.Close()
 	}
+	sink := newDebugSink(debugLog)
 	log := func(format string, args ...any) {
-		if debugLog != nil {
-			fmt.Fprintf(debugLog, format+"\n", args...)
-		}
+		sink.Logf(format, args...)
 	}
 
 	// Set the config's debug log function to use the same log
@@ -148,8 +147,9 @@ func main() {
 
 			// Create progress handler
 			ph := &progressHandler{
-				p:   p,
-				log: log,
+				p:         p,
+				log:       log,
+				fileIndex: i,
 			}
 
 			// Process the audio file
@@ -277,6 +277,7 @@ func (ph *progressHandler) timings(pass2Time time.Duration) logging.ProcessingTi
 type progressHandler struct {
 	p          *tea.Program
 	log        func(string, ...any)
+	fileIndex  int
 	pass1Start time.Time
 	pass1Time  time.Duration
 	pass3Start time.Time
@@ -305,6 +306,7 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 	}
 
 	ph.p.Send(ui.ProgressMsg{
+		FileIndex:    ph.fileIndex,
 		Pass:         update.Pass,
 		PassName:     update.PassName,
 		Progress:     update.Progress,

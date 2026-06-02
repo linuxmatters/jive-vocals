@@ -219,15 +219,8 @@ func renderOverallProgress(m Model) string {
 		BorderForeground(lipgloss.Color("#888888")).
 		Padding(0, 1)
 
-	// Show current file being processed
-	var content string
-	if m.CurrentIndex >= 0 && m.CurrentIndex < len(m.Files) {
-		currentFile := m.CurrentIndex + 1 // 1-indexed for display
-		content = fmt.Sprintf("Processing file %d of %d (%d complete)",
-			currentFile, m.TotalFiles, m.CompletedFiles)
-	} else {
-		content = fmt.Sprintf("Overall Progress: %d/%d complete", m.CompletedFiles, m.TotalFiles)
-	}
+	content := fmt.Sprintf("Processing %d files, %d complete, %d failed",
+		m.TotalFiles, m.CompletedFiles, m.FailedFiles)
 
 	return box.Render(content)
 }
