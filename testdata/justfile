@@ -1,117 +1,91 @@
 # Jivetalking - Presenter Integration Tests
-# This file contains commands for testing with local audio files (not in git)
-# Use fixture-5m.flac for iterative fullbench runs from the repo root:
-# JIVETALKING_BENCH_FIXTURE=testdata/fixture-5m.flac just bench-fullbench
-# Path to testdata directory (source_directory returns the directory of THIS file)
+# Local audio files (not in git). Imported into the root justfile, so recipes run
+# from the repo root where ./jivetalking lives.
 
+# source_directory() returns the directory of THIS file
 testdata := source_directory()
 
-# Test episode number (change this to test different episodes)
+# Current episode (override per run, e.g. `just ep=82 process-presenters`)
+ep := "81"
 
-episode := "81"
+# Presenters processed by the batch recipes
+presenters := "mark martin popey"
 
-# Get Mark's processed logs
-mark-logs:
-    @cat {{ testdata }}/LMP-{{ episode }}-mark-*-processed.log
+# Episodes processed by the `*-all` recipes
+episodes_list := "68 69 70 71 72 73 74 75 76 77 78 79 80 81"
 
-# Stash Mark's processed logs
-mark-log-stash:
-    @cp {{ testdata }}/LMP-{{ episode }}-mark-*-processed.log {{ testdata }}/LMP-{{ episode }}-mark-stashed.log
+# Analyse one presenter for the current episode
+_analyse-one presenter:
+    @./jivetalking -a {{ testdata }}/LMP-{{ ep }}-{{ presenter }}.flac
 
-# Process mark audio
-mark:
-    @rm -f {{ testdata }}/LMP-{{ episode }}-mark-*-processed.*
-    @./jivetalking --debug {{ testdata }}/LMP-{{ episode }}-mark.flac
-    @just mark-logs
+# Process one presenter for the current episode
+_process-one presenter:
+    @rm -f {{ testdata }}/LMP-{{ ep }}-{{ presenter }}-*-processed.*
+    @./jivetalking --debug {{ testdata }}/LMP-{{ ep }}-{{ presenter }}.flac
 
-# Get Martin's processed logs
-martin-logs:
-    @cat {{ testdata }}/LMP-{{ episode }}-martin-*-processed.log
+# Analyse Mark's audio for the current episode
+analyse-mark: (_analyse-one "mark")
 
-# Stash Martin's processed logs
-martin-log-stash:
-    @cp {{ testdata }}/LMP-{{ episode }}-martin-*-processed.log {{ testdata }}/LMP-{{ episode }}-martin-stashed.log
+# Analyse Martin's audio for the current episode
+analyse-martin: (_analyse-one "martin")
 
-# Process martin audio
-martin:
-    @rm -f {{ testdata }}/LMP-{{ episode }}-martin-*-processed.*
-    @./jivetalking --debug {{ testdata }}/LMP-{{ episode }}-martin.flac
-    @just martin-logs
+# Analyse popey's audio for the current episode
+analyse-popey: (_analyse-one "popey")
 
-# Get popey's processed logs
-popey-logs:
-    @cat {{ testdata }}/LMP-{{ episode }}-popey-*-processed.log
-
-# Stash popey's processed logs
-popey-log-stash:
-    @cp {{ testdata }}/LMP-{{ episode }}-popey-*-processed.log {{ testdata }}/LMP-{{ episode }}-popey-stashed.log
-
-# Process popey audio
-popey:
-    @rm -f {{ testdata }}/LMP-{{ episode }}-popey-*-processed.*
-    @./jivetalking --debug {{ testdata }}/LMP-{{ episode }}-popey.flac
-    @just popey-logs
-
-# Analyse Mark's audio
-mark-analysis:
-    @./jivetalking -a {{ testdata }}/LMP-{{ episode }}-mark.flac | tee {{ testdata }}/LMP-{{ episode }}-mark-analysis.log
-
-# Analyse Martin's audio
-martin-analysis:
-    @./jivetalking -a {{ testdata }}/LMP-{{ episode }}-martin.flac | tee {{ testdata }}/LMP-{{ episode }}-martin-analysis.log
-
-# Analyse popey's audio
-popey-analysis:
-    @./jivetalking -a {{ testdata }}/LMP-{{ episode }}-popey.flac | tee {{ testdata }}/LMP-{{ episode }}-popey-analysis.log
-
-# Process all presenters
-presenters: mark martin popey
-
-# Analyse all presenter
-analysis: mark-analysis martin-analysis popey-analysis
-
-# Process all presenters for all episodes
-all-episodes:
+# Analyse all presenters for the current episode in one operation
+analyse-presenters:
     #!/usr/bin/env bash
-    for ep in 68 69 70 71 72 73 74 75 76 77 78 79 80 81; do
-        echo "=== Processing Episode $ep ==="
-        for presenter in mark martin popey; do
-            echo "--- $presenter ---"
-            rm -f {{ testdata }}/LMP-${ep}-${presenter}-*-processed.*
-            ./jivetalking --debug {{ testdata }}/LMP-${ep}-${presenter}.flac
-        done
+    set -euo pipefail
+    files=()
+    for presenter in {{ presenters }}; do
+        f="{{ testdata }}/LMP-{{ ep }}-${presenter}.flac"
+        [ -f "$f" ] && files+=("$f")
+    done
+    if [ ${#files[@]} -eq 0 ]; then
+        echo "=== No audio for episode {{ ep }}, skipping ==="
+        exit 0
+    fi
+    echo "=== Analysing Episode {{ ep }} ==="
+    ./jivetalking -a "${files[@]}"
+
+# Analyse all presenters for every episode in batch mode
+analyse-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for e in {{ episodes_list }}; do
+        just ep="$e" analyse-presenters
     done
 
-# Run analysis-only mode on all episodes and presenters
-all-analyse:
+# Process Mark's audio for the current episode
+process-mark: (_process-one "mark")
+
+# Process Martin's audio for the current episode
+process-martin: (_process-one "martin")
+
+# Process popey's audio for the current episode
+process-popey: (_process-one "popey")
+
+# Process all presenters for the current episode in one operation
+process-presenters:
     #!/usr/bin/env bash
-    for ep in 68 69 70 71 72 73 74 75 76 77 78 79 80 81; do
-        echo "=== Analysing Episode $ep ==="
-        for presenter in mark martin popey; do
-            audio_file="{{ testdata }}/LMP-${ep}-${presenter}.flac"
-            log_file="{{ testdata }}/LMP-${ep}-${presenter}-analysis.log"
-            if [[ -f "$audio_file" ]]; then
-                echo "--- $presenter ---"
-                ./jivetalking -a "$audio_file" | tee "$log_file"
-            else
-                echo "--- $presenter (skipped: file not found) ---"
-            fi
-        done
+    set -euo pipefail
+    rm -f {{ testdata }}/LMP-{{ ep }}-*-processed.*
+    files=()
+    for presenter in {{ presenters }}; do
+        f="{{ testdata }}/LMP-{{ ep }}-${presenter}.flac"
+        [ -f "$f" ] && files+=("$f")
     done
+    if [ ${#files[@]} -eq 0 ]; then
+        echo "=== No audio for episode {{ ep }}, skipping ==="
+        exit 0
+    fi
+    echo "=== Processing Episode {{ ep }} ==="
+    ./jivetalking --debug "${files[@]}"
 
-# Stash all presenters logs
-stash: mark-log-stash martin-log-stash popey-log-stash
-
-
-# Run analysis-only mode on all episodes and presenters
-stash-analysis:
+# Process all presenters for every episode in batch mode
+process-all:
     #!/usr/bin/env bash
-    for ep in 68 69 70 71 72 73 74 75 76 77 78 79 80 81; do
-        for presenter in mark martin popey; do
-            log_file="{{ testdata }}/LMP-${ep}-${presenter}-analysis.log"
-            stash_log_file="{{ testdata }}/LMP-${ep}-${presenter}-analysis-before.log"
-            if [ -e "${log_file}" ]; then
-                cp "${log_file}" "${stash_log_file}"
-            fi
-        done
+    set -euo pipefail
+    for e in {{ episodes_list }}; do
+        just ep="$e" process-presenters
     done

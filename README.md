@@ -235,9 +235,6 @@ just build
 # Run tests
 just test
 
-# Run processor benchmarks
-just bench
-
 # Install to ~/.local/bin
 just install
 ```
