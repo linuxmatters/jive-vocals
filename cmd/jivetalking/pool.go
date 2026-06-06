@@ -18,6 +18,20 @@ import (
 // seam idiom in internal/processor/normalise.go.
 var poolProcessAudio = processor.ProcessAudio
 
+// launchWorkerPool starts runWorkerPool in a goroutine and returns a channel
+// closed once the pool has fully unwound. Callers block on the channel after
+// cancelling the context so all workers' deferred temp cleanup runs before the
+// process exits, giving the no-residue-on-cancel guarantee. Keeping the launch
+// and join in one helper makes the wiring unit-testable apart from main().
+func launchWorkerPool(ctx context.Context, p *tea.Program, files []string, base *processor.BaseFilterConfig, sharedLog func(string, ...any), jobs int, reportWarnings chan<- string) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		runWorkerPool(ctx, p, files, base, sharedLog, jobs, reportWarnings)
+		close(done)
+	}()
+	return done
+}
+
 // runWorkerPool processes files concurrently under a bounded worker pool sharing
 // one tea.Program. A buffered semaphore of size jobs caps in-flight workers; a
 // sync.WaitGroup tracks completion. Each worker owns its file index, a per-file
