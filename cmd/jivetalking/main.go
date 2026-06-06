@@ -144,7 +144,7 @@ func main() {
 
 	jobs := resolveJobs(cliArgs.Jobs, runtime.NumCPU())
 
-	go runWorkerPool(runCtx, p, cliArgs.Files, config, log, jobs, reportWarnings)
+	poolDone := launchWorkerPool(runCtx, p, cliArgs.Files, config, log, jobs, reportWarnings)
 
 	_, runErr := p.Run()
 
@@ -153,6 +153,16 @@ func main() {
 	// already finished), and on user quit it stops in-flight workers via
 	// ctx.Done() so their deferred temp cleanup runs and wg.Wait() completes.
 	cancel()
+
+	// Wait for the pool to fully unwind before exiting on either path. After a
+	// user quit p.Run() returns immediately while in-flight workers still need
+	// to observe ctx.Done(), abort ProcessAudio, run their deferred temp
+	// cleanup, and call wg.Done(); exiting first would leave temp dotfiles and
+	// violate the no-residue-on-cancel guarantee. No deadlock: post-Run
+	// tea.Program.Send is a non-blocking no-op, so the pool's FileComplete/
+	// AllComplete sends do not block, and the acquire-time ctx.Done() select
+	// lets not-yet-started workers exit at once.
+	<-poolDone
 
 	if err := runErr; err != nil {
 		cli.PrintError(fmt.Sprintf("UI error: %v", err))

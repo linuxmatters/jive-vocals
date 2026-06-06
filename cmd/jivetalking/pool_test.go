@@ -614,3 +614,91 @@ func TestRunWorkerPool_SerialParityJobs1(t *testing.T) {
 		t.Fatal("AllCompleteMsg did not fire")
 	}
 }
+
+// TestLaunchWorkerPool_DoneClosesAfterPoolUnwinds proves main()'s wiring: the
+// channel launchWorkerPool returns must stay open while workers run and close
+// only after the pool fully unwinds. Were main() not to wait on it, the process
+// could exit before workers' deferred temp cleanup ran. The fake gates on a
+// release channel so the test observes the not-yet-closed state deterministically
+// before letting the worker finish.
+func TestLaunchWorkerPool_DoneClosesAfterPoolUnwinds(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{})
+	var once sync.Once
+
+	orig := poolProcessAudio
+	poolProcessAudio = func(_ context.Context, _ string, _ *processor.BaseFilterConfig, _ processor.ProgressCallback) (*processor.ProcessingResult, error) {
+		once.Do(func() { close(started) })
+		<-release
+		return nil, errors.New("synthetic error to drive pool error branch")
+	}
+	t.Cleanup(func() { poolProcessAudio = orig })
+
+	model := recordingModel{mu: &sync.Mutex{}, fileComplete: new(int), allComplete: new(bool)}
+	p := tea.NewProgram(model, tea.WithoutRenderer(), tea.WithInput(nil))
+	go func() {
+		if _, err := p.Run(); err != nil {
+			t.Errorf("p.Run() error = %v", err)
+		}
+	}()
+
+	dir := t.TempDir()
+	files := []string{filepath.Join(dir, "fake.flac")}
+	base := processor.DefaultFilterConfig()
+	reportWarnings := make(chan string, len(files))
+
+	done := launchWorkerPool(context.Background(), p, files, base, func(string, ...any) {}, 1, reportWarnings)
+
+	<-started
+	select {
+	case <-done:
+		t.Fatal("done closed while a worker was still in-flight")
+	default:
+	}
+
+	close(release)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("done did not close after the pool unwound")
+	}
+}
+
+// TestLaunchWorkerPool_DoneClosesOnPreCancelledContext proves the wait main()
+// performs cannot wedge: with an already-cancelled context every worker either
+// skips at the acquire-time ctx.Done() select or runs and returns, so every
+// wg.Done() fires and launchWorkerPool's channel closes promptly. The fake
+// returns an error so any worker that does win the acquire race takes the pool's
+// error branch cleanly rather than the nil-result success path.
+func TestLaunchWorkerPool_DoneClosesOnPreCancelledContext(t *testing.T) {
+	orig := poolProcessAudio
+	poolProcessAudio = func(_ context.Context, _ string, _ *processor.BaseFilterConfig, _ processor.ProgressCallback) (*processor.ProcessingResult, error) {
+		return nil, errors.New("synthetic error to drive pool error branch")
+	}
+	t.Cleanup(func() { poolProcessAudio = orig })
+
+	model := recordingModel{mu: &sync.Mutex{}, fileComplete: new(int), allComplete: new(bool)}
+	p := tea.NewProgram(model, tea.WithoutRenderer(), tea.WithInput(nil))
+	go func() {
+		if _, err := p.Run(); err != nil {
+			t.Errorf("p.Run() error = %v", err)
+		}
+	}()
+
+	dir := t.TempDir()
+	files := []string{filepath.Join(dir, "a.flac"), filepath.Join(dir, "b.flac")}
+	base := processor.DefaultFilterConfig()
+	reportWarnings := make(chan string, len(files))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := launchWorkerPool(ctx, p, files, base, func(string, ...any) {}, 1, reportWarnings)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("done did not close on pre-cancelled context")
+	}
+}
