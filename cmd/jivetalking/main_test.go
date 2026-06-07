@@ -185,7 +185,7 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Analysing 1 files…",
-		"🗸 sample.wav → sample-analysis.log",
+		"🗸 sample.wav → sample-wav-analysis.log",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("analysis-only stdout missing %q:\n%s", want, got)
@@ -193,7 +193,7 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 	}
 
 	// The full report lands in <source-name>-analysis.log beside the source.
-	logPath := ".bench/analysis/input/sample-analysis.log"
+	logPath := ".bench/analysis/input/sample-wav-analysis.log"
 	report, ok := logs.content(logPath)
 	if !ok {
 		t.Fatalf("no analysis log written at %q (have %v)", logPath, logs.logs)

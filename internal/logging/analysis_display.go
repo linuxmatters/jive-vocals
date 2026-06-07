@@ -16,14 +16,21 @@ import (
 )
 
 // AnalysisLogPath derives the analysis report log path for an input file:
-// <dir>/<base-without-ext>-analysis.log, in the same directory as the source
-// (matching the processed-audio output convention). Example:
-// /x/LMP-81-mark.flac → /x/LMP-81-mark-analysis.log.
+// <dir>/<stem>-<ext>-analysis.log, in the same directory as the source. The
+// extension is folded into the name so inputs that share a stem but differ by
+// extension (e.g. foo.flac and foo.wav in a mixed-format batch directory) get
+// distinct logs instead of silently clobbering one another. Examples:
+// /x/LMP-81-mark.flac → /x/LMP-81-mark-flac-analysis.log; /tmp/raw → /tmp/raw-analysis.log.
 func AnalysisLogPath(inputPath string) string {
 	dir := filepath.Dir(inputPath)
 	filename := filepath.Base(inputPath)
-	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
-	return filepath.Join(dir, nameWithoutExt+"-analysis.log")
+	ext := filepath.Ext(filename)
+	nameWithoutExt := strings.TrimSuffix(filename, ext)
+	stem := nameWithoutExt
+	if ext != "" {
+		stem += "-" + strings.TrimPrefix(ext, ".")
+	}
+	return filepath.Join(dir, stem+"-analysis.log")
 }
 
 // AnalysisTimings contains reportable analysis-only stage durations.

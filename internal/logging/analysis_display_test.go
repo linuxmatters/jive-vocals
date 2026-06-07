@@ -17,11 +17,11 @@ func TestAnalysisLogPath(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"flac with dir", "/x/LMP-81-mark.flac", "/x/LMP-81-mark-analysis.log"},
-		{"wav swaps extension", "/a/b/voice.wav", "/a/b/voice-analysis.log"},
+		{"flac with dir", "/x/LMP-81-mark.flac", "/x/LMP-81-mark-flac-analysis.log"},
+		{"wav folds extension", "/a/b/voice.wav", "/a/b/voice-wav-analysis.log"},
 		{"no extension", "/tmp/raw", "/tmp/raw-analysis.log"},
-		{"basename only", "sample.aiff", "sample-analysis.log"},
-		{"dotted name keeps stem", "/d/take.01.flac", "/d/take.01-analysis.log"},
+		{"basename only", "sample.aiff", "sample-aiff-analysis.log"},
+		{"dotted name keeps stem", "/d/take.01.flac", "/d/take.01-flac-analysis.log"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -29,6 +29,23 @@ func TestAnalysisLogPath(t *testing.T) {
 				t.Fatalf("AnalysisLogPath(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestAnalysisLogPath_CollidingStemsDistinct asserts inputs that share a stem
+// but differ by extension in the same directory map to distinct log paths, so a
+// mixed-format batch (foo.flac and foo.wav) never clobbers one log with another.
+func TestAnalysisLogPath_CollidingStemsDistinct(t *testing.T) {
+	flac := AnalysisLogPath("/batch/foo.flac")
+	wav := AnalysisLogPath("/batch/foo.wav")
+	if flac == wav {
+		t.Fatalf("colliding stems produced the same log path: %q", flac)
+	}
+	if flac != "/batch/foo-flac-analysis.log" {
+		t.Errorf("foo.flac log = %q, want /batch/foo-flac-analysis.log", flac)
+	}
+	if wav != "/batch/foo-wav-analysis.log" {
+		t.Errorf("foo.wav log = %q, want /batch/foo-wav-analysis.log", wav)
 	}
 }
 
