@@ -15,6 +15,17 @@ import (
 	"github.com/linuxmatters/jivetalking/internal/processor"
 )
 
+// AnalysisLogPath derives the analysis report log path for an input file:
+// <dir>/<base-without-ext>-analysis.log, in the same directory as the source
+// (matching the processed-audio output convention). Example:
+// /x/LMP-81-mark.flac → /x/LMP-81-mark-analysis.log.
+func AnalysisLogPath(inputPath string) string {
+	dir := filepath.Dir(inputPath)
+	filename := filepath.Base(inputPath)
+	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
+	return filepath.Join(dir, nameWithoutExt+"-analysis.log")
+}
+
 // AnalysisTimings contains reportable analysis-only stage durations.
 type AnalysisTimings struct {
 	Analysis     time.Duration

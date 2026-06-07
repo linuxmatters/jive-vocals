@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -149,6 +150,7 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 	analysisPoolAnalyze = analyze
 	t.Cleanup(func() { analysisPoolAnalyze = origAnalyze })
 
+	logs := newLogCapture()
 	runAnalysisOnlyWithDeps([]string{inputPath}, config, func(string, ...any) {}, 1, analysisOnlyDeps{
 		stdout: &output,
 		hasTTY: func() bool {
@@ -169,22 +171,42 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 		printError: func(message string) {
 			t.Fatalf("printError called: %s", message)
 		},
+		createLog: logs.create,
 	})
 
 	got := output.String()
+	// stdout carries the banner plus the one-line confirmation, never the
+	// report body or any benchmark path.
+	if strings.Contains(got, "ANALYSIS: sample.wav") {
+		t.Fatalf("report body leaked to stdout instead of the log file:\n%s", got)
+	}
 	if strings.Contains(got, ".bench/") {
-		t.Fatalf("analysis-only output leaked benchmark path:\n%s", got)
+		t.Fatalf("analysis-only stdout leaked benchmark path:\n%s", got)
 	}
 	for _, want := range []string{
 		"Analysing 1 files…",
+		"🗸 sample.wav → sample-analysis.log",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("analysis-only stdout missing %q:\n%s", want, got)
+		}
+	}
+
+	// The full report lands in <source-name>-analysis.log beside the source.
+	logPath := ".bench/analysis/input/sample-analysis.log"
+	report, ok := logs.content(logPath)
+	if !ok {
+		t.Fatalf("no analysis log written at %q (have %v)", logPath, logs.logs)
+	}
+	for _, want := range []string{
 		"ANALYSIS: sample.wav",
 		"ANALYSIS TIMINGS",
 		"Analysis:",
 		"Adaptation:",
 		"Report Output:",
 	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("analysis-only output missing %q:\n%s", want, got)
+		if !strings.Contains(report, want) {
+			t.Fatalf("analysis log missing %q:\n%s", want, report)
 		}
 	}
 }
@@ -254,6 +276,7 @@ func TestRunAnalysisOnlyWithDeps_UsesPerFileResultConfig(t *testing.T) {
 		printError: func(message string) {
 			t.Fatalf("printError called: %s", message)
 		},
+		createLog: newLogCapture().create,
 	})
 
 	if len(analyzedConfigs) != len(files) {
@@ -323,8 +346,9 @@ func TestRunAnalysisOnlyWithDeps_OrderedOutputParityAcrossJobs(t *testing.T) {
 	analysisPoolAnalyze = analyze
 	t.Cleanup(func() { analysisPoolAnalyze = origAnalyze })
 
-	run := func(jobs int) string {
+	run := func(jobs int) (string, *logCapture) {
 		var output bytes.Buffer
+		logs := newLogCapture()
 		runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, jobs, analysisOnlyDeps{
 			stdout: &output,
 			hasTTY: func() bool {
@@ -345,36 +369,50 @@ func TestRunAnalysisOnlyWithDeps_OrderedOutputParityAcrossJobs(t *testing.T) {
 			printError: func(message string) {
 				t.Fatalf("printError called: %s", message)
 			},
+			createLog: logs.create,
 		})
-		return output.String()
+		return output.String(), logs
 	}
 
-	parallel := run(4)
-	serial := run(1)
+	parallel, parallelLogs := run(4)
+	serial, _ := run(1)
 
 	if parallel != serial {
-		t.Fatalf("jobs=4 output differs from jobs=1 output\n--- jobs=4 ---\n%s\n--- jobs=1 ---\n%s", parallel, serial)
+		t.Fatalf("jobs=4 stdout differs from jobs=1 stdout\n--- jobs=4 ---\n%s\n--- jobs=1 ---\n%s", parallel, serial)
 	}
 
-	// Order must follow submission (input) order despite staggered completion:
-	// each file's report header appears, and in file0..file3 sequence.
+	// Confirmation lines must follow submission (input) order despite staggered
+	// completion: each file's "🗸 <file> → " line appears in file0..file3 order.
+	plain := stripANSI(parallel)
 	lastPos := -1
 	for _, f := range files {
-		header := "ANALYSIS: " + f
-		pos := strings.Index(parallel, header)
+		line := "🗸 " + f + " → "
+		pos := strings.Index(plain, line)
 		if pos < 0 {
-			t.Fatalf("output missing report header %q:\n%s", header, parallel)
+			t.Fatalf("stdout missing confirmation %q:\n%s", line, plain)
 		}
 		if pos <= lastPos {
-			t.Fatalf("report for %s out of input order (pos %d <= prev %d):\n%s", f, pos, lastPos, parallel)
+			t.Fatalf("confirmation for %s out of input order (pos %d <= prev %d):\n%s", f, pos, lastPos, plain)
 		}
 		lastPos = pos
+	}
+
+	// Each file's full report lands in its own <name>-analysis.log.
+	for _, f := range files {
+		logPath := logging.AnalysisLogPath(f)
+		report, ok := parallelLogs.content(logPath)
+		if !ok {
+			t.Fatalf("no analysis log at %q", logPath)
+		}
+		if !strings.Contains(report, "ANALYSIS: "+f) {
+			t.Fatalf("log %q missing report header for %q:\n%s", logPath, f, report)
+		}
 	}
 
 	// Both runs print the identical up-front banner.
 	banner := "Analysing 4 files…"
 	if !strings.Contains(parallel, banner) {
-		t.Fatalf("output missing banner %q:\n%s", banner, parallel)
+		t.Fatalf("stdout missing banner %q:\n%s", banner, parallel)
 	}
 }
 
@@ -416,6 +454,7 @@ func TestRunAnalysisOnlyWithDeps_NonTTYBannerThenOrderedReports(t *testing.T) {
 	analysisPoolAnalyze = analyze
 	t.Cleanup(func() { analysisPoolAnalyze = origAnalyze })
 
+	logs := newLogCapture()
 	runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, len(files), analysisOnlyDeps{
 		stdout: &output,
 		hasTTY: func() bool {
@@ -436,6 +475,7 @@ func TestRunAnalysisOnlyWithDeps_NonTTYBannerThenOrderedReports(t *testing.T) {
 		printError: func(message string) {
 			t.Fatalf("printError called: %s", message)
 		},
+		createLog: logs.create,
 	})
 
 	got := output.String()
@@ -448,23 +488,40 @@ func TestRunAnalysisOnlyWithDeps_NonTTYBannerThenOrderedReports(t *testing.T) {
 		t.Fatalf("output does not start with banner %q:\n%s", banner, got)
 	}
 
-	// No per-file "Analysing: <file>" line from the old serial format.
+	// No per-file "Analysing: <file>" line from the old serial format, and no
+	// report body on stdout (the report now lives in the .log file).
 	if strings.Contains(got, "Analysing: ") {
 		t.Fatalf("output contains the removed per-file %q line:\n%s", "Analysing: ", got)
 	}
+	if strings.Contains(got, "ANALYSIS: ") {
+		t.Fatalf("report body leaked to stdout:\n%s", got)
+	}
 
-	// Reports appear in input order despite staggered completion.
+	// Confirmation lines appear in input order despite staggered completion.
+	plain := stripANSI(got)
 	lastPos := -1
 	for _, f := range files {
-		header := "ANALYSIS: " + f
-		pos := strings.Index(got, header)
+		line := "🗸 " + f + " → "
+		pos := strings.Index(plain, line)
 		if pos < 0 {
-			t.Fatalf("output missing report header %q:\n%s", header, got)
+			t.Fatalf("stdout missing confirmation %q:\n%s", line, plain)
 		}
 		if pos <= lastPos {
-			t.Fatalf("report for %s out of input order (pos %d <= prev %d):\n%s", f, pos, lastPos, got)
+			t.Fatalf("confirmation for %s out of input order (pos %d <= prev %d):\n%s", f, pos, lastPos, plain)
 		}
 		lastPos = pos
+	}
+
+	// Each file's full report lands in its own <name>-analysis.log.
+	for _, f := range files {
+		logPath := logging.AnalysisLogPath(f)
+		report, ok := logs.content(logPath)
+		if !ok {
+			t.Fatalf("no analysis log at %q", logPath)
+		}
+		if !strings.Contains(report, "ANALYSIS: "+f) {
+			t.Fatalf("log %q missing report header for %q:\n%s", logPath, f, report)
+		}
 	}
 }
 
@@ -508,6 +565,7 @@ func TestRunAnalysisOnlyWithDeps_FailureIsolation(t *testing.T) {
 	var printErrMu sync.Mutex
 	var printErrors []string
 
+	logs := newLogCapture()
 	runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, 4, analysisOnlyDeps{
 		stdout: &output,
 		hasTTY: func() bool {
@@ -530,6 +588,7 @@ func TestRunAnalysisOnlyWithDeps_FailureIsolation(t *testing.T) {
 			printErrors = append(printErrors, message)
 			printErrMu.Unlock()
 		},
+		createLog: logs.create,
 	})
 
 	// The failing file reports exactly one error naming the file and "boom".
@@ -540,24 +599,72 @@ func TestRunAnalysisOnlyWithDeps_FailureIsolation(t *testing.T) {
 		t.Fatalf("printError message = %q, want it to mention %q and %q", msg, files[failIndex], "boom")
 	}
 
-	got := output.String()
-
-	// The good siblings' reports print; the failing file has no normal report.
+	// The good siblings each get a log with their report; the failing file gets
+	// none (no log created, no confirmation).
 	for _, f := range []string{files[0], files[2]} {
-		if !strings.Contains(got, "ANALYSIS: "+f) {
-			t.Fatalf("output missing report header for sibling %q:\n%s", f, got)
+		report, ok := logs.content(logging.AnalysisLogPath(f))
+		if !ok {
+			t.Fatalf("missing analysis log for sibling %q", f)
+		}
+		if !strings.Contains(report, "ANALYSIS: "+f) {
+			t.Fatalf("log for sibling %q missing report header:\n%s", f, report)
 		}
 	}
-	if strings.Contains(got, "ANALYSIS: "+files[failIndex]) {
-		t.Fatalf("failing file %q must not produce a normal report:\n%s", files[failIndex], got)
+	if _, ok := logs.content(logging.AnalysisLogPath(files[failIndex])); ok {
+		t.Fatalf("failing file %q must not produce an analysis log", files[failIndex])
 	}
 
-	// The run completed (no early abort): all good siblings printed in order.
-	pos0 := strings.Index(got, "ANALYSIS: "+files[0])
-	pos2 := strings.Index(got, "ANALYSIS: "+files[2])
-	if pos0 < 0 || pos2 < 0 || pos2 <= pos0 {
-		t.Fatalf("sibling reports out of input order (pos0=%d, pos2=%d):\n%s", pos0, pos2, got)
+	plain := stripANSI(output.String())
+	if strings.Contains(plain, files[failIndex]+" → ") {
+		t.Fatalf("failing file %q must not print a confirmation:\n%s", files[failIndex], plain)
 	}
+
+	// The run completed (no early abort): both good siblings confirmed in order.
+	pos0 := strings.Index(plain, "🗸 "+files[0]+" → ")
+	pos2 := strings.Index(plain, "🗸 "+files[2]+" → ")
+	if pos0 < 0 || pos2 < 0 || pos2 <= pos0 {
+		t.Fatalf("sibling confirmations out of input order (pos0=%d, pos2=%d):\n%s", pos0, pos2, plain)
+	}
+}
+
+// ansiRE strips ANSI escape sequences so stdout assertions match plain text.
+var ansiRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func stripANSI(s string) string {
+	return ansiRE.ReplaceAllString(s, "")
+}
+
+// logCapture records analysis log writes keyed by the requested log path,
+// letting tests assert report content without touching the filesystem.
+type logCapture struct {
+	mu   sync.Mutex
+	logs map[string]*bytes.Buffer
+}
+
+func newLogCapture() *logCapture {
+	return &logCapture{logs: make(map[string]*bytes.Buffer)}
+}
+
+type bufferWriteCloser struct{ *bytes.Buffer }
+
+func (bufferWriteCloser) Close() error { return nil }
+
+func (c *logCapture) create(path string) (io.WriteCloser, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	buf := &bytes.Buffer{}
+	c.logs[path] = buf
+	return bufferWriteCloser{buf}, nil
+}
+
+func (c *logCapture) content(path string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	buf, ok := c.logs[path]
+	if !ok {
+		return "", false
+	}
+	return buf.String(), true
 }
 
 func parseCLIArgs(t *testing.T, args ...string) *CLI {

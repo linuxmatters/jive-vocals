@@ -11,6 +11,27 @@ import (
 	"github.com/linuxmatters/jivetalking/internal/processor"
 )
 
+func TestAnalysisLogPath(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"flac with dir", "/x/LMP-81-mark.flac", "/x/LMP-81-mark-analysis.log"},
+		{"wav swaps extension", "/a/b/voice.wav", "/a/b/voice-analysis.log"},
+		{"no extension", "/tmp/raw", "/tmp/raw-analysis.log"},
+		{"basename only", "sample.aiff", "sample-analysis.log"},
+		{"dotted name keeps stem", "/d/take.01.flac", "/d/take.01-analysis.log"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := AnalysisLogPath(tc.in); got != tc.want {
+				t.Fatalf("AnalysisLogPath(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 // makeMinimalMeasurements creates measurements with enough data to exercise DisplayAnalysisResults.
 func makeMinimalMeasurements() *processor.AudioMeasurements {
 	return &processor.AudioMeasurements{
