@@ -36,6 +36,12 @@ var (
 	ColorCyan = compat.AdaptiveColor{Light: lipgloss.Color("#00AAAA"), Dark: lipgloss.Color("#00AAAA")}
 	// ColorFill is the empty/unfilled fill colour for meters and progress.
 	ColorFill = compat.AdaptiveColor{Light: lipgloss.Color("#CCCCCC"), Dark: lipgloss.Color("#444444")}
+	// ColorLightGrey is the subtle light-grey for panel borders.
+	ColorLightGrey = compat.AdaptiveColor{Light: lipgloss.Color("#666666"), Dark: lipgloss.Color("#CCCCCC")}
+	// ColorSkyBlue is the sky-blue used for panel borders.
+	ColorSkyBlue = compat.AdaptiveColor{Light: lipgloss.Color("#0284C7"), Dark: lipgloss.Color("#38BDF8")}
+	// ColorOrangeDim is the deep-orange trough of the peak-marker pulse.
+	ColorOrangeDim = compat.AdaptiveColor{Light: lipgloss.Color("#B35F00"), Dark: lipgloss.Color("#B35F00")}
 )
 
 // Color palette aliases retained for the cli styles below.

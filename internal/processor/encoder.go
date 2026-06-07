@@ -248,6 +248,11 @@ func (e *Encoder) Close() error {
 	return nil
 }
 
+// meterLevelFloorDB is the silence floor for the live audio level reported to the
+// VU meter. It matches the UI meter floor (ui.meterFloorDB = -70.0); the processor
+// package must not import internal/ui, so the value is mirrored here.
+const meterLevelFloorDB = -70.0
+
 // calculateFrameLevel calculates the RMS (Root Mean Square) level of an audio frame in dB
 // This provides accurate audio level measurement for VU meter display
 func calculateFrameLevel(frame *ffmpeg.AVFrame) float64 {
@@ -256,7 +261,7 @@ func calculateFrameLevel(frame *ffmpeg.AVFrame) float64 {
 		return -30.0 // Unsupported format
 	}
 	if sampleCount == 0 {
-		return -60.0 // Silence threshold
+		return meterLevelFloorDB // Silence threshold
 	}
 
 	// Calculate RMS (Root Mean Square)
@@ -265,14 +270,14 @@ func calculateFrameLevel(frame *ffmpeg.AVFrame) float64 {
 	// Convert to dB: 20 * log10(rms)
 	// Add small epsilon to avoid log(0)
 	if rms < 0.00001 { // Equivalent to -100 dB
-		return -60.0 // Floor at -60 dB for silence
+		return meterLevelFloorDB // Floor for silence
 	}
 
 	levelDB := 20.0 * math.Log10(rms)
 
-	// Clamp to reasonable range for display (-60 dB to 0 dB)
-	if levelDB < -60.0 {
-		levelDB = -60.0
+	// Clamp to reasonable range for display (meter floor to 0 dB)
+	if levelDB < meterLevelFloorDB {
+		levelDB = meterLevelFloorDB
 	} else if levelDB > 0.0 {
 		levelDB = 0.0
 	}

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -49,6 +50,37 @@ func abs(n int) int {
 // hasColor reports whether the rendered bar contains a given RGB foreground.
 func hasColor(s string, r, g, b int) bool {
 	return slices.Contains(fillColors(s), [3]int{r, g, b})
+}
+
+// durSec returns a time.Duration for a fractional second count.
+func durSec(s float64) time.Duration {
+	return time.Duration(s * float64(time.Second))
+}
+
+// triangleColor extracts the RGB foreground applied to the '▲' peak marker, or
+// nil if no triangle is present.
+func triangleColor(s string) *[3]int {
+	for seg := range strings.SplitSeq(s, "\x1b[") {
+		if !strings.HasPrefix(seg, "38;2;") {
+			continue
+		}
+		head, rest, _ := strings.Cut(seg, "m")
+		if !strings.ContainsRune(rest, '▲') {
+			continue
+		}
+		parts := strings.Split(head, ";")
+		if len(parts) < 5 {
+			continue
+		}
+		r, err1 := strconv.Atoi(parts[2])
+		g, err2 := strconv.Atoi(parts[3])
+		b, err3 := strconv.Atoi(parts[4])
+		if err1 != nil || err2 != nil || err3 != nil {
+			continue
+		}
+		return &[3]int{r, g, b}
+	}
+	return nil
 }
 
 // TestProgressFillIsGradient asserts the fill is a multi-colour gradient that
@@ -106,7 +138,7 @@ func TestProgressFillIsGradient(t *testing.T) {
 // at the first cell, red-ish at the last, and more than 3 distinct fill colours.
 func TestMeterIsGradient(t *testing.T) {
 	// Drive the level to the hot end so every cell is filled and coloured.
-	out := renderAudioLevelMeter(-1.0, 0.0)
+	out := renderAudioLevelMeter(-1.0, 0.0, 0)
 
 	colors := fillColors(out)
 	if len(colors) <= 3 {
@@ -139,6 +171,94 @@ func TestMeterIsGradient(t *testing.T) {
 	}
 	if !vivid {
 		t.Errorf("meter gradient looks muddy (no vivid colour): %v", colors)
+	}
+}
+
+// TestMeterHasNoInBarPeakGlyph asserts the peak marker is no longer overlaid
+// inside the bar: the bar cells are pure filled/empty gradient with no '|'.
+func TestMeterHasNoInBarPeakGlyph(t *testing.T) {
+	out := renderAudioLevelMeter(-20.0, -10.0, 0)
+	bar := ansi.Strip(out)
+	// Take the bar line: the line that contains the gradient cells.
+	var barLine string
+	for line := range strings.SplitSeq(bar, "\n") {
+		if strings.ContainsRune(line, '▓') || strings.ContainsRune(line, '░') {
+			barLine = line
+			break
+		}
+	}
+	if strings.ContainsRune(barLine, '|') {
+		t.Errorf("bar line still contains in-bar peak glyph '|':\n%q", barLine)
+	}
+}
+
+// TestMeterPeakTriangleAlignsBeneathBar asserts a '▲' marker appears on its own
+// line beneath the bar with exactly peakPos leading spaces, for two peak levels.
+func TestMeterPeakTriangleAlignsBeneathBar(t *testing.T) {
+	cases := []struct {
+		peak    float64
+		peakPos int
+	}{
+		{-10.0, 34}, // ((-10+70)/70)*40 = 34.3 -> 34
+		{-30.0, 22}, // ((-30+70)/70)*40 = 22.9 -> 22
+	}
+	for _, tc := range cases {
+		out := renderAudioLevelMeter(-40.0, tc.peak, 0)
+		plain := ansi.Strip(out)
+		var markerLine string
+		for line := range strings.SplitSeq(plain, "\n") {
+			if strings.ContainsRune(line, '▲') {
+				markerLine = line
+				break
+			}
+		}
+		if markerLine == "" {
+			t.Fatalf("peak=%g: no '▲' marker line found in:\n%q", tc.peak, plain)
+		}
+		lead := len(markerLine) - len(strings.TrimLeft(markerLine, " "))
+		if lead != tc.peakPos {
+			t.Errorf("peak=%g: marker leading spaces %d, want peakPos %d\n%q",
+				tc.peak, lead, tc.peakPos, markerLine)
+		}
+		if strings.TrimLeft(markerLine, " ") != "▲" {
+			t.Errorf("peak=%g: marker line is not a lone triangle: %q", tc.peak, markerLine)
+		}
+	}
+}
+
+// TestMeterPeakTriangleIsOrange asserts the marker triangle is styled in an
+// orange shade (red > green > blue, with a substantial green component so it
+// reads as orange rather than pure red).
+func TestMeterPeakTriangleIsOrange(t *testing.T) {
+	out := renderAudioLevelMeter(-40.0, -10.0, 0)
+	c := triangleColor(out)
+	if c == nil {
+		t.Fatalf("no triangle colour found in:\n%q", out)
+	}
+	if c[0] <= c[1] || c[1] <= c[2] {
+		t.Errorf("triangle colour %v is not an orange shade (want r>g>b)", c)
+	}
+}
+
+// TestMeterPeakTrianglePulses asserts the marker oscillates between two distinct
+// orange shades across pulse phases.
+func TestMeterPeakTrianglePulses(t *testing.T) {
+	// Trough and crest of the 1.2 Hz sine: t=0 sits mid-rise; pick phases that
+	// land near the dim trough and the bright peak.
+	// durSec(0.625): sin = -1 -> dim trough. durSec(0.208): sin ≈ +1 -> bright crest.
+	dim := triangleColor(renderAudioLevelMeter(-40.0, -10.0, durSec(0.625)))
+	bright := triangleColor(renderAudioLevelMeter(-40.0, -10.0, durSec(0.208)))
+	if dim == nil || bright == nil {
+		t.Fatalf("missing triangle colour: dim=%v bright=%v", dim, bright)
+	}
+	if *dim == *bright {
+		t.Errorf("triangle colour did not change across pulse phases: %v", *dim)
+	}
+	// Both endpoints must stay clearly orange so the marker never vanishes.
+	for _, c := range []*[3]int{dim, bright} {
+		if c[0] <= c[1] || c[1] <= c[2] {
+			t.Errorf("pulse shade %v is not an orange shade (want r>g>b)", *c)
+		}
 	}
 }
 
@@ -190,7 +310,7 @@ func TestProgressBarAlignsWithMeter(t *testing.T) {
 		t.Errorf("bar rendered width %d, want %d", barW, meterWidth)
 	}
 
-	meter := renderAudioLevelMeter(-20.0, -10.0)
+	meter := renderAudioLevelMeter(-20.0, -10.0, 0)
 	// The meter's second line is the bar cells; take the widest non-label line.
 	var meterW int
 	for line := range strings.SplitSeq(meter, "\n") {
