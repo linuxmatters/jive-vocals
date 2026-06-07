@@ -3,8 +3,10 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/lipgloss/v2"
@@ -79,8 +81,8 @@ func renderFileEntry(file FileProgress, prog progress.Model, easedLevel, easedPr
 		return fmt.Sprintf(" %s %s → %s\n   %s", icon, fileName, filepath.Base(file.OutputPath), summary)
 
 	case StatusAnalyzing, StatusProcessing, StatusNormalising:
-		// 🞽 active file with detailed progress
-		icon := lipgloss.NewStyle().Foreground(cli.ColorOrange).Render("🞽")
+		// active file with detailed progress
+		icon := lipgloss.NewStyle().Foreground(cli.ColorOrange).Render("∿")
 		return fmt.Sprintf(" %s %s\n%s",
 			icon, fileName,
 			renderFileDetails(file, prog, easedLevel, easedProgress))
@@ -102,7 +104,7 @@ func renderFileEntry(file FileProgress, prog progress.Model, easedLevel, easedPr
 func renderFileDetails(file FileProgress, prog progress.Model, easedLevel, easedProgress float64) string {
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(cli.ColorRed).
+		BorderForeground(cli.ColorSkyBlue).
 		Padding(0, 1)
 
 	var content strings.Builder
@@ -133,30 +135,33 @@ func renderFileDetails(file FileProgress, prog progress.Model, easedLevel, eased
 	if file.Progress > 0 {
 		remaining = (elapsed / file.Progress) - elapsed
 	}
-	fmt.Fprintf(&content, "✇ Elapsed: %.1fs | Remaining: ~%.1fs\n", elapsed, remaining)
+	fmt.Fprintf(&content, "Time: %.1fs | ETA: ~%.1fs\n", elapsed, remaining)
 
 	// Audio level visualization. The displayed level eases toward the target
 	// via the spring; the peak marker stays driven by the measured peak.
 	if file.CurrentLevel != 0 {
 		content.WriteString("\n")
-		content.WriteString(renderAudioLevelMeter(easedLevel, file.PeakLevel))
+		content.WriteString(renderAudioLevelMeter(easedLevel, file.PeakLevel, file.ElapsedTime))
 	}
 
 	return box.Render(content.String())
 }
 
-// renderAudioLevelMeter renders a live audio level meter with dB visualization
-func renderAudioLevelMeter(currentLevel, peakLevel float64) string {
+// renderAudioLevelMeter renders a live audio level meter with dB visualization.
+// elapsed drives the gentle pulse of the peak-hold marker; it is the file's
+// running elapsed time, advanced once per meter tick, so no second tick loop is
+// needed.
+func renderAudioLevelMeter(currentLevel, peakLevel float64, elapsed time.Duration) string {
 	var b strings.Builder
 
 	// Display current and peak levels
-	fmt.Fprintf(&b, "🕪 Audio Level: %.1f dB | Peak: %.1f dB\n", currentLevel, peakLevel)
+	fmt.Fprintf(&b, "Level: %.1f ㏈ | Peak: %.1f ㏈\n", currentLevel, peakLevel)
 
 	// Create visual meter
-	// dB range: -60 dB (silence) to 0 dB (maximum)
+	// dB range: -70 dB (silence) to 0 dB (maximum)
 	// Map to meterWidth-character width meter
 	width := meterWidth
-	minDB := -60.0
+	minDB := meterFloorDB
 	maxDB := 0.0
 
 	// Calculate fill position for current level
@@ -185,18 +190,10 @@ func renderAudioLevelMeter(currentLevel, peakLevel float64) string {
 	}
 
 	meterChar := func(i int) rune {
-		switch {
-		case i == peakPos && i > currentPos:
-			// Show peak marker only if it's ahead of current position
-			return '|'
-		case i < currentPos:
+		if i < currentPos {
 			return '▓' // Filled
-		case i == currentPos && currentPos == peakPos:
-			// When current level is at peak, show filled bar
-			return '▓'
-		default:
-			return '░' // Empty
 		}
+		return '░' // Empty
 	}
 
 	// Build contiguous same-colour runs and style each as one segment so
@@ -221,7 +218,41 @@ func renderAudioLevelMeter(currentLevel, peakLevel float64) string {
 	}
 	flush()
 
+	// Peak-hold marker: a coloured triangle on its own line beneath the bar,
+	// aligned to the peak column. Skip it when there is no meaningful peak yet
+	// (peak still at the silence floor), so no stray triangle sits at column 0.
+	if peakLevel > minDB {
+		b.WriteByte('\n')
+		b.WriteString(strings.Repeat(" ", peakPos))
+		b.WriteString(lipgloss.NewStyle().Foreground(peakMarkerColor(elapsed)).Render("▲"))
+	}
+
 	return b.String()
+}
+
+// peakMarkerColor returns the peak-hold triangle colour for the current pulse
+// phase. It oscillates gently between a deep orange and the full orange at about
+// 1.2 Hz, driven by elapsed wall-clock time so it reuses the existing meter tick
+// cadence. The interpolation runs straight in sRGB between two oranges so the
+// marker stays a clear orange shade at both ends and never drifts off-hue.
+func peakMarkerColor(elapsed time.Duration) color.Color {
+	const pulseHz = 1.2
+	// 0.0 at the dim trough, 1.0 at the bright crest.
+	phase := 0.5 * (1 + math.Sin(2*math.Pi*pulseHz*elapsed.Seconds()))
+
+	dr, dg, db := rgb8(cli.ColorOrangeDim)
+	br, bg, bb := rgb8(cli.ColorOrange)
+	lerp := func(a, b uint8) uint8 {
+		return uint8(float64(a) + phase*(float64(b)-float64(a)) + 0.5)
+	}
+	return lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+		lerp(dr, br), lerp(dg, bg), lerp(db, bb)))
+}
+
+// rgb8 resolves a color.Color to 8-bit sRGB channels.
+func rgb8(c color.Color) (r, g, b uint8) {
+	r16, g16, b16, _ := c.RGBA()
+	return uint8((r16 >> 8) & 0xFF), uint8((g16 >> 8) & 0xFF), uint8((b16 >> 8) & 0xFF)
 }
 
 // renderOverallProgress renders the overall progress footer

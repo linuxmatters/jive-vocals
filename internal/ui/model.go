@@ -52,9 +52,14 @@ func progressWidthFor(termWidth, overhead int) int {
 // meterFPS is the spring step rate for the eased audio level meter (~60fps).
 const meterFPS = 60
 
+// meterFloorDB is the audio level meter's silence floor in dB: the bottom of the
+// rendered dB range, the meter spring start position, and the initial PeakLevel.
+// Shared so the meter display (views.go) and these start values never drift apart.
+const meterFloorDB = -70.0
+
 // meterStartDB is the initial eased position for a file's meter, matching the
 // PeakLevel silence floor so the meter eases up from silence on first sample.
-const meterStartDB = -60.0
+const meterStartDB = meterFloorDB
 
 // meterTickMsg drives the spring step for the eased audio level meter. The loop
 // is self-scheduling while any file is active and stops once m.Done is set.
@@ -164,7 +169,7 @@ func NewModel(inputFiles []string) Model {
 		files[i] = FileProgress{
 			InputPath: path,
 			Status:    StatusQueued,
-			PeakLevel: -60.0, // Initialize to silence threshold
+			PeakLevel: meterFloorDB, // Initialize to silence threshold
 		}
 		meters[i] = meterState{pos: meterStartDB}
 	}
