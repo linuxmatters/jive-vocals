@@ -61,14 +61,13 @@ Require ./jivetalking
 
 Set Shell "fish"
 Set FontSize 13
-Set Width 860
-Set Height 780
+Set Width 620
+Set Height 820
 Set Padding 8
 Set WindowBar ColorfulRight
 Set WindowBarSize 32
 Set TypingSpeed 27ms
 Set Theme catppuccin-mocha
 
-Type "./jivetalking" Sleep 250ms  Enter
-
-Sleep 12s
+Type "./jivetalking testdata/LMP-81s-*.flac" Sleep 250ms Enter
+Sleep 20s

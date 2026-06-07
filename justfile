@@ -108,6 +108,7 @@ install: build
 
 # Make a VHS tape recording
 vhs: build
+    @rm -f testdata/LMP-81s-*-processed.flac
     @vhs ./jivetalking.tape
 
 # Show current version (from git tags or "dev" if no tags)

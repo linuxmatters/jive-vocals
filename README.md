@@ -8,6 +8,10 @@ jivetalking presenter1.flac presenter2.flac
 
 Your files emerge at -16 LUFS, a common podcast target, with room rumble, background hiss, clicks, and harsh sibilance sorted automatically. Multiple files process in parallel, each with its own TUI progress row. Everything needed is embedded in the binary. This is not how audio tools usually work, and that is rather the point.
 
+## Example Output
+
+<div align="center"><img alt="Jivetalking Demo" src=".github/jivetalking.gif" width="620" /></div>
+
 ---
 
 ## The Four-Pass Pipeline
