@@ -183,11 +183,16 @@ func TestMeterHasNoInBarPeakGlyph(t *testing.T) {
 	bar := ansi.Strip(out)
 	// Take the bar line: the line that contains the gradient cells.
 	var barLine string
+	found := false
 	for line := range strings.SplitSeq(bar, "\n") {
 		if strings.ContainsRune(line, '▓') || strings.ContainsRune(line, '░') {
 			barLine = line
+			found = true
 			break
 		}
+	}
+	if !found {
+		t.Fatalf("no meter bar line (▓/░) rendered; cannot assert peak glyph absence:\n%q", bar)
 	}
 	if strings.ContainsRune(barLine, '|') {
 		t.Errorf("bar line still contains in-bar peak glyph '|':\n%q", barLine)
@@ -319,6 +324,40 @@ func TestMeterPeakElbowTethersValue(t *testing.T) {
 		}
 		if w := ansi.StringWidth(elbowLine); w > meterWidth {
 			t.Errorf("peak=%g: elbow line width %d > meterWidth %d", tc.peak, w, meterWidth)
+		}
+	}
+}
+
+// TestMeterPeakAtCeilingStaysInBounds asserts a peak at (and near) the 0 dB
+// ceiling places the marker at the last in-bounds column (width-1), not one cell
+// beyond the bar, and that no rendered line exceeds the meter width.
+func TestMeterPeakAtCeilingStaysInBounds(t *testing.T) {
+	marker := []rune(peakMarkerGlyph)[0]
+	for _, peak := range []float64{0.0, -0.5, -1.0} {
+		out := renderAudioLevelMeter(-40.0, peak, 0)
+		plain := ansi.Strip(out)
+
+		var markerLine string
+		for line := range strings.SplitSeq(plain, "\n") {
+			if strings.ContainsRune(line, marker) {
+				markerLine = line
+				break
+			}
+		}
+		if markerLine == "" {
+			t.Fatalf("peak=%g: no marker line found in:\n%q", peak, plain)
+		}
+		lead := len(markerLine) - len(strings.TrimLeft(markerLine, " "))
+		if lead != meterWidth-1 {
+			t.Errorf("peak=%g: marker at column %d, want last in-bounds column %d",
+				peak, lead, meterWidth-1)
+		}
+
+		// No rendered line may spill past the meter width.
+		for line := range strings.SplitSeq(plain, "\n") {
+			if w := ansi.StringWidth(line); w > meterWidth {
+				t.Errorf("peak=%g: line width %d > meterWidth %d:\n%q", peak, w, meterWidth, line)
+			}
 		}
 	}
 }

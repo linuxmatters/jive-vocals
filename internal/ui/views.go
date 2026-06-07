@@ -204,8 +204,11 @@ func renderAudioLevelMeter(currentLevel, peakLevel float64, elapsed time.Duratio
 	// Calculate fill position for current level
 	currentPos := max(0, min(int(((currentLevel-minDB)/(maxDB-minDB))*float64(width)), width))
 
-	// Calculate position for peak marker
-	peakPos := max(0, min(int(((peakLevel-minDB)/(maxDB-minDB))*float64(width)), width))
+	// Calculate column for peak marker. Unlike currentPos (an exclusive fill
+	// count, so 0..width), this is a 0-based column index, so it must clamp to
+	// width-1: at peakLevel == maxDB the raw ratio is 1.0 and would otherwise
+	// place the marker and elbow one cell beyond the bar.
+	peakPos := max(0, min(int(((peakLevel-minDB)/(maxDB-minDB))*float64(width)), width-1))
 
 	// Build a continuous green→yellow→orange→red colour ramp once per render.
 	// Real VU meters keep green dominant across the low range and compress the
