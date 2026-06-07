@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/kong"
 	"github.com/charmbracelet/colorprofile"
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
@@ -222,6 +224,7 @@ type analysisOnlyDeps struct {
 	analyzeDetailed func(context.Context, string, *processor.BaseFilterConfig, processor.ProgressCallback) (*processor.AnalysisResult, error)
 	displayResults  func(io.Writer, string, *audio.Metadata, *processor.AudioMeasurements, *processor.EffectiveFilterConfig, *processor.AdaptiveDiagnostics, ...logging.AnalysisTimings)
 	printError      func(string)
+	createLog       func(string) (io.WriteCloser, error)
 }
 
 func defaultAnalysisOnlyDeps() analysisOnlyDeps {
@@ -232,7 +235,13 @@ func defaultAnalysisOnlyDeps() analysisOnlyDeps {
 		analyzeDetailed: processor.AnalyzeOnlyDetailed,
 		displayResults:  logging.DisplayAnalysisResultsWithDiagnostics,
 		printError:      cli.PrintError,
+		createLog:       createAnalysisLogFile,
 	}
+}
+
+// createAnalysisLogFile creates (or truncates) the analysis log file at path.
+func createAnalysisLogFile(path string) (io.WriteCloser, error) {
+	return os.Create(path)
 }
 
 func openAudioMetadata(inputPath string) (*audio.Metadata, error) {
@@ -345,14 +354,17 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 		cancel()
 	}
 
-	// Print reports in input order after the pool completes. A worker cancelled
-	// at the acquire select leaves both results[i] and errs[i] nil; a worker
-	// cancelled mid-analysis sets errs[i] to a context.Canceled-wrapped error.
-	// Both cases are skipped: a user who quit should get no error spew. Real
-	// errors still print so per-file failures stay isolated. The printed flag
-	// drives the inter-report blank line so skipped files cannot emit a stray
-	// leading blank; with no skips it matches the previous i > 0 logic exactly.
-	printed := false
+	// Write each file's report to <source-name>-analysis.log in input order
+	// after the pool completes. A worker cancelled at the acquire select leaves
+	// both results[i] and errs[i] nil; a worker cancelled mid-analysis sets
+	// errs[i] to a context.Canceled-wrapped error. Both cases are skipped: a
+	// user who quit should get no error spew. Real errors still print so
+	// per-file failures stay isolated.
+	//
+	// In no-TTY mode the post-loop prints the one-line confirmation to stdout;
+	// in TTY mode the persisted analysis TUI already shows it, so we skip the
+	// stdout print to avoid doubling up. The .log file is written in both modes.
+	noTTY := !deps.hasTTY()
 	for i := range files {
 		if errs[i] != nil {
 			if errors.Is(errs[i], context.Canceled) {
@@ -366,18 +378,36 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 			continue // cancelled before analysis ran
 		}
 
-		// Blank line separates consecutive printed file reports.
-		if printed {
-			fmt.Fprintln(deps.stdout)
-		}
-		printed = true
-
 		timings := logging.AnalysisTimings{
 			Analysis:   results[i].AnalysisDuration,
 			Adaptation: results[i].AdaptationDuration,
 		}
-		deps.displayResults(deps.stdout, files[i], metas[i], results[i].Measurements, results[i].Config, results[i].Diagnostics, timings)
+
+		logPath := logging.AnalysisLogPath(files[i])
+		logFile, err := deps.createLog(logPath)
+		if err != nil {
+			deps.printError(fmt.Sprintf("Failed to create analysis log for %s: %v", files[i], err))
+			continue
+		}
+		deps.displayResults(logFile, files[i], metas[i], results[i].Measurements, results[i].Config, results[i].Diagnostics, timings)
+		if err := logFile.Close(); err != nil {
+			deps.printError(fmt.Sprintf("Failed to write analysis log for %s: %v", files[i], err))
+			continue
+		}
+
+		if noTTY {
+			printAnalysisConfirmation(deps.stdout, files[i], logPath)
+		}
 	}
+}
+
+// printAnalysisConfirmation writes a single styled confirmation line
+// "🗸 <source-basename> → <log-basename>" through a colour-aware writer so the
+// green check downgrades cleanly on non-colour stdout.
+func printAnalysisConfirmation(w io.Writer, inputPath, logPath string) {
+	icon := lipgloss.NewStyle().Foreground(cli.ColorGreen).Render("🗸")
+	cw := colorprofile.NewWriter(w, os.Environ())
+	fmt.Fprintf(cw, "%s %s → %s\n", icon, filepath.Base(inputPath), filepath.Base(logPath))
 }
 
 // isTTY reports whether stdout is connected to a terminal.

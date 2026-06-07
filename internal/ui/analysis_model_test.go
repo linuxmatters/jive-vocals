@@ -147,8 +147,11 @@ func TestAnalysisMessagesDriveViewWithoutSpinner(t *testing.T) {
 		t.Error("complete msg did not mark file done")
 	}
 	view = stripANSI(m.View().Content)
-	if !strings.Contains(view, "Analysed") {
-		t.Errorf("completed row missing 'Analysed':\n%s", view)
+	if !strings.Contains(view, "🗸 a.wav → a-analysis.log") {
+		t.Errorf("completed row missing '🗸 a.wav → a-analysis.log':\n%s", view)
+	}
+	if strings.Contains(view, "Analysed") {
+		t.Errorf("completed row still shows removed 'Analysed' sub-line:\n%s", view)
 	}
 }
 
