@@ -60,9 +60,9 @@ Output .github/jivetalking.gif
 Require ./jivetalking
 
 Set Shell "fish"
-Set FontSize 13
-Set Width 620
-Set Height 820
+Set FontSize 14
+Set Width 640
+Set Height 720
 Set Padding 8
 Set WindowBar ColorfulRight
 Set WindowBarSize 32
