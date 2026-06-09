@@ -1002,6 +1002,71 @@ func TestFindBestRoomToneRegion_AllRejectedCandidatesDoNotFallback(t *testing.T)
 	}
 }
 
+func TestFindBestRoomToneRegion_NoFallbackBranchNeeded(t *testing.T) {
+	// Documents that the primary election branch always elects when any candidate
+	// survives the structural gates, so the former lower fallback branch was dead.
+	//
+	// clusterP50 is the median RMS of gate-surviving candidates, and medianFloat64
+	// returns an actual member of that set. That member scores calculateAmplitudeScore
+	// = 1.0 (dev = 0), contributing amplitudeScoreWeight (0.30) >= minAcceptableScore
+	// (0.30). So at least one survivor always clears the primary branch's threshold.
+	//
+	// The candidates here have varied RMS around a cluster (median -68), all clean
+	// enough to survive the gates. The earliest-within-tolerance pick is elected by
+	// the primary branch; no fallback is consulted.
+
+	regions := []RoomToneRegion{
+		{Start: 0, End: 10 * time.Second, Duration: 10 * time.Second},
+		{Start: 15 * time.Second, End: 25 * time.Second, Duration: 10 * time.Second},
+		{Start: 30 * time.Second, End: 40 * time.Second, Duration: 10 * time.Second},
+	}
+
+	// Varied RMS around the cluster median (-68). All share strong spectral/stability
+	// metrics so they survive the gates and score comparably (within selectionTolerance),
+	// making the earliest the elected pick.
+	intervalsA := makeRoomToneTestIntervals(0, 10*time.Second,
+		-67.0, -62.0, 100.0, 0.9, 1.0, 0.0)
+	intervalsB := makeRoomToneTestIntervals(15*time.Second, 10*time.Second,
+		-68.0, -63.0, 100.0, 0.9, 1.0, 0.0)
+	intervalsC := makeRoomToneTestIntervals(30*time.Second, 10*time.Second,
+		-69.0, -64.0, 100.0, 0.9, 1.0, 0.0)
+
+	allIntervals := make([]IntervalSample, 0, len(intervalsA)+len(intervalsB)+len(intervalsC))
+	allIntervals = append(allIntervals, intervalsA...)
+	allIntervals = append(allIntervals, intervalsB...)
+	allIntervals = append(allIntervals, intervalsC...)
+
+	result := findBestRoomToneRegion(regions, allIntervals, nil)
+
+	if result.BestRegion == nil {
+		t.Fatal("expected the primary branch to elect a region when candidates survive the gates")
+	}
+	if len(result.Candidates) != 3 {
+		t.Fatalf("len(Candidates) = %d, want 3", len(result.Candidates))
+	}
+
+	maxScore := 0.0
+	for _, c := range result.Candidates {
+		if c.Score > maxScore {
+			maxScore = c.Score
+		}
+		t.Logf("candidate start=%v score=%.4f", c.Region.Start, c.Score)
+	}
+
+	// The elected region must equal the earliest candidate within selectionTolerance
+	// of the maximum score - the same pick the primary loop computes.
+	var wantStart time.Duration
+	for _, c := range result.Candidates {
+		if c.Score >= maxScore-selectionTolerance && c.Score >= minAcceptableScore {
+			wantStart = c.Region.Start
+			break
+		}
+	}
+	if result.BestRegion.Start != wantStart {
+		t.Errorf("BestRegion.Start = %v, want %v (earliest within tolerance, primary branch)", result.BestRegion.Start, wantStart)
+	}
+}
+
 func TestFindBestRoomToneRegion_SingleAcceptableCandidateElected(t *testing.T) {
 	// A single region with an acceptable score should be elected.
 

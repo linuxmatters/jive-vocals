@@ -236,19 +236,6 @@ func findBestRoomToneRegion(regions []RoomToneRegion, intervals []IntervalSample
 				break
 			}
 		}
-		if result.BestRegion == nil {
-			for _, c := range result.Candidates {
-				if c.Score > 0.0 && c.Score >= maxScore-selectionTolerance {
-					region := c.Region
-					result.BestRegion = &RoomToneRegion{
-						Start:    region.Start,
-						End:      region.End,
-						Duration: region.Duration,
-					}
-					break
-				}
-			}
-		}
 	}
 
 	return result
