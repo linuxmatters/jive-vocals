@@ -270,6 +270,21 @@ func writeDiagnosticLoudnorm(f *os.File, result *processor.NormalisationResult, 
 	fmt.Fprintf(f, "  Dual mono:  %v\n", config.Loudnorm.DualMono)
 	fmt.Fprintf(f, "  Gain:       %+.2f dB\n", result.GainApplied)
 
+	// Post-limiter measurements and the crest budget that governs the binding gain
+	// cap. measured_I/measured_TP are loudnorm's Pass-3 readings of the post-limiter
+	// signal (NormalisationResult.InputLUFS/InputTP). The crest budget B =
+	// targetTP - targetI is the post-limiter crest at which the file lands at both
+	// targets exactly; the cap holds final TP <= targetTP by lowering the realised
+	// gain when the post-limiter crest exceeds B.
+	crestBudget := config.Loudnorm.TargetTP - result.RequestedTargetI
+	postLimiterCrest := result.InputTP - result.InputLUFS
+	fmt.Fprintln(f, "")
+	fmt.Fprintln(f, "Post-limiter measurements (Pass 3) and crest budget:")
+	fmt.Fprintf(f, "  measured_I:    %.2f LUFS\n", result.InputLUFS)
+	fmt.Fprintf(f, "  measured_TP:   %.2f dBTP\n", result.InputTP)
+	fmt.Fprintf(f, "  Crest budget:  %.1f dB (B = targetTP - targetI)\n", crestBudget)
+	fmt.Fprintf(f, "  Post crest:    %.1f dB (measured_TP - measured_I)\n", postLimiterCrest)
+
 	// Display loudnorm filter's unique diagnostic info (I/TP/LRA values are in Loudness table)
 	if result.LoudnormStats != nil {
 		stats := result.LoudnormStats
@@ -279,6 +294,18 @@ func writeDiagnosticLoudnorm(f *os.File, result *processor.NormalisationResult, 
 		fmt.Fprintf(f, "  Output Thresh:   %s LUFS\n", stats.OutputThresh)
 		fmt.Fprintf(f, "  Norm Type:       %s\n", stats.NormalizationType)
 		fmt.Fprintf(f, "  Target Offset:   %s dB\n", stats.TargetOffset)
+	}
+
+	// When the gain cap binds (LinearModeForced), the file intentionally lands
+	// below the requested target I so the final true peak stays at or under the
+	// target. The output filename's LUFS-NN reflects the actual lower loudness; the
+	// sub-target result is by design, not a normalisation failure.
+	if result.LinearModeForced {
+		fmt.Fprintln(f, "")
+		fmt.Fprintf(f, "Gain cap engaged: target lowered %.1f -> %.1f LUFS to hold TP <= %.1f dBTP.\n",
+			result.RequestedTargetI, result.EffectiveTargetI, config.Loudnorm.TargetTP)
+		fmt.Fprintln(f, "  The output is intentionally below the requested loudness; the LUFS-NN")
+		fmt.Fprintln(f, "  filename reflects the actual output loudness.")
 	}
 
 	fmt.Fprintln(f, "")

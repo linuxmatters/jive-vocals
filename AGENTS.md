@@ -63,7 +63,7 @@ internal/
 1. **Pass 1 (Analysis):** Measures LUFS, true peak, LRA, noise floor, spectral characteristics; detects room-tone/speech regions via 250ms interval sampling
 2. **Pass 2 (Processing):** Applies adaptive filter chain tuned to measurements; output measured for before/after comparison
 3. **Pass 3 (Measuring):** Optionally prepends `volume` (pre-gain) + `alimiter` (Volumax) when limiting is active, then runs loudnorm in measurement mode (JSON written to a per-call `stats_file`, read back after graph free) to get input stats for linear mode; measures the post-limiter signal so `measured_I`/`measured_TP` are accurate
-4. **Pass 4 (Normalising):** Applies `volume` (pre-gain, when ceiling clamped) + `alimiter` (Volumax) + `loudnorm` (linear mode) + `aresample` (source rate) + `adeclick`; pre-gain raises very quiet recordings so the alimiter can use a viable ceiling; `alimiter` creates headroom so loudnorm achieves full linear gain to reach -16 LUFS
+4. **Pass 4 (Normalising):** Applies `volume` (pre-gain, when ceiling clamped) + `alimiter` (Volumax) + `loudnorm` (linear mode) + `aresample` (source rate) + `adeclick`; pre-gain raises very quiet recordings so the alimiter can use a viable ceiling; `alimiter` creates headroom so loudnorm achieves full linear gain to reach -16 LUFS; ceiling is derived as `targetTP − gainRequired − ceilingMarginDB` (`ceilingMarginDB = 1.4`, corpus-derived p95); a binding gain cap in `calculateLinearModeTarget` (`linearSafetyMargin = 0.1`) acts as the exact TP backstop on high-crest files, intentionally landing them below -16 LUFS rather than clipping
 
 **Filter chain order (Pass 2):**
 ```

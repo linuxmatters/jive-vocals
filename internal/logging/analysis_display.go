@@ -20,7 +20,7 @@ import (
 // extension is folded into the name so inputs that share a stem but differ by
 // extension (e.g. foo.flac and foo.wav in a mixed-format batch directory) get
 // distinct logs instead of silently clobbering one another. Examples:
-// /x/LMP-81-mark.flac → /x/LMP-81-mark-flac-analysis.log; /tmp/raw → /tmp/raw-analysis.log.
+// /x/voice.flac → /x/voice-flac-analysis.log; /tmp/raw → /tmp/raw-analysis.log.
 func AnalysisLogPath(inputPath string) string {
 	dir := filepath.Dir(inputPath)
 	filename := filepath.Base(inputPath)

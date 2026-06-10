@@ -1,7 +1,7 @@
-# CBS Volumax — The Invisible Limiter
+# CBS Volumax: The Invisible Limiter
 
 *"The best limiter is one you never hear."*
-— Design philosophy of CBS Laboratories' audio processing division
+- Design philosophy of CBS Laboratories' audio processing division
 
 ---
 
@@ -111,7 +111,9 @@ alimiter=limit=<ceiling>:attack=5:release=100:level_in=1:level_out=1:level=0:lat
 
 ### Sample-peak ceiling
 
-Per `af_alimiter.c` (FFmpeg release/8.1), `alimiter`'s `limit` is a **sample-peak** ceiling with attack-length lookahead - it is not true-peak/oversampled. Inter-sample peaks above the ceiling by up to ~0.8 dB are possible. The adaptive ceiling calculation accounts for this with a 1.5 dB safety margin (`safetyMarginDB`), keeping the downstream loudnorm within its linear-mode condition.
+Per `af_alimiter.c` (FFmpeg release/8.1), `alimiter`'s `limit` is a **sample-peak** ceiling with attack-length lookahead, not true-peak/oversampled. Inter-sample peaks above the ceiling by up to ~0.8 dB are possible.
+
+The adaptive ceiling is derived from the loudness targets: `ceiling = targetTP − gainRequired` (= `filtered_I + B`, where `B = targetTP − targetI = 14 dB`). A `ceilingMarginDB = 1.4` reserve is subtracted from the ceiling: the p95 of per-file headroom measured across the LMP-68..83 corpus needed to land the final true peak at −2.0 dBTP. This reserve is not an ISP allowance and not a feedback pad; it is an empirically derived reserve against the post-loudnorm peak growth from `aresample → adeclick` that the ceiling alone cannot model (mean +0.66 dB; up to +2.93 dB on the highest-crest file). Makeup-feedback ΔI is negligible (~0 mean). A binding gain cap (`calculateLinearModeTarget`, 0.1 dB epsilon only) operates on the Pass-3 `measured_I/TP` as the exact backstop. See `SAFE-LIMITER.md` for the full derivation and validation result.
 
 ### Auto Soft Clipping (ASC)
 
@@ -138,10 +140,10 @@ The Volumax operates after all Pass 2 processing and after Pass 3 measurement. I
 
 ### Adaptive Ceiling Calculation
 
-Unlike the original design's fixed ceiling, Jivetalking calculates the exact ceiling needed:
+Unlike the original design's fixed ceiling, Jivetalking calculates the exact ceiling needed per file:
 
 ```go
-gainRequired := targetLUFS - measuredLUFS
+gainRequired := targetI - measuredI
 projectedPeak := measuredTP + gainRequired
 
 if projectedPeak <= targetTP {
@@ -149,11 +151,13 @@ if projectedPeak <= targetTP {
     return
 }
 
-// Calculate ceiling that allows linear mode
-ceiling := targetTP - gainRequired - safetyMargin
+// Derived ceiling: places peaks at B = targetTP - targetI above pre-limiter loudness.
+// ceilingMarginDB (1.4 dB, corpus-derived p95) reserves headroom for post-loudnorm
+// peak growth from aresample/adeclick that the ceiling cannot fully model.
+ceiling := targetTP - gainRequired - ceilingMarginDB
 ```
 
-This means the limiter only reduces peaks by the minimum amount necessary - often just 1-2 dB - rather than applying a fixed ceiling that might over-limit.
+The limiter reduces peaks by the minimum the corpus demands (often 1–2 dB) rather than applying a fixed ceiling that over-limits every file.
 
 ### Pre-gain for Clamped Ceilings
 
@@ -169,9 +173,9 @@ preGainDB = deficit
 The volume filter applies static linear gain equal to the deficit, uniformly raising the signal level. After pre-gain, the limiter ceiling is re-derived from the post-gain measurements:
 
 ```
-postGainI      = measuredI + deficit
+postGainI       = measuredI + deficit
 newGainRequired = targetI - postGainI
-newCeiling      = targetTP - newGainRequired - safetyMargin
+newCeiling      = targetTP - newGainRequired - ceilingMarginDB
 ```
 
 The re-derived ceiling lands at or near -24.0 dBTP, which is within the alimiter's supported range. The alimiter uses this re-derived ceiling instead of the clamped value, and loudnorm receives adjusted `measured_I` and `measured_TP` parameters reflecting the post-gain signal.

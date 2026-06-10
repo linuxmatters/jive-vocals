@@ -37,7 +37,7 @@ Filter chain inspired by studio legends, tuned to your specific audio:
 | **Noise reduction** | Non-Local Means + FFT | `anlmdn` denoiser at the source sample rate (`r=0.0020`, `m=3`) followed by `afftdn` FFT spectral denoise (fixed `nr=12`) for residual suppression |
 | **Gate** | DS201 expander | Soft expansion for natural inter-phrase cleanup; breath reduction option positions threshold between noise floor and quiet speech level |
 | **Compressor** | Teletronix LA-2A | Programme-dependent optical compression; ratio and release adapt to kurtosis and flux. High-crest override pushes ratio, threshold, release, and knee when predicted limiter ceiling deficit is positive |
-| **De-esser** | — | Adaptive intensity (0.0-0.6) based on spectral centroid and rolloff |
+| **De-esser** | (none) | Adaptive intensity (0.0-0.6) based on spectral centroid and rolloff |
 
 ### Pass 3 & 4: Loudness Normalisation
 
@@ -53,11 +53,11 @@ This order matters. The limiter provides breathing room so loudnorm can use its 
 
 Each filter prepares audio for the next:
 
-1. **Rumble removal before denoising** — prevents low-frequency artifacts confusing noise profiling
-2. **Denoising before gating** — lowers noise floor so gate threshold can be optimal
-3. **Gating before compression** — removes silence before dynamics processing amplifies room tone
-4. **Compression before de-essing** — compression emphasises sibilance; de-essing corrects it
-5. **Normalisation last** — sees fully processed signal for accurate loudness targeting
+1. **Rumble removal before denoising**: prevents low-frequency artifacts confusing noise profiling
+2. **Denoising before gating**: lowers noise floor so gate threshold can be optimal
+3. **Gating before compression**: removes silence before dynamics processing amplifies room tone
+4. **Compression before de-essing**: compression emphasises sibilance; de-essing corrects it
+5. **Normalisation last**: sees fully processed signal for accurate loudness targeting
 
 ---
 
@@ -155,12 +155,12 @@ Pass `-a` to run only Pass 1 analysis, printing a detailed report to the console
 
 The report covers:
 
-- **Loudness & dynamics** — integrated LUFS, true peak, loudness range, crest factor
-- **Room tone & speech detection** — candidate regions scored and elected for noise profiling and speech-aware metrics; voice-activated recording detected automatically (Riverside, Zencastr)
-- **Derived measurements** — noise floor, gate baseline, noise-to-speech headroom
-- **Filter adaptation** — the exact parameters jivetalking would apply: highpass frequency, gate threshold, NR settings, de-esser intensity, LA-2A configuration
-- **Spectral summary** — full spectral characterisation with human-readable interpretations
-- **Recording tips** — actionable advice based on your measurements (e.g. "increase your microphone gain by 14 dB" or "your recording is clipping")
+- **Loudness & dynamics**: integrated LUFS, true peak, loudness range, crest factor
+- **Room tone & speech detection**: candidate regions scored and elected for noise profiling and speech-aware metrics; voice-activated recording detected automatically (Riverside, Zencastr)
+- **Derived measurements**: noise floor, gate baseline, noise-to-speech headroom
+- **Filter adaptation**: the exact parameters jivetalking would apply: highpass frequency, gate threshold, NR settings, de-esser intensity, LA-2A configuration
+- **Spectral summary**: full spectral characterisation with human-readable interpretations
+- **Recording tips**: actionable advice based on your measurements (e.g. "increase your microphone gain by 14 dB" or "your recording is clipping")
 
 Example output (trimmed):
 
@@ -264,10 +264,10 @@ internal/
 
 ### Design Documentation
 
-- [Gate: Drawmer DS201](docs/FilterGate-Drawmer%20DS201.md) — Soft expander with adaptive thresholding
-- [Compressor: LA-2A](docs/FilterCompressor-Teletronix%20LA-2A.md) — Programme-dependent optical compression
-- [Limiter: CBS Volumax](docs/FilterLimiter-CBS-Volumax.md) — Transparent broadcast limiting
-- [Spectral Metrics Reference](docs/Spectral-Metrics-Reference.md) — How measurements drive adaptation
+- [Gate: Drawmer DS201](docs/FilterGate-Drawmer%20DS201.md): soft expander with adaptive thresholding
+- [Compressor: LA-2A](docs/FilterCompressor-Teletronix%20LA-2A.md): programme-dependent optical compression
+- [Limiter: CBS Volumax](docs/FilterLimiter-CBS-Volumax.md): transparent broadcast limiting
+- [Spectral Metrics Reference](docs/Spectral-Metrics-Reference.md): how measurements drive adaptation
 
 See [AGENTS.md](AGENTS.md) for complete development guidelines, architecture details, and contribution standards.
 

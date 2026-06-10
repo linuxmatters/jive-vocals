@@ -28,13 +28,19 @@ func normaliseDuration(m *AudioMeasurements) float64 {
 // Limiter ceiling constants used by calculateLimiterCeiling and pre-gain deficit
 // calculation.
 const (
-	// safetyMarginDB accounts for inter-sample peak (ISP) creation during limiting.
-	// See calculateLimiterCeiling for detailed rationale.
-	safetyMarginDB = 1.5 // dB
-
 	// minLimiterCeilingDB is the practical minimum for FFmpeg's alimiter.
 	// limit=0.0625 = 20*log10(0.0625) ≈ -24.08 dBTP; we use -24.0 with a small buffer.
+	// This is the alimiter engine floor, not a tuning constant.
 	minLimiterCeilingDB = -24.0 // dBTP
+
+	// ceilingMarginDB reserves headroom for the post-loudnorm true-peak overshoot
+	// created by aresample/adeclick (which run after loudnorm and can lift the peak
+	// a few tenths of a dB on transient-heavy speech). It is NOT an ISP allowance.
+	// Value = p95 of the per-file headroom measured across the validation
+	// corpus needed to land the output true peak at the -2.0 dBTP target (excluding
+	// a local-click outlier, which is unfixable by a margin).
+	// Re-derive via testdata/validation-0.3.1-vs-0.5.x when the corpus changes.
+	ceilingMarginDB = 1.4 // dB (p95; was an undocumented 1.5)
 )
 
 // MinLimiterCeilingDB exports minLimiterCeilingDB so the logging package can reference the ceiling without duplicating the literal.
@@ -252,11 +258,19 @@ func measureWithLoudnorm(ctx context.Context, inputPath string, config *Effectiv
 // calculateLimiterCeiling calculates the adaptive ceiling for pre-limiting in Pass 4.
 // This allows loudnorm to apply full linear gain without exceeding target TP.
 //
-// The ceiling is calculated so that after loudnorm applies its gain:
+// The ceiling is derived from the loudness targets plus a derived headroom
+// reserve. It places the post-limiter sample peak the crest budget B above the
+// pre-limiter loudness, less the reserve that absorbs the post-loudnorm overshoot:
 //
-//	projected_TP = ceiling + gainRequired <= target_TP
+//	B = target_TP - target_I                                (the fixed crest budget)
+//	ceiling = target_TP - gainRequired - ceilingMarginDB    (= filtered_I + B - margin)
 //
-// Solving for ceiling: ceiling = target_TP - gainRequired - safety_margin
+// The reserve (ceilingMarginDB) lands the realised output true peak at target_TP
+// rather than above it; see the constant's docstring for its derivation. The
+// residual feedback the ceiling cannot model is caught downstream by the binding
+// gain cap in calculateLinearModeTarget, which lowers the realised gain by exactly
+// the overshoot. The ceiling carries the headroom reserve; the cap is the
+// near-inert exact-TP backstop.
 //
 // FFmpeg alimiter constraint: the limit parameter accepts 0.0625 to 1.0 (linear),
 // which corresponds to -24.08 dBTP to 0 dBTP. Ceilings below this are clamped.
@@ -280,8 +294,9 @@ func calculateLimiterCeiling(measuredI, measuredTP, targetI, targetTP float64) (
 		return 0, false, false
 	}
 
-	// Calculate ceiling: targetTP - gainRequired - safetyMarginDB
-	ceiling = targetTP - gainRequired - safetyMarginDB
+	// Derived ceiling: targetTP - gainRequired - ceilingMarginDB
+	// (= filtered_I + B - margin, the crest budget less the headroom reserve).
+	ceiling = targetTP - gainRequired - ceilingMarginDB
 
 	// Clamp to alimiter's minimum supported ceiling
 	if ceiling < minLimiterCeilingDB {
@@ -307,7 +322,7 @@ func calculateLimiterCeiling(measuredI, measuredTP, targetI, targetTP float64) (
 //   - reDerivedCeiling: The limiter ceiling re-derived from post-gain values (0.0 when not clamped)
 func calculatePreGain(measuredI, targetI, targetTP float64) (preGainDB, reDerivedCeiling float64) {
 	gainRequired := targetI - measuredI
-	idealCeiling := targetTP - gainRequired - safetyMarginDB
+	idealCeiling := targetTP - gainRequired - ceilingMarginDB
 
 	// No pre-gain needed if ceiling is at or above alimiter's minimum
 	if idealCeiling >= minLimiterCeilingDB {
@@ -320,7 +335,7 @@ func calculatePreGain(measuredI, targetI, targetTP float64) (preGainDB, reDerive
 	// Re-derive ceiling from post-gain values
 	postGainI := measuredI + preGainDB
 	newGainRequired := targetI - postGainI
-	reDerivedCeiling = targetTP - newGainRequired - safetyMarginDB
+	reDerivedCeiling = targetTP - newGainRequired - ceilingMarginDB
 
 	return preGainDB, reDerivedCeiling
 }
@@ -378,6 +393,7 @@ type loudnormApplicationRequest struct {
 	inputPath         string
 	config            *EffectiveFilterConfig
 	measurement       *LoudnormMeasurement
+	offset            float64 // Capped linear makeup (effectiveTargetI - measured_I); pins the loudnorm offset= to the capped I=
 	inputMeasurements *AudioMeasurements
 	limiter           limiterPlan
 	progress          ProgressCallback
@@ -611,8 +627,12 @@ func ApplyNormalisation(
 		loudnorm.TargetTP,
 	)
 
-	// Use loudnorm's own target_offset from the measurement pass
-	offset := measurement.TargetOffset
+	// Bind the gain cap: the realised linear scalar gain is the CAPPED makeup
+	// (effectiveTargetI - measured_I), not loudnorm's own target_offset. On a
+	// high-crest stem the cap lowers effectiveTargetI below targetI, so the
+	// matching offset pins the final true peak at targetTP by construction. On a
+	// safe stem effectiveTargetI == targetI and this equals the planned makeup.
+	offset := effectiveTargetI - measurement.InputI
 
 	// Store the effective target in config for loudnorm filter construction
 	effectiveConfig := *config
@@ -623,6 +643,7 @@ func ApplyNormalisation(
 		inputPath:         inputPath,
 		config:            &effectiveConfig,
 		measurement:       measurement,
+		offset:            offset,
 		inputMeasurements: inputMeasurements,
 		limiter:           limiter,
 		progress:          progressCallback,
@@ -754,6 +775,7 @@ func prepareLoudnormApplication(ctx context.Context, request loudnormApplication
 	filterSpec := buildLoudnormFilterSpec(
 		request.config,
 		request.measurement,
+		request.offset,
 		request.limiter.preGainDB,
 		request.limiter.ceilingDB,
 		request.limiter.needed,
@@ -959,9 +981,12 @@ func finalizeLoudnormOutputMeasurements(
 // sample rate equals the input rate. We want spectral measurements at the original
 // sample rate to match Pass 2's measurements for accurate comparison.
 //
-// Per ffmpeg-loudnorm-helper: the offset parameter MUST come from loudnorm's own
-// first pass measurement, not from external calculations.
-func buildLoudnormFilterSpec(config *EffectiveFilterConfig, measurement *LoudnormMeasurement, preGainDB float64, ceiling float64, needsLimiting bool, sourceSampleRate int, statsPath string) string {
+// The offset is the capped linear makeup (effectiveTargetI - measured_I) computed
+// by calculateLinearModeTarget, not loudnorm's own first-pass target_offset. This
+// makes the gain cap binding: when the cap lowers effectiveTargetI on a high-crest
+// stem, the matching offset pins the realised scalar gain to the capped I=, holding
+// the final true peak at targetTP. On a safe stem it equals the planned makeup.
+func buildLoudnormFilterSpec(config *EffectiveFilterConfig, measurement *LoudnormMeasurement, offset float64, preGainDB float64, ceiling float64, needsLimiting bool, sourceSampleRate int, statsPath string) string {
 	var filters []string
 	loudnorm := config.Loudnorm
 
@@ -973,7 +998,8 @@ func buildLoudnormFilterSpec(config *EffectiveFilterConfig, measurement *Loudnor
 
 	// 2. loudnorm (second pass mode)
 	// measured_i/tp/lra/thresh come from loudnorm's first pass measurement
-	// offset: loudnorm's own calculated offset from first pass (critical!)
+	// offset: the capped linear makeup (effectiveTargetI - measured_I), so the
+	//   realised scalar gain matches the capped I= and holds final TP at targetTP
 	// linear=true: Enable linear mode (applies consistent gain, no adaptive EQ)
 	// dual_mono=true: CRITICAL - treats mono as dual-mono for correct loudness measurement
 	// print_format=json: Outputs JSON with normalization_type, target_offset, output_i/tp/lra
@@ -990,7 +1016,7 @@ func buildLoudnormFilterSpec(config *EffectiveFilterConfig, measurement *Loudnor
 		measurement.InputTP,
 		measurement.InputLRA,
 		measurement.InputThresh,
-		measurement.TargetOffset, // From first pass - critical for linear mode
+		offset, // Capped makeup matching the capped I= (binds the gain cap)
 		boolToString(loudnorm.DualMono),
 		boolToString(loudnorm.Linear),
 	)

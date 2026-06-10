@@ -753,8 +753,8 @@ func (cfg *EffectiveFilterConfig) buildDS201LowPassFilter() string {
 // - r: research radius in seconds (2.0ms = 0.0020s, r_min)
 // - m: smoothing factor (3 = m_strict)
 //
-// afftdn replaced the former compand residual-suppression stage. Sweeps at
-// .bench/noiseblock-ep83 and .bench/afftdn-ep83 showed anlmdn → afftdn matches
+// afftdn replaced the former compand residual-suppression stage. Sweeps on the
+// noisiest corpus stem showed anlmdn → afftdn matches
 // or beats anlmdn → compand on under-speech noise while keeping gaps clean with
 // less floor modulation. nr is FIXED at 12: a per-presenter sweep showed the
 // noisiest voice must be capped at ~12 to avoid warble, so adaptive nr would be
@@ -773,7 +773,7 @@ func (cfg *EffectiveFilterConfig) buildNoiseRemoveFilter() string {
 		noiseRemove.Smooth,
 	))
 
-	// afftdn FFT spectral denoise tail, validated at .bench/afftdn-ep83.
+	// afftdn FFT spectral denoise tail, validated on the noisiest corpus stem.
 	// Fixed nr=12 (not adaptive); tn=1 tracks noise so no sample region is needed.
 	if spec := noiseRemove.buildAfftdnFilter(); spec != "" {
 		filters = append(filters, spec)

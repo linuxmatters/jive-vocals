@@ -2880,7 +2880,7 @@ func makeRoomToneIntervalsFromRMS(start time.Duration, rmsLevels []float64) []In
 }
 
 func TestFindBestRoomToneRegion_ProximityElectsClusterNotQuietOutlier(t *testing.T) {
-	// Regression for the popey-EP83 defect: a quiet bright outlier (~-79) must not be
+	// Regression for the sparse-room-tone defect: a quiet bright outlier (~-79) must not be
 	// elected over a representative cluster (~-74). With proximity-to-cluster-P50
 	// amplitude scoring, the cluster candidates sit on the population median and the
 	// quiet outlier is penalised for departing from it by more than roomToneAmplitudeDecayDB.
@@ -3383,7 +3383,7 @@ func noiseProfilesEqual(a, b *NoiseProfile) bool {
 }
 
 // buildConversationalIntervals shapes intervals like a sparse, conversational
-// speaker (mark, popey): speech runs separated by pauses longer than the
+// speaker: speech runs separated by pauses longer than the
 // 8-interval (2s) tolerance, so no single run reaches the old 120-interval
 // (30s) wall. Each speech run scores above speechScoreThreshold via the same
 // loud/median/quiet RMS pattern the other speech tests use.
@@ -3425,7 +3425,7 @@ func buildConversationalIntervals(runLen, gapLen, runs int) []IntervalSample {
 }
 
 // TestFindSpeechCandidatesFromIntervals_ConversationalSpeakerElects guards the
-// detection-ep83 fix: lowering minimumSpeechIntervals to 40 (10s) lets sparse,
+// sparse-speech detection fix: lowering minimumSpeechIntervals to 40 (10s) lets sparse,
 // conversational presenters elect a speech candidate. Runs of ~45 speech
 // intervals separated by >2s pauses never sustained 30 unbroken seconds, so the
 // old 120-interval gate yielded zero candidates and the SpeechProfile fell back

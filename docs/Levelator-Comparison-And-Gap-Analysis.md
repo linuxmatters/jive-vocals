@@ -12,7 +12,7 @@ The Levelator was a landmark audio processing tool created by Bruce and Malcolm 
 
 ### Core Algorithm
 
-The Levelator was explicitly **not** a compressor, normaliser, or limiter—although it contained elements of all three. As stated on the official website:
+The Levelator was explicitly **not** a compressor, normaliser, or limiter, although it contained elements of all three. As stated on the official website:
 
 > "It's software that runs on Windows, OS X (universal binary), or Linux (Ubuntu) that adjusts the audio levels _within_ your podcast or other audio file for variations from one speaker to the next, for example. It's not a compressor, normalizer or limiter although it contains all three. It's much more than those tools, and it's much simpler to use."
 
@@ -139,8 +139,8 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 | Dimension | Levelator | Jivetalking |
 |-----------|-----------|-------------|
 | **Processing Approach** | Multi-pass file-based batch processing | Multi-pass file-based batch processing |
-| **Processing Paradigm** | "Leveling"—medium-term variation correction | Full pipeline: denoise → gate → compress → de-ess → normalise |
-| **Look-ahead Capability** | Yes—infinite look-ahead via multiple passes | Yes—infinite look-ahead via Pass 1 analysis |
+| **Processing Paradigm** | "Leveling": medium-term variation correction | Full pipeline: denoise → gate → compress → de-ess → normalise |
+| **Look-ahead Capability** | Yes, infinite look-ahead via multiple passes | Yes, infinite look-ahead via Pass 1 analysis |
 | **Target Loudness Standard** | -18 dB RMS (custom RMS calculation) | -16 LUFS |
 | **Silence Detection** | Fixed: 50ms subsegments > -44 dB | Adaptive: spectral analysis + room tone scoring |
 | **Noise Reduction** | None | `anlmdn` (Non-Local Means, source-rate denoising at `r=0.0020`, `m=3`) + `afftdn` (FFT spectral denoise, fixed `nr=12`) |
@@ -151,17 +151,17 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 | **De-essing** | None | Adaptive intensity 0.0-0.85 from speech-region sibilant-band excess (6-9 kHz vs 1-3 kHz) |
 | **Content Type Detection** | None | Speech vs Music vs Mixed classification |
 | **Adaptive Parameters** | Minimal (one-size-fits-all) | Extensive per-filter tuning based on 20+ metrics |
-| **Parameter Control** | None—fully automatic | None—fully automatic (but tunable via source) |
+| **Parameter Control** | None, fully automatic | None, fully automatic (but tunable via source) |
 | **Output Formats** | WAV, AIFF | Any FFmpeg-supported format (default: FLAC → FLAC) |
 | **Output Sample Rate** | Matches input | 44.1kHz standardised |
 | **Output Bit Depth** | Matches input | 16-bit standardised |
 | **Output Channels** | Matches input | Mono (downmix enabled by default) |
 | **User Interface** | GUI (drag-and-drop) | CLI/TUI (command-line) |
 | **Platform Support** | Windows, macOS, Linux (32-bit) | Linux, macOS, Windows (64-bit, via Go/FFmpeg) |
-| **Open Source** | No—proprietary, discontinued | Yes—open source, actively maintained |
+| **Open Source** | No (proprietary, discontinued) | Yes (open source, actively maintained) |
 | **License** | Proprietary (free for use) | Open source (license not specified in research) |
 | **Commercial Use** | Initially non-commercial only, later permitted | Permitted |
-| **Breath Reduction** | None | Yes—via adaptive gate threshold positioning |
+| **Breath Reduction** | None | Yes, via adaptive gate threshold positioning |
 | **Plosive Reduction** | None | Implicit via AutoEQ design patterns |
 | **True Peak Limiting** | None (-1.0 dB sample peak) | Yes (-1.0 to -2.0 dBTP via alimiter) |
 | **Loudness Range Control** | None | Monitored and adapted to (LRA affects gate ratio) |
@@ -193,7 +193,7 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 
 #### 3. **Medium-Term "Leveling" Approach**
 
-**Gap:** Levelator's unique contribution was correcting "medium-term" loudness variations—neither the short-term transients handled by compressors nor the long-term overall loudness handled by normalisers. This "riding the fader" effect compensated for speakers at different volumes within a recording.
+**Gap:** Levelator's unique contribution was correcting "medium-term" loudness variations, neither the short-term transients handled by compressors nor the long-term overall loudness handled by normalisers. This "riding the fader" effect compensated for speakers at different volumes within a recording.
 
 **Jivetalking Status:** Jivetalking applies consistent filter parameters across the entire file. The LA-2A-inspired compressor applies fixed-ratio RMS compression with a speech-level-relative threshold, but does not segment the file or apply different corrections to different time regions.
 
@@ -247,9 +247,9 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 - Apply varying compression/normalisation per segment
 - Use crossfade windows to avoid audible transitions
 
-**Feasibility:** Medium—requires significant architectural changes but builds on existing Pass 1 analysis infrastructure.
+**Feasibility:** Medium, requires significant architectural changes but builds on existing Pass 1 analysis infrastructure.
 
-**Status:** **Should implement**—this is the core "magic" of Levelator that users miss.
+**Status:** **Should implement** - this is the core "magic" of Levelator that users miss.
 
 #### 2. **Drag-and-Drop GUI Wrapper**
 
@@ -263,9 +263,9 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 - Shows simple progress dialog
 - Opens output folder on completion
 
-**Feasibility:** High—wrapper around existing CLI functionality.
+**Feasibility:** High, wrapper around existing CLI functionality.
 
-**Status:** **Should implement**—significant usability improvement with minimal core changes.
+**Status:** **Should implement** - significant usability improvement with minimal core changes.
 
 ### Medium Priority
 
@@ -280,9 +280,9 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 - Use FFmpeg's `volumedetect` filter for RMS measurement
 - Calculate gain adjustment to reach target RMS
 
-**Feasibility:** High—FFmpeg supports this natively.
+**Feasibility:** High, FFmpeg supports this natively.
 
-**Status:** **Maybe implement**—nice to have for migration compatibility.
+**Status:** **Maybe implement** - nice to have for migration compatibility.
 
 #### 4. **Output File Naming Convention**
 
@@ -292,7 +292,7 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 
 **Feasibility:** Trivial.
 
-**Status:** **Should implement**—one-line change, improves usability.
+**Status:** **Should implement** - one-line change, improves usability.
 
 ### Low Priority
 
@@ -302,9 +302,9 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 
 **Rationale:** Levelator was praised for not introducing "breathing" artifacts. Jivetalking has breath reduction via adaptive gating, but it may not be as refined.
 
-**Feasibility:** Medium—requires research into breath detection algorithms.
+**Feasibility:** Medium, requires research into breath detection algorithms.
 
-**Status:** **Maybe implement**—current solution may be sufficient.
+**Status:** **Maybe implement** - current solution may be sufficient.
 
 #### 6. **Multi-Format Batch Processing**
 
@@ -314,7 +314,7 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 
 **Feasibility:** Already supported via `jivetalking file1.wav file2.flac file3.mp3`.
 
-**Status:** **Already implemented**—verify documentation covers this.
+**Status:** **Already implemented** - verify documentation covers this.
 
 ---
 
@@ -381,7 +381,7 @@ Levelator's "Loudness Algorithms" page was widely cited. Being transparent about
 
 #### 5. **The "Magic" Is Medium-Term Leveling**
 
-Levelator's unique contribution was not compression or normalisation—it was the "medium-term" correction that handled speakers at different volumes.
+Levelator's unique contribution was not compression or normalisation; it was the "medium-term" correction that handled speakers at different volumes.
 
 **Lesson:** Prioritise implementing segmented/time-varying processing. This is the key missing feature for Levelator refugees.
 
@@ -408,7 +408,7 @@ Levelator created its own RMS standard because no spoken-word standard existed. 
 6. Auphonic Singletrack Algorithms: https://auphonic.com/help/algorithms/singletrack.html
 7. Levelator vs Auphonic Comparison (GoTranscript): https://gotranscript.com/public/comparing-levelator-and-auphonic-best-tools-for-podcast-audio-leveling
 8. Alternatives to Levelator: https://podcastinghacks.com/alternatives-to-levelator/
-9. Wikipedia—Levelator: https://en.wikipedia.org/wiki/Levelator
+9. Wikipedia, Levelator: https://en.wikipedia.org/wiki/Levelator
 10. The Levelator's Return: https://www.podfeet.com/blog/2020/06/the-levelator/
 
 ### Technical Standards

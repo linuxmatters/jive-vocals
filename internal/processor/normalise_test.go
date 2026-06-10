@@ -1211,8 +1211,8 @@ func TestCalculateLimiterCeiling(t *testing.T) {
 			targetTP:   -2.0,
 			// gain = -16.0 - (-24.9) = 8.9 dB
 			// projected TP = -5.0 + 8.9 = 3.9 dBTP (exceeds -2.0)
-			// ceiling = -2.0 - 8.9 - 1.5 = -12.4 dBTP
-			wantCeiling: -12.4,
+			// ceiling = -2.0 - 8.9 - 1.4 = -12.3 dBTP (derived: targetTP - gainRequired - margin)
+			wantCeiling: -12.3,
 			wantNeeded:  true,
 			wantClamped: false,
 		},
@@ -1224,8 +1224,8 @@ func TestCalculateLimiterCeiling(t *testing.T) {
 			targetTP:   -2.0,
 			// gain = -16.0 - (-20.0) = 4.0 dB
 			// projected TP = -3.0 + 4.0 = 1.0 dBTP (exceeds -2.0)
-			// ceiling = -2.0 - 4.0 - 1.5 = -7.5 dBTP
-			wantCeiling: -7.5,
+			// ceiling = -2.0 - 4.0 - 1.4 = -7.4 dBTP (derived: targetTP - gainRequired - margin)
+			wantCeiling: -7.4,
 			wantNeeded:  true,
 			wantClamped: false,
 		},
@@ -1273,36 +1273,36 @@ func TestCalculateLimiterCeiling(t *testing.T) {
 			targetTP:   -2.0,
 			// gain = -16.0 - (-43.0) = 27.0 dB
 			// projected TP = -20.0 + 27.0 = 7.0 dBTP (exceeds -2.0)
-			// calculated ceiling = -2.0 - 27.0 - 1.5 = -30.5 dBTP
-			// but -30.5 < -24.0, so clamped to -24.0 dBTP
+			// derived ceiling = -2.0 - 27.0 - 1.4 = -30.4 dBTP
+			// but -30.4 < -24.0, so clamped to -24.0 dBTP
 			wantCeiling: minCeiling,
 			wantNeeded:  true,
 			wantClamped: true,
 		},
 		{
 			name:       "just under minimum - clamped",
-			measuredI:  -38.0,
+			measuredI:  -40.0,
 			measuredTP: -15.0,
 			targetI:    -16.0,
 			targetTP:   -2.0,
-			// gain = -16.0 - (-38.0) = 22.0 dB
-			// projected TP = -15.0 + 22.0 = 7.0 dBTP (exceeds -2.0)
-			// calculated ceiling = -2.0 - 22.0 - 1.5 = -25.5 dBTP
-			// -25.5 < -24.0, so clamped to -24.0 dBTP
+			// gain = -16.0 - (-40.0) = 24.0 dB
+			// projected TP = -15.0 + 24.0 = 9.0 dBTP (exceeds -2.0)
+			// derived ceiling = -2.0 - 24.0 - 1.4 = -27.4 dBTP
+			// -27.4 < -24.0, so clamped to -24.0 dBTP
 			wantCeiling: minCeiling,
 			wantNeeded:  true,
 			wantClamped: true,
 		},
 		{
 			name:       "just above minimum - not clamped",
-			measuredI:  -35.0,
+			measuredI:  -33.5,
 			measuredTP: -15.0,
 			targetI:    -16.0,
 			targetTP:   -2.0,
-			// gain = -16.0 - (-35.0) = 19.0 dB
-			// projected TP = -15.0 + 19.0 = 4.0 dBTP (exceeds -2.0)
-			// ceiling = -2.0 - 19.0 - 1.5 = -22.5 dBTP (above -24.0)
-			wantCeiling: -22.5,
+			// gain = -16.0 - (-33.5) = 17.5 dB
+			// projected TP = -15.0 + 17.5 = 2.5 dBTP (exceeds -2.0)
+			// ceiling = -2.0 - 17.5 - 1.4 = -20.9 dBTP (above -24.0)
+			wantCeiling: -20.9,
 			wantNeeded:  true,
 			wantClamped: false,
 		},
@@ -1314,22 +1314,22 @@ func TestCalculateLimiterCeiling(t *testing.T) {
 			targetTP:   -2.0,
 			// gain = -16.0 - (-43.2) = 27.2 dB
 			// projected TP = -18.6 + 27.2 = 8.6 dBTP (exceeds -2.0)
-			// idealCeiling = -2.0 - 27.2 - 1.5 = -30.7 dBTP
-			// -30.7 < -24.0, so clamped to -24.0 dBTP
-			// deficit = minLimiterCeilingDB - idealCeiling = -24.0 - (-30.7) = 6.7 dB
+			// idealCeiling = -2.0 - 27.2 - 1.4 = -30.6 dBTP
+			// -30.6 < -24.0, so clamped to -24.0 dBTP
+			// deficit = minLimiterCeilingDB - idealCeiling = -24.0 - (-30.6) = 6.6 dB
 			wantCeiling: minCeiling,
 			wantNeeded:  true,
 			wantClamped: true,
 		},
 		{
 			name:       "exact clamping boundary - ceiling equals minimum exactly",
-			measuredI:  -36.5,
+			measuredI:  -36.6,
 			measuredTP: -15.0,
 			targetI:    -16.0,
 			targetTP:   -2.0,
-			// gain = -16.0 - (-36.5) = 20.5 dB
-			// projected TP = -15.0 + 20.5 = 5.5 dBTP (exceeds -2.0)
-			// ceiling = -2.0 - 20.5 - 1.5 = -24.0 dBTP (exactly minLimiterCeilingDB)
+			// gain = -16.0 - (-36.6) = 20.6 dB
+			// projected TP = -15.0 + 20.6 = 5.6 dBTP (exceeds -2.0)
+			// ceiling = -2.0 - 20.6 - 1.4 = -24.0 dBTP (exactly minLimiterCeilingDB)
 			// Not clamped: ceiling < minLimiterCeilingDB is false when equal.
 			// deficit = 0 (no pre-gain needed at the boundary)
 			wantCeiling: minCeiling,
@@ -1354,10 +1354,10 @@ func TestCalculateLimiterCeiling(t *testing.T) {
 			}
 
 			// Verify deficit arithmetic independently for clamped cases.
-			// deficit = minLimiterCeilingDB - (targetTP - gainRequired - safetyMarginDB)
+			// deficit = minLimiterCeilingDB - (targetTP - gainRequired - ceilingMarginDB)
 			if clamped {
 				gainRequired := tt.targetI - tt.measuredI
-				idealCeiling := tt.targetTP - gainRequired - safetyMarginDB
+				idealCeiling := tt.targetTP - gainRequired - ceilingMarginDB
 				deficit := minLimiterCeilingDB - idealCeiling
 				if deficit <= 0 {
 					t.Errorf("deficit should be positive when clamped, got %.2f", deficit)
@@ -1369,6 +1369,92 @@ func TestCalculateLimiterCeiling(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestDerivedCeilingFormula pins the derived ceiling to its closed form:
+// ceiling = targetTP - gainRequired - ceilingMarginDB
+// = filtered_I + (targetTP - targetI) - ceilingMarginDB, the crest budget B above
+// the pre-limiter loudness less the headroom reserve.
+func TestDerivedCeilingFormula(t *testing.T) {
+	const targetI, targetTP = -16.0, -2.0
+	crestBudget := targetTP - targetI // B = 14.0 dB
+
+	cases := []struct {
+		name      string
+		filteredI float64
+		// filteredTP chosen high enough that limiting is needed (projected TP > targetTP)
+		filteredTP float64
+	}{
+		{name: "LMP-72-martin-like high crest", filteredI: -31.4, filteredTP: -11.3},
+		{name: "moderate crest", filteredI: -24.9, filteredTP: -5.0},
+		{name: "loud peaks", filteredI: -20.0, filteredTP: -3.0},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ceiling, needed, clamped := calculateLimiterCeiling(c.filteredI, c.filteredTP, targetI, targetTP)
+			if !needed {
+				t.Fatalf("expected limiting to be needed for filteredI=%.1f filteredTP=%.1f", c.filteredI, c.filteredTP)
+			}
+			if clamped {
+				t.Skipf("ceiling clamped to alimiter floor; closed form not directly observable")
+			}
+			// Closed form 1: ceiling = filtered_I + B - margin
+			wantFromBudget := c.filteredI + crestBudget - ceilingMarginDB
+			// Closed form 2: ceiling = targetTP - gainRequired - margin
+			gainRequired := targetI - c.filteredI
+			wantFromGain := targetTP - gainRequired - ceilingMarginDB
+
+			if math.Abs(wantFromBudget-wantFromGain) > 0.001 {
+				t.Fatalf("closed forms disagree: filtered_I+B-margin=%.3f, targetTP-gainRequired-margin=%.3f", wantFromBudget, wantFromGain)
+			}
+			if math.Abs(ceiling-wantFromBudget) > 0.01 {
+				t.Errorf("ceiling = %.2f dBTP, want %.2f dBTP (filtered_I + B - margin)", ceiling, wantFromBudget)
+			}
+		})
+	}
+}
+
+// TestBindingGainCapOnHighCrestInput proves the gain cap binds on a high-crest
+// post-limiter signal: when the requested target would push the true peak above
+// targetTP, calculateLinearModeTarget lowers the effective target so the realised
+// scalar gain holds final TP <= targetTP (minus the 0.1 dB epsilon). It mirrors the
+// high-crest failure: post-limiter measured_I far below the pre-limiter plan, so
+// the requested -16.0 would overshoot.
+func TestBindingGainCapOnHighCrestInput(t *testing.T) {
+	const desiredI, targetTP = -16.0, -2.0
+	const epsilon = 0.1
+
+	// Post-limiter measurements after the alimiter has shaped a 24.8 dB-crest stem.
+	// measured_I sits well below the pre-limiter filtered_I the ceiling planned from,
+	// so the requested target would overshoot the true peak.
+	measuredI := -19.0
+	measuredTP := -3.0 // post-limiter crest = 16.0 dB > B (14.0), so the cap must bind
+
+	effectiveI, offset, linearPossible := calculateLinearModeTarget(measuredI, measuredTP, desiredI, targetTP)
+
+	if linearPossible {
+		t.Fatalf("expected the cap to bind (linearPossible=false) on a high-crest input; got effectiveI=%.2f", effectiveI)
+	}
+
+	// The cap pins the effective target to measured_I + (targetTP - measured_TP) - epsilon.
+	wantEffectiveI := measuredI + (targetTP - measuredTP) - epsilon
+	if math.Abs(effectiveI-wantEffectiveI) > 0.01 {
+		t.Errorf("effectiveI = %.2f, want %.2f (capped below desired %.1f)", effectiveI, wantEffectiveI, desiredI)
+	}
+	if effectiveI >= desiredI {
+		t.Errorf("effectiveI = %.2f should be strictly below desired %.1f when the cap binds", effectiveI, desiredI)
+	}
+
+	// The realised scalar gain is offset = effectiveI - measured_I. Applying it to
+	// the oversampled measured_TP must land final TP at or under targetTP.
+	predictedFinalTP := measuredTP + offset
+	if predictedFinalTP > targetTP+0.001 {
+		t.Errorf("predicted final TP = %.2f dBTP exceeds target %.1f; cap did not bind", predictedFinalTP, targetTP)
+	}
+	if math.Abs(offset-(effectiveI-measuredI)) > 0.001 {
+		t.Errorf("offset = %.3f, want effectiveI - measured_I = %.3f", offset, effectiveI-measuredI)
 	}
 }
 
@@ -1392,10 +1478,10 @@ func TestBuildLoudnormFilterSpec_PreGain(t *testing.T) {
 			inputThresh:  -53.0,
 			targetOffset: -2.5,
 			// gain = -16.0 - (-43.2) = 27.2
-			// idealCeiling = -2.0 - 27.2 - 1.5 = -30.7
-			// deficit = -24.0 - (-30.7) = 6.7
+			// idealCeiling = -2.0 - 27.2 - 1.4 = -30.6
+			// deficit = -24.0 - (-30.6) = 6.6
 			wantVolumeFilter: true,
-			wantDeficit:      6.7,
+			wantDeficit:      6.6,
 			wantClamped:      true,
 		},
 		{
@@ -1406,23 +1492,23 @@ func TestBuildLoudnormFilterSpec_PreGain(t *testing.T) {
 			inputThresh:  -35.0,
 			targetOffset: -0.5,
 			// gain = -16.0 - (-24.9) = 8.9
-			// idealCeiling = -2.0 - 8.9 - 1.5 = -12.4 (above -24.0)
+			// idealCeiling = -2.0 - 8.9 - 1.4 = -12.3 (above -24.0)
 			wantVolumeFilter: false,
 			wantDeficit:      0.0,
 			wantClamped:      false,
 		},
 		{
 			name:         "clamped - moderate deficit",
-			inputI:       -38.0,
+			inputI:       -39.5,
 			inputTP:      -15.0,
 			inputLRA:     7.0,
 			inputThresh:  -48.0,
 			targetOffset: -1.0,
-			// gain = -16.0 - (-38.0) = 22.0
-			// idealCeiling = -2.0 - 22.0 - 1.5 = -25.5
-			// deficit = -24.0 - (-25.5) = 1.5
+			// gain = -16.0 - (-39.5) = 23.5
+			// idealCeiling = -2.0 - 23.5 - 1.4 = -26.9
+			// deficit = -24.0 - (-26.9) = 2.9
 			wantVolumeFilter: true,
-			wantDeficit:      1.5,
+			wantDeficit:      2.9,
 			wantClamped:      true,
 		},
 		{
@@ -1462,7 +1548,7 @@ func TestBuildLoudnormFilterSpec_PreGain(t *testing.T) {
 				ceiling = reDerivedCeiling
 			}
 
-			filterSpec := buildLoudnormFilterSpec(config, measurement, preGainDB, ceiling, needsLimiting, 48000, "")
+			filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, preGainDB, ceiling, needsLimiting, 48000, "")
 
 			// (a)/(b): Check volume filter presence
 			hasVolume := strings.Contains(filterSpec, "volume=")
@@ -1538,7 +1624,7 @@ func TestBuildLoudnormFilterSpec_DoesNotMutateConfig(t *testing.T) {
 		TargetOffset: -0.5,
 	}
 
-	filterSpec := buildLoudnormFilterSpec(config, measurement, 0, -1.0, false, 48000, "")
+	filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, 0, -1.0, false, 48000, "")
 
 	if config.Resample.Enabled {
 		t.Error("buildLoudnormFilterSpec mutated config.Resample.Enabled")
@@ -1562,7 +1648,7 @@ func TestBuildLoudnormFilterSpec_Adeclick(t *testing.T) {
 	t.Run("uses Pass 4 adeclick helper", func(t *testing.T) {
 		config := defaultNormalisationTestConfig()
 
-		filterSpec := buildLoudnormFilterSpec(config, measurement, 0, -1.0, false, 48000, "")
+		filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, 0, -1.0, false, 48000, "")
 
 		const want = "adeclick=t=1.7:w=55:o=50:m=s"
 		if !strings.Contains(filterSpec, want) {
@@ -1574,7 +1660,7 @@ func TestBuildLoudnormFilterSpec_Adeclick(t *testing.T) {
 		config := defaultNormalisationTestConfig()
 		config.Adeclick.Enabled = false
 
-		filterSpec := buildLoudnormFilterSpec(config, measurement, 0, -1.0, false, 48000, "")
+		filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, 0, -1.0, false, 48000, "")
 
 		if strings.Contains(filterSpec, "adeclick=") {
 			t.Errorf("buildLoudnormFilterSpec() emitted disabled adeclick\nfilterSpec: %s", filterSpec)
@@ -1598,7 +1684,7 @@ func TestBuildLoudnormFilterSpecSourceRateResample(t *testing.T) {
 	t.Run("derives resample rate and orders it between loudnorm and adeclick", func(t *testing.T) {
 		config := defaultNormalisationTestConfig()
 
-		filterSpec := buildLoudnormFilterSpec(config, measurement, 0, -1.0, false, 96000, "")
+		filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, 0, -1.0, false, 96000, "")
 
 		const wantResample = "aresample=96000"
 		if !strings.Contains(filterSpec, wantResample) {
@@ -1624,7 +1710,7 @@ func TestBuildLoudnormFilterSpecSourceRateResample(t *testing.T) {
 	t.Run("omits resample when source rate is zero", func(t *testing.T) {
 		config := defaultNormalisationTestConfig()
 
-		filterSpec := buildLoudnormFilterSpec(config, measurement, 0, -1.0, false, 0, "")
+		filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, 0, -1.0, false, 0, "")
 
 		if strings.Contains(filterSpec, "aresample=") {
 			t.Fatalf("buildLoudnormFilterSpec() emitted aresample for zero source rate\nfilterSpec: %s", filterSpec)
@@ -1646,7 +1732,7 @@ func TestBuildLoudnormFilterSpecIgnoresNonNormalisationFields(t *testing.T) {
 
 	base := defaultNormalisationTestConfig()
 	assertNoStaleEffectiveConfigFields(t)
-	controlSpec := buildLoudnormFilterSpec(base, measurement, 0, -1.0, false, 48000, "")
+	controlSpec := buildLoudnormFilterSpec(base, measurement, measurement.TargetOffset, 0, -1.0, false, 48000, "")
 
 	withUnrelatedFilterFields := *base
 	withUnrelatedFilterFields.FilterOrder = []FilterID{FilterAnalysis}
@@ -1654,7 +1740,7 @@ func TestBuildLoudnormFilterSpecIgnoresNonNormalisationFields(t *testing.T) {
 	withUnrelatedFilterFields.DS201Gate.Ratio = 4.0
 	withUnrelatedFilterFields.LA2A.Threshold = -30.0
 
-	gotSpec := buildLoudnormFilterSpec(&withUnrelatedFilterFields, measurement, 0, -1.0, false, 48000, "")
+	gotSpec := buildLoudnormFilterSpec(&withUnrelatedFilterFields, measurement, measurement.TargetOffset, 0, -1.0, false, 48000, "")
 	if gotSpec != controlSpec {
 		t.Fatalf("buildLoudnormFilterSpec() changed when unrelated filter fields changed\ncontrol: %s\ngot:     %s", controlSpec, gotSpec)
 	}
@@ -1681,7 +1767,7 @@ func TestPreGainCeilingRederivation(t *testing.T) {
 		},
 		{
 			name:       "moderate deficit - just below clamping",
-			measuredI:  -38.0,
+			measuredI:  -39.0,
 			measuredTP: -15.0,
 			targetI:    -16.0,
 			targetTP:   -2.0,
@@ -1720,7 +1806,7 @@ func TestPreGainCeilingRederivation(t *testing.T) {
 
 			// Step 2: calculate deficit
 			gainRequired := tt.targetI - tt.measuredI
-			idealCeiling := tt.targetTP - gainRequired - safetyMarginDB
+			idealCeiling := tt.targetTP - gainRequired - ceilingMarginDB
 			deficit := minLimiterCeilingDB - idealCeiling
 
 			if deficit <= 0 {
@@ -1770,34 +1856,39 @@ func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 		wantLinear     bool
 	}{
 		{
-			name:           "Anna - very quiet, clamped ceiling preserves full target",
-			measuredI:      -43.4,
-			measuredTP:     -19.2,
-			targetI:        -16.0,
-			targetTP:       -2.0,
+			name:       "Anna - very quiet, clamped ceiling preserves full target in linear mode",
+			measuredI:  -43.4,
+			measuredTP: -19.2,
+			targetI:    -16.0,
+			targetTP:   -2.0,
+			// gain 27.4, idealCeiling = -2 - 27.4 - 1.4 = -30.8, deficit = -24 - (-30.8) = 6.8,
+			// postGainI = -43.4 + 6.8 = -36.6, re-derived ceiling = -24.0,
+			// maxLinear = -2 - (-24) + (-36.6) - 0.1 = -14.7; -16.0 <= -14.7, so linear holds at -16.0
 			wantEffectiveI: -16.0,
 			wantLinear:     true,
 		},
 		{
-			name:           "Anna-like with different measurements",
-			measuredI:      -43.2,
-			measuredTP:     -18.6,
-			targetI:        -16.0,
-			targetTP:       -2.0,
+			name:       "Anna-like with different measurements",
+			measuredI:  -43.2,
+			measuredTP: -18.6,
+			targetI:    -16.0,
+			targetTP:   -2.0,
+			// gain 27.2, idealCeiling = -2 - 27.2 - 1.4 = -30.6, deficit = -24 - (-30.6) = 6.6,
+			// postGainI = -43.2 + 6.6 = -36.6, re-derived ceiling = -24.0,
+			// maxLinear = -2 - (-24) + (-36.6) - 0.1 = -14.7; -16.0 <= -14.7, so linear holds at -16.0
 			wantEffectiveI: -16.0,
 			wantLinear:     true,
 		},
 		{
-			name:       "extreme quiet - still clamped after pre-gain",
+			name:       "extreme quiet - large gain, clamped ceiling still linear at -16.0",
 			measuredI:  -55.0,
 			measuredTP: -30.0,
 			targetI:    -16.0,
 			targetTP:   -2.0,
-			// deficit = -24.0 - (-2.0 - (-16.0 - (-55.0)) - 1.5) = -24.0 - (-42.5) = 18.5
-			// postGainI = -55.0 + 18.5 = -36.5
-			// re-derived ceiling = -24.0
-			// maxLinear = -2.0 - (-24.0) + (-36.5) - 0.1 = -14.6
-			// -16.0 <= -14.6, so full target preserved
+			// gain = 39.0, idealCeiling = -2 - 39.0 - 1.4 = -42.4, deficit = -24 - (-42.4) = 18.4
+			// postGainI = -55.0 + 18.4 = -36.6, re-derived ceiling = -24.0
+			// maxLinear = -2.0 - (-24.0) + (-36.6) - 0.1 = -14.7
+			// -16.0 <= -14.7 is true, so linear holds at the full -16.0 target
 			wantEffectiveI: -16.0,
 			wantLinear:     true,
 		},
@@ -1818,11 +1909,11 @@ func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 
 			// Step 2: replicate the effectiveTP and effectiveMeasuredI logic
 			gainRequired := tt.targetI - tt.measuredI
-			idealCeiling := tt.targetTP - gainRequired - safetyMarginDB
+			idealCeiling := tt.targetTP - gainRequired - ceilingMarginDB
 			deficit := minLimiterCeilingDB - idealCeiling
 			postGainI := tt.measuredI + deficit
 			newGainRequired := tt.targetI - postGainI
-			reDerivedCeiling := tt.targetTP - newGainRequired - safetyMarginDB
+			reDerivedCeiling := tt.targetTP - newGainRequired - ceilingMarginDB
 			effectiveTP := reDerivedCeiling
 			effectiveMeasuredI := postGainI
 
@@ -1837,7 +1928,10 @@ func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 				t.Errorf("linearPossible = %v, want %v", linearPossible, tt.wantLinear)
 			}
 
-			// Step 4: verify buildLoudnormFilterSpec receives the full target
+			// Step 4: verify buildLoudnormFilterSpec receives the capped target.
+			// The limiter prefix is planned from the REQUESTED target I (production
+			// planLimiterForLoudnorm uses loudnorm.TargetI, not the capped value);
+			// only the loudnorm I= takes the capped effectiveTargetI.
 			config := defaultNormalisationTestConfig()
 			config.Loudnorm.TargetI = effectiveTargetI
 			measurement := &LoudnormMeasurement{
@@ -1850,16 +1944,16 @@ func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 
 			// Pre-compute values (the caller's responsibility)
 			bCeiling, bNeeded, bClamped := calculateLimiterCeiling(
-				tt.measuredI, tt.measuredTP, config.Loudnorm.TargetI, config.Loudnorm.TargetTP,
+				tt.measuredI, tt.measuredTP, tt.targetI, tt.targetTP,
 			)
 			preGainDB, bReDerived := calculatePreGain(
-				tt.measuredI, config.Loudnorm.TargetI, config.Loudnorm.TargetTP,
+				tt.measuredI, tt.targetI, tt.targetTP,
 			)
 			if bClamped {
 				bCeiling = bReDerived
 			}
 
-			filterSpec := buildLoudnormFilterSpec(config, measurement, preGainDB, bCeiling, bNeeded, 48000, "")
+			filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, preGainDB, bCeiling, bNeeded, 48000, "")
 			if !bClamped {
 				t.Error("expected pre-computation to report clamped")
 			}
@@ -1890,12 +1984,12 @@ func TestCalculatePreGain(t *testing.T) {
 			targetI:   -16.0,
 			targetTP:  -2.0,
 			// gainRequired = -16.0 - (-43.2) = 27.2
-			// idealCeiling = -2.0 - 27.2 - 1.5 = -30.7
-			// deficit = -24.0 - (-30.7) = 6.7
-			// postGainI = -43.2 + 6.7 = -36.5
-			// newGainRequired = -16.0 - (-36.5) = 20.5
-			// reDerivedCeiling = -2.0 - 20.5 - 1.5 = -24.0
-			wantPreGainDB:     6.7,
+			// idealCeiling = -2.0 - 27.2 - 1.4 = -30.6
+			// deficit = -24.0 - (-30.6) = 6.6
+			// postGainI = -43.2 + 6.6 = -36.6
+			// newGainRequired = -16.0 - (-36.6) = 20.6
+			// reDerivedCeiling = -2.0 - 20.6 - 1.4 = -24.0
+			wantPreGainDB:     6.6,
 			wantReDerivedCeil: -24.0,
 		},
 		{
@@ -1904,17 +1998,17 @@ func TestCalculatePreGain(t *testing.T) {
 			targetI:   -16.0,
 			targetTP:  -2.0,
 			// gainRequired = 8.9
-			// idealCeiling = -2.0 - 8.9 - 1.5 = -12.4 (above -24.0)
+			// idealCeiling = -2.0 - 8.9 - 1.4 = -12.3 (above -24.0)
 			wantPreGainDB:     0.0,
 			wantReDerivedCeil: 0.0,
 		},
 		{
 			name:      "boundary - ideal ceiling equals minLimiterCeilingDB exactly",
-			measuredI: -36.5,
+			measuredI: -36.6,
 			targetI:   -16.0,
 			targetTP:  -2.0,
-			// gainRequired = 20.5
-			// idealCeiling = -2.0 - 20.5 - 1.5 = -24.0 (exactly minLimiterCeilingDB)
+			// gainRequired = 20.6
+			// idealCeiling = -2.0 - 20.6 - 1.4 = -24.0 (exactly minLimiterCeilingDB)
 			wantPreGainDB:     0.0,
 			wantReDerivedCeil: 0.0,
 		},
@@ -2059,9 +2153,9 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 				InputThresh:  -35.0,
 				TargetOffset: -0.5,
 			},
-			wantPass3:      "alimiter=limit=0.239883:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8",
-			wantPass4Start: "alimiter=limit=0.239883:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=",
-			wantPass4:      "alimiter=limit=0.239883:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=I=-16.00:TP=-2.00:LRA=20.0:measured_I=-24.90:measured_TP=-5.00:measured_LRA=6.00:measured_thresh=-35.00:offset=-0.50:dual_mono=true:linear=true:print_format=json,aresample=48000,adeclick=t=1.7:w=55:o=50:m=s,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
+			wantPass3:      "alimiter=limit=0.242661:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8",
+			wantPass4Start: "alimiter=limit=0.242661:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=",
+			wantPass4:      "alimiter=limit=0.242661:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=I=-16.00:TP=-2.00:LRA=20.0:measured_I=-24.90:measured_TP=-5.00:measured_LRA=6.00:measured_thresh=-35.00:offset=-0.50:dual_mono=true:linear=true:print_format=json,aresample=48000,adeclick=t=1.7:w=55:o=50:m=s,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
 		},
 		{
 			name:     "clamped pre-gain",
@@ -2074,9 +2168,9 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 				InputThresh:  -46.5,
 				TargetOffset: -2.5,
 			},
-			wantPass3:      "volume=6.7dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8",
-			wantPass4Start: "volume=6.7dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=",
-			wantPass4:      "volume=6.7dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=I=-16.00:TP=-2.00:LRA=20.0:measured_I=-36.50:measured_TP=-24.00:measured_LRA=8.00:measured_thresh=-46.50:offset=-2.50:dual_mono=true:linear=true:print_format=json,aresample=48000,adeclick=t=1.7:w=55:o=50:m=s,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
+			wantPass3:      "volume=6.6dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8",
+			wantPass4Start: "volume=6.6dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=",
+			wantPass4:      "volume=6.6dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=I=-16.00:TP=-2.00:LRA=20.0:measured_I=-36.50:measured_TP=-24.00:measured_LRA=8.00:measured_thresh=-46.50:offset=-2.50:dual_mono=true:linear=true:print_format=json,aresample=48000,adeclick=t=1.7:w=55:o=50:m=s,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
 		},
 	}
 
@@ -2096,6 +2190,7 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 			gotPass4 := buildLoudnormFilterSpec(
 				config,
 				&tt.measurement,
+				tt.measurement.TargetOffset,
 				limiter.preGainDB,
 				limiter.ceilingDB,
 				limiter.needed,

@@ -1,13 +1,13 @@
-# Drawmer DS201 — The Gate That Changed Everything
+# Drawmer DS201: The Gate That Changed Everything
 
 > *"I could solve his problem."*
-> — Ivor Drawmer, watching a frustrated engineer battle cymbal bleed on gated toms
+> - Ivor Drawmer, watching a frustrated engineer battle cymbal bleed on gated toms
 
 ## The Legend
 
-In 1982, a self-taught electronics engineer from a tiny Channel Island with no cars and no streetlights revolutionised professional audio. Ivor Drawmer had been a session keyboardist—the kind who carried a soldering iron on stage and once sawed a Hammond organ in half for easier transport. That resourcefulness led him to invent **frequency-conscious gating**.
+In 1982, a self-taught electronics engineer from a tiny Channel Island with no cars and no streetlights revolutionised professional audio. Ivor Drawmer had been a session keyboardist, the kind who carried a soldering iron on stage and once sawed a Hammond organ in half for easier transport. That resourcefulness led him to invent **frequency-conscious gating**.
 
-The story goes: Ivor was waiting to record a keyboard overdub while an engineer wrestled with cymbal bleed on tom mics. Every crash triggered the gates, unleashing a gnashing mess of unwanted sound. Ivor returned the next day with a circuit board, two dangling jacks, and a solution. By filtering the side-chain to hear only low frequencies—which toms have plenty of and cymbals almost none—the gate became surgical.
+The story goes: Ivor was waiting to record a keyboard overdub while an engineer wrestled with cymbal bleed on tom mics. Every crash triggered the gates, unleashing a gnashing mess of unwanted sound. Ivor returned the next day with a circuit board, two dangling jacks, and a solution. By filtering the side-chain to hear only low frequencies (which toms have plenty of and cymbals almost none), the gate became surgical.
 
 That prototype became the **Drawmer DS201 Dual Noise Gate**. Over forty years later, it remains in production and installed in virtually every major recording studio, broadcast facility, and live venue worldwide.
 
@@ -30,7 +30,7 @@ Jivetalking honours the DS201's philosophy while adapting it for podcast speech.
 
 ### Frequency-Conscious Filtering
 
-FFmpeg lacks native side-chain filtering, so we apply frequency shaping to the audio path before gating—achieving the same result through different means:
+FFmpeg lacks native side-chain filtering, so we apply frequency shaping to the audio path before gating, achieving the same result through different means:
 
 | DS201 Feature | Jivetalking Equivalent |
 |---------------|------------------------|
@@ -42,7 +42,7 @@ The high-pass is a fixed 80Hz corner (12dB/oct) that removes subsonic rumble bel
 
 ### Soft Expander Philosophy
 
-Here we intentionally depart from the DS201's hard gate mode. For drums, complete silence between hits is desirable. For speech, it sounds unnatural—listeners expect room tone between phrases.
+Here we intentionally depart from the DS201's hard gate mode. For drums, complete silence between hits is desirable. For speech, it sounds unnatural; listeners expect room tone between phrases.
 
 | Aspect | DS201 Hard Gate | Jivetalking |
 |--------|-----------------|-------------|
@@ -67,7 +67,7 @@ The DS201 requires manual adjustment. We measure your audio in Pass 1 and tune e
 
 ### Attack: Preserving Transients
 
-The DS201's 10µs attack is legendary for preserving the crack of a snare or the punch of a kick. Speech transients are gentler but still matter—the "P" in "podcast" needs its plosive intact.
+The DS201's 10µs attack is legendary for preserving the crack of a snare or the punch of a kick. Speech transients are gentler but still matter; the "P" in "podcast" needs its plosive intact.
 
 | Transient Type | Attack Time | Detection |
 |----------------|-------------|-----------|
@@ -77,7 +77,7 @@ The DS201's 10µs attack is legendary for preserving the crack of a snare or the
 
 ### Hold Compensation
 
-The DS201's dedicated Hold parameter keeps the gate open briefly after signal drops—essential for preventing chatter on decaying toms. FFmpeg's `agate` lacks this control, so we compensate through release timing:
+The DS201's dedicated Hold parameter keeps the gate open briefly after signal drops, essential for preventing chatter on decaying toms. FFmpeg's `agate` lacks this control, so we compensate through release timing:
 
 - **Baseline**: +50ms added to release (simulates short hold)
 - **Tonal noise**: +75ms additional (hides pumping on hum/bleed)
@@ -95,7 +95,7 @@ The DS201's dedicated Hold parameter keeps the gate open briefly after signal dr
 
 ## The Drawmer Legacy
 
-Ivor Drawmer received the APRS Lifetime Technical Achievement Award, presented by Sir George Martin. His innovations—frequency-conscious gating, program-adaptive dynamics, spectral enhancement—shaped how every competitor designs signal processors. The DS201 alone has been in continuous production for over forty years.
+Ivor Drawmer received the APRS Lifetime Technical Achievement Award, presented by Sir George Martin. His innovations (frequency-conscious gating, program-adaptive dynamics, spectral enhancement) shaped how every competitor designs signal processors. The DS201 alone has been in continuous production for over forty years.
 
 Not bad for a self-taught pianist from a sleepy island in the English Channel.
 
