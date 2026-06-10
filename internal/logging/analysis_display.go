@@ -184,12 +184,26 @@ func writeAnalysisFilterAdaptation(w io.Writer, measurements *processor.AudioMea
 			})
 		}
 		if config.Deesser.Intensity > 0 {
+			value := fmt.Sprintf("%.0f%% intensity", config.Deesser.Intensity*100)
+			if measurements != nil && measurements.SpeechProfile != nil {
+				excess := measurements.SpeechProfile.SibBandRMS - measurements.SpeechProfile.BodyBandRMS
+				value = fmt.Sprintf("%.0f%% intensity (sibilance excess %.1f dB)", config.Deesser.Intensity*100, excess)
+			}
 			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
-				{"De-esser", fmt.Sprintf("%.0f%% intensity", config.Deesser.Intensity*100)},
+				{"De-esser", value},
 			})
 		} else {
+			value := "OFF (no speech profile; full-file metrics unreliable)"
+			if measurements != nil && measurements.SpeechProfile != nil {
+				if !measurements.SpeechProfile.BandsMeasured {
+					value = "OFF (speech-band RMS not measured)"
+				} else {
+					excess := measurements.SpeechProfile.SibBandRMS - measurements.SpeechProfile.BodyBandRMS
+					value = fmt.Sprintf("OFF (sibilance excess %.1f dB)", excess)
+				}
+			}
 			writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
-				{"De-esser", "disabled (no sibilance detected)"},
+				{"De-esser", value},
 			})
 		}
 		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{

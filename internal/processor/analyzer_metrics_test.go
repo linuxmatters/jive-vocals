@@ -550,6 +550,41 @@ func TestAudioMeasurementsJSON_LegacyRoundTrip(t *testing.T) {
 	}
 }
 
+// TestAudioMeasurementsJSON_SpeechBandsMeasuredRoundTrip verifies that the
+// SpeechProfile band fields, including BandsMeasured, survive marshal-then-unmarshal.
+func TestAudioMeasurementsJSON_SpeechBandsMeasuredRoundTrip(t *testing.T) {
+	original := AudioMeasurements{
+		SpeechProfile: &SpeechCandidateMetrics{
+			BodyBandRMS:   -22.0,
+			SibBandRMS:    -25.0,
+			BandsMeasured: true,
+		},
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+
+	var decoded AudioMeasurements
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	if decoded.SpeechProfile == nil {
+		t.Fatal("SpeechProfile is nil after round-trip")
+	}
+	if !decoded.SpeechProfile.BandsMeasured {
+		t.Error("BandsMeasured = false after round-trip, want true")
+	}
+	if decoded.SpeechProfile.BodyBandRMS != original.SpeechProfile.BodyBandRMS {
+		t.Errorf("BodyBandRMS = %v, want %v", decoded.SpeechProfile.BodyBandRMS, original.SpeechProfile.BodyBandRMS)
+	}
+	if decoded.SpeechProfile.SibBandRMS != original.SpeechProfile.SibBandRMS {
+		t.Errorf("SibBandRMS = %v, want %v", decoded.SpeechProfile.SibBandRMS, original.SpeechProfile.SibBandRMS)
+	}
+}
+
 // TestOutputMeasurementsUnmarshal_AcceptsLegacySilenceSample verifies that a
 // payload containing only the legacy silence_sample key populates RoomToneSample
 // identically to a new-key payload would.

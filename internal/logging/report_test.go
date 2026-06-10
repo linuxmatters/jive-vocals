@@ -161,6 +161,9 @@ func makeSpeechSample(rms float64) *processor.SpeechCandidateMetrics {
 		ShortTermLUFS: rms - 0.5,
 		TruePeak:      rms + 10,
 		SamplePeak:    rms + 9,
+		BodyBandRMS:   -22.0,
+		SibBandRMS:    -25.0, // sibilance excess -3 dB
+		BandsMeasured: true,
 	}
 }
 
@@ -321,9 +324,9 @@ func TestGenerateReport_FilterChainReportsDeesser(t *testing.T) {
 
 	for _, want := range []string{
 		"deesser: intensity 42%, amount 55%, freq 65%",
-		"Rationale: normal voice",
-		"spectral centroid: 2400 Hz (speech region)",
-		"spectral rolloff: 6200 Hz (speech region)",
+		"Rationale: sibilance excess -3.0 dB (speech region)",
+		"sibilant band (6-9 kHz): -25.0 dBFS",
+		"body band (1-3 kHz): -22.0 dBFS",
 	} {
 		if !strings.Contains(output, want) {
 			t.Errorf("report missing %q", want)
@@ -332,6 +335,23 @@ func TestGenerateReport_FilterChainReportsDeesser(t *testing.T) {
 
 	if strings.Contains(output, "99%") {
 		t.Error("report used stale flat deesser fields")
+	}
+}
+
+func TestGenerateReport_FilterChainReportsDeesserBandsNotMeasured(t *testing.T) {
+	data := makeReportData(t)
+	data.Result.Config.Deesser.Enabled = true
+	data.Result.Config.Deesser.Intensity = 0.0
+	data.Result.Measurements.SpeechProfile.BandsMeasured = false
+
+	output := generateReportText(t, data)
+
+	want := "deesser: OFF: speech-band RMS not measured (region too short for astats)"
+	if !strings.Contains(output, want) {
+		t.Errorf("report missing %q", want)
+	}
+	if strings.Contains(output, "sibilance excess") {
+		t.Error("report showed misleading sibilance excess when bands not measured")
 	}
 }
 

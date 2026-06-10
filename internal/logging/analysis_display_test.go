@@ -151,6 +151,9 @@ func makeFullAnalysisMeasurements() *processor.AudioMeasurements {
 				Rolloff:  7200,
 			},
 			VoicingDensity: 0.76,
+			BodyBandRMS:    -23.0,
+			SibBandRMS:     -26.0, // sibilance excess -3.0 dB
+			BandsMeasured:  true,
 			Score:          0.88,
 		},
 		{
@@ -281,7 +284,7 @@ FILTER ADAPTATION
   Gate Threshold: -51.2 dB (speech-aware)
   Gate Ratio:     3.0:1
   NR FFT denoise: 12 dB (fixed)
-  De-esser:       35% intensity
+  De-esser:       35% intensity (sibilance excess -3.0 dB)
   LA-2A Thresh:   -21 dB
   LA-2A Ratio:    2.5:1
 SPECTRAL SUMMARY
@@ -355,6 +358,24 @@ func TestDisplayAnalysisResultsWithDiagnostics_UsesEffectiveConfigAndDiagnostics
 		if strings.Contains(output, stale) {
 			t.Errorf("analysis output used stale config diagnostics %q", stale)
 		}
+	}
+}
+
+func TestDisplayAnalysisResults_DeesserOffBandsNotMeasured(t *testing.T) {
+	m := makeFullAnalysisMeasurements()
+	m.SpeechProfile.BandsMeasured = false
+	config := processor.DefaultEffectiveFilterConfig()
+	config.Deesser.Intensity = 0.0
+
+	var buf bytes.Buffer
+	DisplayAnalysisResults(&buf, "/tmp/test.wav", makeMinimalMetadata(), m, config)
+	output := buf.String()
+
+	if !strings.Contains(output, "OFF (speech-band RMS not measured)") {
+		t.Error("expected de-esser OFF (speech-band RMS not measured) when bands unmeasured")
+	}
+	if strings.Contains(output, "sibilance excess") {
+		t.Error("analysis output showed misleading sibilance excess when bands not measured")
 	}
 }
 
