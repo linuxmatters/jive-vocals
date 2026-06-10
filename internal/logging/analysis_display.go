@@ -147,7 +147,7 @@ func writeAnalysisFilterAdaptation(w io.Writer, measurements *processor.AudioMea
 	writeAnalysisSection(w, "FILTER ADAPTATION")
 	if config != nil {
 		writeAnalysisMetricRows(w, "  ", 15, []analysisMetricSpec{
-			{"Highpass", fmt.Sprintf("%.0f Hz (from spectral analysis)", config.DS201HighPass.Frequency)},
+			{"Highpass", fmt.Sprintf("%.0f Hz (fixed)", config.DS201HighPass.Frequency)},
 		})
 		if config.DS201LowPass.Enabled {
 			lowpassValue := fmt.Sprintf("%.0f Hz", config.DS201LowPass.Frequency)

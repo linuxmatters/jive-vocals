@@ -34,11 +34,11 @@ FFmpeg lacks native side-chain filtering, so we apply frequency shaping to the a
 
 | DS201 Feature | Jivetalking Equivalent |
 |---------------|------------------------|
-| HP side-chain (25Hz–4kHz) | High-pass filter (60–120Hz adaptive) + mains hum notch |
+| HP side-chain (25Hz–4kHz) | High-pass filter (fixed 80Hz, 12dB/oct) |
 | LP side-chain (250Hz–35kHz) | Low-pass filter (unconditional 20.5kHz band-limit) |
 | Key Listen | Pass 1 [spectral analysis](Spectral%20Analysis.md) guides all decisions |
 
-The high-pass removes subsonic rumble that would hold a gate open. The notch filter surgically removes 50/60Hz mains hum and up to four harmonics. The low-pass sits in circuit at an unconditional 20.5kHz band-limit (12dB/oct) for all content, giving every file a consistent bandwidth into the downstream AAC/Opus/MP3 encoders. 20.5kHz is at the top of human hearing, so the band-limit is audibly transparent on voice, music, and singing; it only removes inaudible ultrasonics that the lossy encoders discard anyway. There is no content detection and no adaptive tuning.
+The high-pass is a fixed 80Hz corner (12dB/oct) that removes subsonic rumble below the vocal fundamental which would otherwise hold a gate open. The low-pass sits in circuit at an unconditional 20.5kHz band-limit (12dB/oct) for all content, giving every file a consistent bandwidth into the downstream AAC/Opus/MP3 encoders. 20.5kHz is at the top of human hearing, so the band-limit is audibly transparent on voice, music, and singing; it only removes inaudible ultrasonics that the lossy encoders discard anyway. There is no content detection and no adaptive tuning.
 
 ### Soft Expander Philosophy
 
@@ -101,4 +101,4 @@ Not bad for a self-taught pianist from a sleepy island in the English Channel.
 
 ---
 
-*References: [Drawmer DS201](https://drawmer.com/products/pro-series/ds201.php) • [Drawmer Company History](https://drawmer.com/company.php) • FFmpeg [agate](https://ffmpeg.org/ffmpeg-filters.html#agate), [highpass](https://ffmpeg.org/ffmpeg-filters.html#highpass), [lowpass](https://ffmpeg.org/ffmpeg-filters.html#lowpass), [bandreject](https://ffmpeg.org/ffmpeg-filters.html#bandreject)*
+*References: [Drawmer DS201](https://drawmer.com/products/pro-series/ds201.php) • [Drawmer Company History](https://drawmer.com/company.php) • FFmpeg [agate](https://ffmpeg.org/ffmpeg-filters.html#agate), [highpass](https://ffmpeg.org/ffmpeg-filters.html#highpass), [lowpass](https://ffmpeg.org/ffmpeg-filters.html#lowpass)*

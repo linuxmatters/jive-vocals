@@ -100,8 +100,8 @@ downmix → ds201_highpass → ds201_lowpass → noiseremove → ds201_gate → 
 
 | Filter | Adaptive Parameters | Basis |
 |--------|---------------------|-------|
-| **DS201 Highpass** | Frequency (60-120Hz), poles, mix | Spectral centroid, spectral decrease, noise floor |
-| **DS201 Lowpass** | Cutoff frequency, enable/disable | Content type detection (speech/music/mixed), rolloff, ZCR |
+| **DS201 Highpass** | Fixed 80Hz / 12dB/oct | None (fixed) |
+| **DS201 Lowpass** | Fixed 20.5kHz / 12dB/oct band-limit | None (unconditional, all content) |
 | **NoiseRemove** | None (fixed) | Not adaptive: `anlmdn` runs at the source sample rate with `r=0.0020` and `m=3`, followed by `afftdn` FFT spectral denoise with a fixed `nr=12` (capped to avoid warble on the noisiest voice) |
 | **DS201 Gate** | Threshold, ratio, attack, release, range, knee | LRA, noise floor, quiet speech estimate, spectral flux, entropy |
 | **LA-2A Compressor** | Threshold, ratio, attack, release, knee, mix | Kurtosis, flux, dynamic range, spectral centroid |
@@ -146,8 +146,8 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 | **Noise Reduction** | None | `anlmdn` (Non-Local Means, source-rate denoising at `r=0.0020`, `m=3`) + `afftdn` (FFT spectral denoise, fixed `nr=12`) |
 | **Dynamics Processing** | Implicit in leveling algorithm | Explicit LA-2A-style compressor + CBS Volumax limiter |
 | **Gating/Expansion** | None | DS201-inspired soft expander (2:1-4:1 ratio) |
-| **Highpass Filtering** | None | Adaptive 60-120Hz with warm voice protection |
-| **Lowpass Filtering** | None | Adaptive 16kHz+ with content-aware disabling |
+| **Highpass Filtering** | None | Fixed 80Hz 12dB/oct highpass |
+| **Lowpass Filtering** | None | Fixed 20.5kHz 12dB/oct band-limit |
 | **De-essing** | None | Adaptive intensity 0.0-0.6 based on spectral analysis |
 | **Content Type Detection** | None | Speech vs Music vs Mixed classification |
 | **Adaptive Parameters** | Minimal (one-size-fits-all) | Extensive per-filter tuning based on 20+ metrics |
@@ -224,11 +224,10 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 2. **Gating:** Soft expander for inter-speech cleanup
 3. **True Peak Limiting:** Prevents inter-sample peaks
 4. **De-essing:** Automatic sibilance control
-5. **Content Detection:** Distinguishes speech from music
-6. **Spectral Analysis:** 15+ spectral metrics for adaptive tuning
-7. **Speech Profiling:** Golden sub-region extraction for representative metrics
-8. **Standardised Output:** Consistent 44.1kHz/16-bit/mono
-9. **Open Source:** Fully auditable and extensible
+5. **Spectral Analysis:** 15+ spectral metrics for adaptive tuning
+6. **Speech Profiling:** Golden sub-region extraction for representative metrics
+7. **Standardised Output:** Consistent 44.1kHz/16-bit/mono
+8. **Open Source:** Fully auditable and extensible
 
 ---
 

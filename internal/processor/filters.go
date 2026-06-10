@@ -23,7 +23,7 @@ const (
 	// DS201-inspired frequency-conscious filtering (Pass 2 only)
 	// Drawmer DS201 pioneered HP/LP side-chain filtering for frequency-conscious gating.
 	// We apply these filters to the audio path before the gate for equivalent effect.
-	FilterDS201HighPass FilterID = "ds201_highpass" // HP + hum notch composite (part of DS201 side-chain)
+	FilterDS201HighPass FilterID = "ds201_highpass" // fixed 80 Hz HP corner (part of DS201 side-chain)
 	FilterDS201LowPass  FilterID = "ds201_lowpass"  // LP for ultrasonic rejection (adaptive)
 	FilterDS201Gate     FilterID = "ds201_gate"     // Soft expander inspired by DS201
 
@@ -97,6 +97,12 @@ const (
 )
 
 const (
+	// DS201 high-pass is a FIXED 80 Hz, 12 dB/oct (2-pole Butterworth) corner,
+	// applied to every file with no adaptation. 80 Hz clears every measured vocal
+	// fundamental with margin (lowest male F0 ~91 Hz; female ~165+ Hz, Anna 188 Hz
+	// an octave clear); the 2-pole/12 dB-oct slope is symmetric with the
+	// unconditional 20.5 kHz lowpass and removes subsonic rumble before the gate.
+	ds201HPDefaultFreq      = 80.0
 	ds201HPDefaultPoles     = 2
 	ds201HPDefaultWidth     = 0.707
 	ds201HPDefaultMix       = 1.0
@@ -396,7 +402,7 @@ func defaultResampleConfig() ResampleConfig {
 func defaultDS201HighPassConfig() DS201HighPassConfig {
 	return DS201HighPassConfig{
 		Enabled:   true,
-		Frequency: 80.0,
+		Frequency: ds201HPDefaultFreq,
 		Poles:     ds201HPDefaultPoles,
 		Width:     ds201HPDefaultWidth,
 		Mix:       ds201HPDefaultMix,
@@ -599,7 +605,7 @@ func (cfg *EffectiveFilterConfig) buildAnalysisFilter() string {
 	// for whole-file measurements. Per-interval RMS is calculated directly from frame
 	// samples in Go for accurate silence detection.
 	// aspectralstats: comprehensive spectral analysis for adaptive filter tuning
-	//   - centroid: spectral brightness (Hz) - informs highpass freq and de-esser
+	//   - centroid: spectral brightness (Hz) - informs de-esser
 	//   - spread: spectral bandwidth - voice fullness indicator
 	//   - skewness: spectral asymmetry - positive=bright, negative=dark
 	//   - kurtosis: spectral peakiness - tonal vs broadband content
@@ -657,11 +663,11 @@ func (cfg *EffectiveFilterConfig) buildRequiredOutputFormatFilter() string {
 // frequency filtering to the audio path before gating to achieve the same effect.
 //
 // Parameters:
-// - frequency: cutoff frequency in Hz (adaptive: 60-120Hz based on voice)
-// - poles: 1=6dB/oct (gentle), 2=12dB/oct (standard)
-// - width: Q factor (0.707=Butterworth, lower=gentler for warm voices)
+// - frequency: cutoff frequency in Hz (fixed 80 Hz)
+// - poles: 1=6dB/oct (gentle), 2=12dB/oct (standard, fixed)
+// - width: Q factor (0.707=Butterworth, fixed)
 // - transform: filter algorithm (tdii=best floating-point accuracy)
-// - mix: wet/dry blend (1.0=full filter, 0.7=subtle for warm voices)
+// - mix: wet/dry blend (1.0=full filter, fixed)
 func (cfg *EffectiveFilterConfig) buildDS201HighpassFilter() string {
 	highpass := cfg.DS201HighPass
 	if !highpass.Enabled {

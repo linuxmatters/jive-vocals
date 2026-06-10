@@ -121,7 +121,7 @@ func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) (*Ef
 
 	// Tune each filter adaptively based on measurements
 	// Order matters: gate threshold calculated BEFORE denoise filters
-	tuneDS201HighPass(effectiveConfig, measurements)             // Composite: highpass + hum notch
+	// The DS201 highpass is fixed (80 Hz, 12 dB/oct) from defaultDS201HighPassConfig; no tuning step.
 	tuneDS201LowPass(effectiveConfig, diagnostics, measurements) // Unconditional 20.5 kHz band-limit
 
 	// NoiseRemove (anlmdn + afftdn) has no adaptive tuning: anlmdn is fixed from
@@ -149,7 +149,7 @@ func sanitizeConfig(config *EffectiveFilterConfig) {
 }
 
 func sanitizeDS201HighPassConfig(config *DS201HighPassConfig) {
-	config.Frequency = sanitizeFloat(config.Frequency, ds201DefaultHPFreq)
+	config.Frequency = sanitizeFloat(config.Frequency, ds201HPDefaultFreq)
 	config.Width = sanitizeFloat(config.Width, 0.707)
 	config.Mix = sanitizeFloat(config.Mix, 1.0)
 }
