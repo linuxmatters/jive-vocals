@@ -10,23 +10,37 @@ import (
 	"github.com/linuxmatters/jivetalking/internal/audio"
 )
 
+// breakOnError is the lenient error policy: swallow the error so the caller's
+// loop stops (read loop) or skips (pull loop) without aborting the whole run.
+func breakOnError(error) error { return nil }
+
+// abortOnError is the strict error policy: propagate the error so the whole
+// run aborts.
+func abortOnError(err error) error { return err }
+
 // FrameLoopConfig controls the behaviour of runFilterGraph.
+//
+// Each error callback returns nil to continue leniently or the error to abort
+// strictly. A nil callback is normalised to an explicit default policy at the
+// top of runFilterGraph: OnReadError defaults to breakOnError (lenient),
+// OnPushError and OnPullError default to abortOnError (strict). Set a field to
+// breakOnError or abortOnError to make the policy explicit at the call site.
 type FrameLoopConfig struct {
 	// OnReadError is called when reader.ReadFrame returns an error.
 	// Return nil to break the read loop (lenient); return the error to abort (strict).
-	// nil callback = break on any error (lenient default).
+	// nil = breakOnError (lenient).
 	OnReadError func(err error) error
 
 	// OnPushError is called when AVBuffersrcAddFrameFlags returns an error.
 	// Return nil to continue reading (lenient); return the error to abort (strict).
-	// nil callback = return the error (strict default).
+	// nil = abortOnError (strict).
 	OnPushError func(err error) error
 
 	// OnPullError is called when AVBuffersinkGetFrame returns an error that is
 	// NOT EAGAIN and NOT EOF (those are handled internally by breaking the pull loop).
 	// Return nil to break the pull loop and continue reading (lenient);
 	// return the error to abort both loops (strict).
-	// nil callback = return the error (strict default).
+	// nil = abortOnError (strict).
 	OnPullError func(err error) error
 
 	// OnFrame is called for each filtered frame pulled from the sink.
@@ -53,6 +67,20 @@ func runFilterGraph(
 	bufferSrcCtx, bufferSinkCtx *ffmpeg.AVFilterContext,
 	config FrameLoopConfig,
 ) error {
+	// Normalise nil callbacks to explicit default policies so the loop bodies
+	// read one uniform rule: call the handler, abort on non-nil, otherwise act
+	// leniently. OnReadError is lenient by default; OnPushError and OnPullError
+	// are strict by default.
+	if config.OnReadError == nil {
+		config.OnReadError = breakOnError
+	}
+	if config.OnPushError == nil {
+		config.OnPushError = abortOnError
+	}
+	if config.OnPullError == nil {
+		config.OnPullError = abortOnError
+	}
+
 	filteredFrame := ffmpeg.AVFrameAlloc()
 	defer ffmpeg.AVFrameFree(&filteredFrame)
 
@@ -64,13 +92,10 @@ func runFilterGraph(
 				if errors.Is(err, ffmpeg.EAgain) || errors.Is(err, ffmpeg.AVErrorEOF) {
 					break
 				}
-				if config.OnPullError != nil {
-					if cbErr := config.OnPullError(err); cbErr != nil {
-						return cbErr
-					}
-					break // callback returned nil = lenient, break inner loop
+				if cbErr := config.OnPullError(err); cbErr != nil {
+					return cbErr
 				}
-				return err // nil callback = strict default
+				break // handler returned nil = lenient, break inner loop
 			}
 
 			if config.OnFrame != nil {
@@ -94,13 +119,10 @@ func runFilterGraph(
 
 		frame, err := reader.ReadFrame()
 		if err != nil {
-			if config.OnReadError != nil {
-				if cbErr := config.OnReadError(err); cbErr != nil {
-					return cbErr
-				}
-				break // callback returned nil = lenient, stop reading
+			if cbErr := config.OnReadError(err); cbErr != nil {
+				return cbErr
 			}
-			break // nil callback = break (lenient default)
+			break // handler returned nil = lenient, stop reading
 		}
 		if frame == nil {
 			break // EOF
@@ -112,13 +134,10 @@ func runFilterGraph(
 
 		// Push frame into filter graph
 		if _, err := ffmpeg.AVBuffersrcAddFrameFlags(bufferSrcCtx, frame, 0); err != nil {
-			if config.OnPushError != nil {
-				if cbErr := config.OnPushError(err); cbErr != nil {
-					return cbErr
-				}
-				continue // callback returned nil = lenient, skip this frame
+			if cbErr := config.OnPushError(err); cbErr != nil {
+				return cbErr
 			}
-			return err // nil callback = strict default
+			continue // handler returned nil = lenient, skip this frame
 		}
 
 		// Pull filtered frames
@@ -129,13 +148,10 @@ func runFilterGraph(
 
 	// Flush the filter graph by sending nil frame
 	if _, err := ffmpeg.AVBuffersrcAddFrameFlags(bufferSrcCtx, nil, 0); err != nil {
-		if config.OnPushError != nil {
-			if cbErr := config.OnPushError(err); cbErr != nil {
-				return cbErr
-			}
-			return nil // flush push failed but callback swallowed it
+		if cbErr := config.OnPushError(err); cbErr != nil {
+			return cbErr
 		}
-		return err // nil callback = strict default
+		return nil // flush push failed but handler swallowed it
 	}
 
 	// Drain remaining filtered frames
