@@ -36,12 +36,25 @@ func OpenAudioFile(filename string) (*Reader, *Metadata, error) {
 	filenameC := ffmpeg.ToCStr(filename)
 	defer filenameC.Free()
 
+	// cleanup frees the cgo resources allocated so far in reverse order (decCtx
+	// before fmtCtx). It only runs on an error return; the success path hands
+	// ownership to the Reader and frees nothing.
+	decCtx := (*ffmpeg.AVCodecContext)(nil)
+	cleanup := func() {
+		if decCtx != nil {
+			ffmpeg.AVCodecFreeContext(&decCtx)
+		}
+		if fmtCtx != nil {
+			ffmpeg.AVFormatCloseInput(&fmtCtx)
+		}
+	}
+
 	if _, err := ffmpeg.AVFormatOpenInput(&fmtCtx, filenameC, nil, nil); err != nil {
 		return nil, nil, fmt.Errorf("failed to open input file: %w", err)
 	}
 
 	if _, err := ffmpeg.AVFormatFindStreamInfo(fmtCtx, nil); err != nil {
-		ffmpeg.AVFormatCloseInput(&fmtCtx)
+		cleanup()
 		return nil, nil, fmt.Errorf("failed to find stream info: %w", err)
 	}
 
@@ -58,32 +71,30 @@ func OpenAudioFile(filename string) (*Reader, *Metadata, error) {
 	}
 
 	if streamIdx == -1 {
-		ffmpeg.AVFormatCloseInput(&fmtCtx)
+		cleanup()
 		return nil, nil, fmt.Errorf("no audio stream found in file: %s", filename)
 	}
 
 	codecPar := audioStream.Codecpar()
 	decoder := ffmpeg.AVCodecFindDecoder(codecPar.CodecId())
 	if decoder == nil {
-		ffmpeg.AVFormatCloseInput(&fmtCtx)
+		cleanup()
 		return nil, nil, fmt.Errorf("decoder not found for codec ID %d in file: %s", codecPar.CodecId(), filename)
 	}
 
-	decCtx := ffmpeg.AVCodecAllocContext3(decoder)
+	decCtx = ffmpeg.AVCodecAllocContext3(decoder)
 	if decCtx == nil {
-		ffmpeg.AVFormatCloseInput(&fmtCtx)
+		cleanup()
 		return nil, nil, fmt.Errorf("failed to allocate decoder context for file: %s", filename)
 	}
 
 	if _, err := ffmpeg.AVCodecParametersToContext(decCtx, codecPar); err != nil {
-		ffmpeg.AVCodecFreeContext(&decCtx)
-		ffmpeg.AVFormatCloseInput(&fmtCtx)
+		cleanup()
 		return nil, nil, fmt.Errorf("failed to copy codec parameters: %w", err)
 	}
 
 	if _, err := ffmpeg.AVCodecOpen2(decCtx, decoder, nil); err != nil {
-		ffmpeg.AVCodecFreeContext(&decCtx)
-		ffmpeg.AVFormatCloseInput(&fmtCtx)
+		cleanup()
 		return nil, nil, fmt.Errorf("failed to open decoder: %w", err)
 	}
 
@@ -93,8 +104,7 @@ func OpenAudioFile(filename string) (*Reader, *Metadata, error) {
 	defer layoutPtr.Free()
 
 	if _, err := ffmpeg.AVChannelLayoutDescribe(decCtx.ChLayout(), layoutPtr, 64); err != nil {
-		ffmpeg.AVCodecFreeContext(&decCtx)
-		ffmpeg.AVFormatCloseInput(&fmtCtx)
+		cleanup()
 		return nil, nil, fmt.Errorf("failed to get channel layout: %w", err)
 	}
 
@@ -123,6 +133,8 @@ func OpenAudioFile(filename string) (*Reader, *Metadata, error) {
 
 // ReadFrame reads the next decoded audio frame
 // Returns nil when end of file is reached
+// The returned frame is reused by the next ReadFrame call: consume it before
+// calling ReadFrame again and do not retain it.
 func (r *Reader) ReadFrame() (*ffmpeg.AVFrame, error) {
 	for {
 		// Try to receive a frame from the decoder
