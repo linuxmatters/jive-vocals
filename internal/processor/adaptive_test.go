@@ -442,237 +442,137 @@ func TestTuneDS201LowPass(t *testing.T) {
 }
 
 func TestTuneDeesser(t *testing.T) {
-	// Constants from adaptive.go for reference:
-	// centroidVeryBright = 6000 Hz
-	// centroidBright     = 4000 Hz
-	// rolloffNoSibilance = 4000 Hz
-	// rolloffLimited     = 8000 Hz
-	// rolloffExtensive   = 12000 Hz
-	// deessIntensityBright = 0.6
-	// deessIntensityNormal = 0.5
-	// deessIntensityDark   = 0.4
-	// deessIntensityMax    = 0.8
-	// deessIntensityMin    = 0.3
+	// New engagement model (adaptive_deesser.go):
+	//   sibilanceExcess = SpeechProfile.SibBandRMS - SpeechProfile.BodyBandRMS  (dB)
+	//   excess < -6           -> i = 0.0  (OFF)
+	//   -6 .. -3              -> ramp i 0.0 -> 0.6
+	//   -3 ..  0              -> ramp i 0.6 -> 0.85
+	//   >  0                  -> i = 0.85 (cap)
+	//
+	// Breakpoints/endpoints: deessExcessOffDB=-6, deessExcessMidDB=-3,
+	// deessExcessMaxDB=0, deessIntensityMid=0.6, deessIntensityMax=0.85.
 
 	tests := []struct {
 		name          string
-		centroid      float64                 // spectral centroid (Hz)
-		rolloff       float64                 // spectral rolloff (Hz)
-		wantIntensity float64                 // expected de-esser intensity
-		tolerance     float64                 // acceptable tolerance for floating point
-		speechProfile *SpeechCandidateMetrics // nil = no speech profile
+		body          float64 // SpeechProfile.BodyBandRMS (dBFS)
+		sib           float64 // SpeechProfile.SibBandRMS (dBFS)
+		hasProfile    bool
+		bandsMeasured bool // SpeechProfile.BandsMeasured
+		wantIntensity float64
+		tolerance     float64
 	}{
-		// Full adaptive logic (both centroid and rolloff available)
-		// Very bright voice (centroid > 6000) with extensive HF (rolloff > 12000)
+		// No speech profile -> guard keeps de-esser OFF regardless of bands.
 		{
-			name:          "very bright voice, extensive HF",
-			centroid:      7500,
-			rolloff:       14000,
-			wantIntensity: 0.72, // 0.6 * 1.2 = 0.72, below max 0.8
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		// Bright voice (centroid 4000-6000) with extensive HF
-		{
-			name:          "bright voice, extensive HF",
-			centroid:      5000,
-			rolloff:       14000,
-			wantIntensity: 0.6, // 0.5 * 1.2 = 0.6
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		// Dark voice (centroid < 4000) with limited HF (rolloff 4000-8000)
-		// Dark voice base is 0.4, limited HF applies 0.7 factor = 0.28
-		// But 0.28 < deessIntensityMin (0.3), so it gets disabled
-		{
-			name:          "dark voice, limited HF - disabled below min",
-			centroid:      3500,
-			rolloff:       7000,
-			wantIntensity: 0.0, // 0.4 * 0.7 = 0.28 < 0.3 min, disabled
-			tolerance:     0.0,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		// Bright voice with limited HF - above min threshold
-		{
-			name:          "bright voice, limited HF",
-			centroid:      5000,
-			rolloff:       7000,
-			wantIntensity: 0.35, // 0.5 * 0.7 = 0.35 > 0.3 min
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		// No HF content (rolloff < 4000) - disabled regardless of centroid
-		{
-			name:          "very bright voice, no HF content",
-			centroid:      7500,
-			rolloff:       3500,
-			wantIntensity: 0.0, // disabled due to no sibilance expected
-			tolerance:     0.0,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		{
-			name:          "bright voice, no HF content",
-			centroid:      5000,
-			rolloff:       3500,
+			name:          "no speech profile - OFF",
+			hasProfile:    false,
 			wantIntensity: 0.0,
 			tolerance:     0.0,
-			speechProfile: &SpeechCandidateMetrics{},
 		},
-		// Normal HF extension (8000-12000)
+		// OFF segment: excess well below -6 dB (clean conversational voice).
 		{
-			name:          "very bright voice, normal HF",
-			centroid:      7500,
-			rolloff:       10000,
-			wantIntensity: 0.6, // base intensity, no modifier
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		{
-			name:          "bright voice, normal HF",
-			centroid:      5000,
-			rolloff:       10000,
-			wantIntensity: 0.5,
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		{
-			name:          "dark voice, normal HF",
-			centroid:      3500,
-			rolloff:       10000,
-			wantIntensity: 0.4,
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-
-		// Limited HF with intensity below minimum - should disable
-		{
-			name:          "dark voice, limited HF, below min threshold",
-			centroid:      3500, // dark voice, base 0.4
-			rolloff:       7500, // limited HF, * 0.7 = 0.28 < 0.3 min
-			wantIntensity: 0.0,  // disabled because 0.28 < deessIntensityMin
-			tolerance:     0.0,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-
-		// Centroid-only fallback (rolloff = 0)
-		{
-			name:          "very bright voice, no rolloff data",
-			centroid:      7500,
-			rolloff:       0,
-			wantIntensity: 0.6, // deessIntensityBright
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		{
-			name:          "bright voice, no rolloff data",
-			centroid:      5000,
-			rolloff:       0,
-			wantIntensity: 0.5, // deessIntensityNormal
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		{
-			name:          "dark voice, no rolloff data",
-			centroid:      3500,
-			rolloff:       0,
-			wantIntensity: 0.4, // deessIntensityDark
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-
-		// No spectral data - keep default (0.0)
-		{
-			name:          "no spectral data",
-			centroid:      0,
-			rolloff:       0,
+			name:          "clean voice, large body excess - OFF",
+			body:          -20.0,
+			sib:           -40.0, // excess -20 dB
+			hasProfile:    true,
+			bandsMeasured: true,
 			wantIntensity: 0.0,
 			tolerance:     0.0,
 		},
 		{
-			name:          "negative centroid",
-			centroid:      -100,
-			rolloff:       10000,
+			name:          "boundary: exactly at OFF bar (-6)",
+			body:          -20.0,
+			sib:           -26.0, // excess -6 dB
+			hasProfile:    true,
+			bandsMeasured: true,
+			wantIntensity: 0.0, // not < -6, frac=0 -> 0.0
+			tolerance:     0.0,
+		},
+		// Lower ramp midpoint: excess -4.5 dB -> frac 0.5 -> 0.30.
+		{
+			name:          "lower ramp midpoint (-4.5)",
+			body:          -20.0,
+			sib:           -24.5, // excess -4.5 dB
+			hasProfile:    true,
+			bandsMeasured: true,
+			wantIntensity: 0.30, // 0.5 * 0.6
+			tolerance:     0.001,
+		},
+		// Mid breakpoint: excess -3 dB -> i = 0.6.
+		{
+			name:          "mid breakpoint (-3)",
+			body:          -20.0,
+			sib:           -23.0, // excess -3 dB
+			hasProfile:    true,
+			bandsMeasured: true,
+			wantIntensity: 0.6,
+			tolerance:     0.001,
+		},
+		// Upper ramp midpoint: excess -1.5 dB -> frac 0.5 -> 0.725.
+		{
+			name:          "upper ramp midpoint (-1.5)",
+			body:          -20.0,
+			sib:           -21.5, // excess -1.5 dB
+			hasProfile:    true,
+			bandsMeasured: true,
+			wantIntensity: 0.725, // 0.6 + 0.5*(0.85-0.6)
+			tolerance:     0.001,
+		},
+		// Cap bar: excess exactly 0 -> cap 0.85.
+		{
+			name:          "cap bar (0)",
+			body:          -20.0,
+			sib:           -20.0, // excess 0 dB
+			hasProfile:    true,
+			bandsMeasured: true,
+			wantIntensity: 0.85,
+			tolerance:     0.001,
+		},
+		// Above cap bar: excess positive -> cap 0.85.
+		{
+			name:          "above cap (sibilant rivals body)",
+			body:          -20.0,
+			sib:           -16.0, // excess +4 dB
+			hasProfile:    true,
+			bandsMeasured: true,
+			wantIntensity: 0.85,
+			tolerance:     0.001,
+		},
+		// Regression guard: profile present but bands not measured (both fields 0).
+		// The unmeasured-bands guard must keep the de-esser OFF, NOT engage at the
+		// 0.85 cap from a spurious 0 dB excess.
+		{
+			name:          "unmeasured bands (profile present, BandsMeasured false) -> OFF",
+			body:          0.0,
+			sib:           0.0,
+			hasProfile:    true,
+			bandsMeasured: false,
 			wantIntensity: 0.0,
 			tolerance:     0.0,
-		},
-
-		// Boundary conditions
-		{
-			name:          "boundary: exactly at centroidVeryBright",
-			centroid:      6000, // exactly at threshold
-			rolloff:       10000,
-			wantIntensity: 0.5, // not > 6000, so uses deessIntensityNormal
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		{
-			name:          "boundary: exactly at centroidBright",
-			centroid:      4000,
-			rolloff:       10000,
-			wantIntensity: 0.4, // not > 4000, so uses deessIntensityDark
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		{
-			name:          "boundary: exactly at rolloffLimited",
-			centroid:      7500,
-			rolloff:       8000, // exactly at threshold
-			wantIntensity: 0.6,  // not < 8000, falls to default (normal HF)
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-		{
-			name:          "boundary: exactly at rolloffExtensive",
-			centroid:      7500,
-			rolloff:       12000, // exactly at threshold
-			wantIntensity: 0.6,   // not > 12000, falls to default (normal HF)
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-
-		// Max capping
-		{
-			name:          "intensity capped at max",
-			centroid:      7500,  // very bright, base 0.6
-			rolloff:       15000, // extensive, * 1.2 = 0.72
-			wantIntensity: 0.72,  // below max 0.8, so not capped
-			tolerance:     0.01,
-			speechProfile: &SpeechCandidateMetrics{},
-		},
-
-		// No speech profile - guard clause disables de-esser
-		{
-			name:          "no speech profile - deesser disabled",
-			centroid:      7500,  // Would normally trigger bright de-essing
-			rolloff:       12000, // Would normally trigger extensive HF
-			wantIntensity: 0.0,   // But no speech profile = disabled
-			tolerance:     0.0,
-			speechProfile: nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup
 			config := newTestConfig()
-			// Start with deesser disabled - tuneDeesser should set intensity based on spectral data
 			config.Deesser.Intensity = 0.0
-			measurements := &AudioMeasurements{
-				BaseMeasurements: BaseMeasurements{Spectral: SpectralMetrics{Centroid: tt.centroid, Rolloff: tt.rolloff}},
-				SpeechProfile:    tt.speechProfile,
+			measurements := &AudioMeasurements{}
+			if tt.hasProfile {
+				measurements.SpeechProfile = &SpeechCandidateMetrics{
+					BodyBandRMS:   tt.body,
+					SibBandRMS:    tt.sib,
+					BandsMeasured: tt.bandsMeasured,
+				}
 			}
 
-			// Execute
 			tuneDeesser(config, measurements)
 
-			// Verify
 			diff := config.Deesser.Intensity - tt.wantIntensity
 			if diff < 0 {
 				diff = -diff
 			}
 			if diff > tt.tolerance {
-				t.Errorf("Deesser.Intensity = %.3f, want %.3f (±%.3f) [centroid=%.0f, rolloff=%.0f]",
-					config.Deesser.Intensity, tt.wantIntensity, tt.tolerance, tt.centroid, tt.rolloff)
+				t.Errorf("Deesser.Intensity = %.3f, want %.3f (+/-%.3f) [body=%.1f, sib=%.1f, excess=%.1f]",
+					config.Deesser.Intensity, tt.wantIntensity, tt.tolerance, tt.body, tt.sib, tt.sib-tt.body)
 			}
 		})
 	}

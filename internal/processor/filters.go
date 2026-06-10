@@ -467,8 +467,8 @@ func defaultDeesserConfig() DeesserConfig {
 	return DeesserConfig{
 		Enabled:   true,
 		Intensity: 0.0,
-		Amount:    0.5,
-		Frequency: 0.5,
+		Amount:    0.50, // m: ~12 dB max-cut cap (af_deesser.c maxdess; depth cap, not band)
+		Frequency: 0.80, // f: corner ~7.5 kHz → acts on sibilant band, not presence (was 0.5 = ~2 kHz)
 	}
 }
 

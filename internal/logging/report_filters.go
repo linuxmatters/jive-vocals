@@ -293,10 +293,15 @@ func formatDeesserFilter(f *os.File, cfg *processor.EffectiveFilterConfig, m *pr
 		return
 	}
 	if deesser.Intensity == 0 {
-		if m == nil || m.SpeechProfile == nil {
+		switch {
+		case m == nil || m.SpeechProfile == nil:
 			fmt.Fprintf(f, "%sdeesser: inactive: no speech profile (full-file metrics unreliable)\n", prefix)
-		} else {
-			fmt.Fprintf(f, "%sdeesser: inactive: no sibilance detected\n", prefix)
+		case !m.SpeechProfile.BandsMeasured:
+			fmt.Fprintf(f, "%sdeesser: OFF: speech-band RMS not measured (region too short for astats)\n", prefix)
+		default:
+			excess := m.SpeechProfile.SibBandRMS - m.SpeechProfile.BodyBandRMS
+			fmt.Fprintf(f, "%sdeesser: OFF: sibilance excess %.1f dB (sib %.1f - body %.1f dBFS)\n",
+				prefix, excess, m.SpeechProfile.SibBandRMS, m.SpeechProfile.BodyBandRMS)
 		}
 		return
 	}
@@ -304,33 +309,12 @@ func formatDeesserFilter(f *os.File, cfg *processor.EffectiveFilterConfig, m *pr
 	fmt.Fprintf(f, "%sdeesser: intensity %.0f%%, amount %.0f%%, freq %.0f%%\n",
 		prefix, deesser.Intensity*100, deesser.Amount*100, deesser.Frequency*100)
 
-	// Show rationale with measurement source
-	if m != nil && m.Spectral.Centroid > 0 {
-		// Determine which values were used and their sources
-		centroid := m.Spectral.Centroid
-		rolloff := m.Spectral.Rolloff
-		centroidSource := "full-file"
-		rolloffSource := "full-file"
-		if m.SpeechProfile != nil {
-			if m.SpeechProfile.Spectral.Centroid > 0 {
-				centroid = m.SpeechProfile.Spectral.Centroid
-				centroidSource = "speech region"
-			}
-			if m.SpeechProfile.Spectral.Rolloff > 0 {
-				rolloff = m.SpeechProfile.Spectral.Rolloff
-				rolloffSource = "speech region"
-			}
-		}
-
-		voiceType := "normal"
-		if centroid > 7000 {
-			voiceType = "very bright"
-		} else if centroid > 6000 {
-			voiceType = "bright"
-		}
-		fmt.Fprintf(f, "        Rationale: %s voice\n", voiceType)
-		fmt.Fprintf(f, "        spectral centroid: %.0f Hz (%s)\n", centroid, centroidSource)
-		fmt.Fprintf(f, "        spectral rolloff: %.0f Hz (%s)\n", rolloff, rolloffSource)
+	// Show rationale: the band-excess engagement signal from the speech region.
+	if m != nil && m.SpeechProfile != nil {
+		excess := m.SpeechProfile.SibBandRMS - m.SpeechProfile.BodyBandRMS
+		fmt.Fprintf(f, "        Rationale: sibilance excess %.1f dB (speech region)\n", excess)
+		fmt.Fprintf(f, "        sibilant band (6-9 kHz): %.1f dBFS\n", m.SpeechProfile.SibBandRMS)
+		fmt.Fprintf(f, "        body band (1-3 kHz): %.1f dBFS\n", m.SpeechProfile.BodyBandRMS)
 	}
 }
 

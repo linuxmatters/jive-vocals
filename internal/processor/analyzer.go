@@ -135,6 +135,13 @@ type SpeechCandidateMetrics struct {
 	// Stability metrics (populated during measurement)
 	VoicingDensity float64 `json:"voicing_density,omitempty"` // Proportion of voiced intervals (0-1)
 
+	// Speech-region band RMS (populated for the elected SpeechProfile only).
+	// Body = 1-3 kHz vocal presence, Sibilant = 6-9 kHz "s"/"sh" energy (both dBFS).
+	// The de-esser engages on the band excess (Sibilant - Body); see adaptive_deesser.go.
+	BodyBandRMS   float64 `json:"speech_band_body_rms,omitempty"`  // dBFS, 1-3 kHz RMS over the speech region
+	SibBandRMS    float64 `json:"speech_band_sib_rms,omitempty"`   // dBFS, 6-9 kHz RMS over the speech region
+	BandsMeasured bool    `json:"speech_bands_measured,omitempty"` // True only when both body and sibilant bands measured successfully
+
 	// Scoring
 	Score float64 `json:"score"` // Composite score for candidate ranking
 
@@ -293,6 +300,11 @@ func AnalyzeAudio(ctx stdcontext.Context, filename string, config *BaseFilterCon
 
 	noiseSelection := selectNoiseProfile(measurements, intervals, silenceIntervals, silMedians, config.logger)
 	selectSpeechProfile(measurements, intervals, noiseSelection, config.logger)
+
+	// Measure body/sibilant band RMS over the elected speech region for the
+	// de-esser engagement signal. Region-scoped second decode (no asplit/multi-sink
+	// support in the analysis graph); non-fatal on failure.
+	measureSpeechBands(ctx, filename, measurements, config.logger)
 
 	assignInputMeasurementSuggestions(measurements)
 

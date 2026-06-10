@@ -105,7 +105,7 @@ downmix → ds201_highpass → ds201_lowpass → noiseremove → ds201_gate → 
 | **NoiseRemove** | None (fixed) | Not adaptive: `anlmdn` runs at the source sample rate with `r=0.0020` and `m=3`, followed by `afftdn` FFT spectral denoise with a fixed `nr=12` (capped to avoid warble on the noisiest voice) |
 | **DS201 Gate** | Threshold, ratio, attack, release, range, knee | LRA, noise floor, quiet speech estimate, spectral flux, entropy |
 | **LA-2A Compressor** | Threshold, ratio, attack, release, knee, mix | Kurtosis, flux, dynamic range, spectral centroid |
-| **De-esser** | Intensity (0.0-0.6) | Spectral centroid + rolloff |
+| **De-esser** | Intensity `i` (0.0-0.85) | Speech-region sibilant-band excess (6-9 kHz vs 1-3 kHz body); `f`/`m` fixed |
 
 ### Target Specifications
 
@@ -148,7 +148,7 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 | **Gating/Expansion** | None | DS201-inspired soft expander (2:1-4:1 ratio) |
 | **Highpass Filtering** | None | Fixed 80Hz 12dB/oct highpass |
 | **Lowpass Filtering** | None | Fixed 20.5kHz 12dB/oct band-limit |
-| **De-essing** | None | Adaptive intensity 0.0-0.6 based on spectral analysis |
+| **De-essing** | None | Adaptive intensity 0.0-0.85 from speech-region sibilant-band excess (6-9 kHz vs 1-3 kHz) |
 | **Content Type Detection** | None | Speech vs Music vs Mixed classification |
 | **Adaptive Parameters** | Minimal (one-size-fits-all) | Extensive per-filter tuning based on 20+ metrics |
 | **Parameter Control** | None—fully automatic | None—fully automatic (but tunable via source) |

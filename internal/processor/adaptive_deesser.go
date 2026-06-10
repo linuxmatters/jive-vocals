@@ -3,114 +3,56 @@ package processor
 const (
 	defaultDeessIntensity = 0.0
 
-	// Spectral centroid thresholds for de-esser intensity
-	centroidVeryBright = 6000.0
-	centroidBright     = 4000.0
+	// De-esser engagement breakpoints on the sibilance excess signal (dB),
+	// where excess = SpeechProfile.SibBandRMS - SpeechProfile.BodyBandRMS.
+	//
+	//	excess < -6           → OFF (i = 0.0)
+	//	-6 .. -3              → ramp i 0.0 → 0.6
+	//	-3 ..  0              → ramp i 0.6 → 0.85
+	//	>  0                  → cap  (i = 0.85)
+	deessExcessOffDB = -6.0 // Below this, sibilant band sits well under body: no de-essing
+	deessExcessMidDB = -3.0 // Ramp knee between gentle and firm engagement
+	deessExcessMaxDB = 0.0  // At/above this, sibilant band rivals body: full engagement
 
-	// Spectral rolloff thresholds (Hz) for HF content classification
-	rolloffNoSibilance = 4000.0  // Below: no sibilance expected
-	rolloffLimited     = 8000.0  // Below: limited HF extension
-	rolloffExtensive   = 12000.0 // Above: extensive HF content
-
-	// De-esser intensity levels
-	deessIntensityBright = 0.6 // Bright voice base intensity
-	deessIntensityNormal = 0.5 // Normal voice base intensity
-	deessIntensityDark   = 0.4 // Dark voice base intensity
-	deessIntensityMax    = 0.8 // Maximum intensity limit
-	deessIntensityMin    = 0.3 // Minimum before disabling
+	// De-esser intensity ramp endpoints. The af_deesser i parameter is a
+	// 5th-power law (pow(i,5)), so the mid breakpoint lands the ramp in the
+	// audibly-active part of the curve.
+	deessIntensityMid = 0.6  // Intensity at deessExcessMidDB
+	deessIntensityMax = 0.85 // Ceiling at/above deessExcessMaxDB
 )
 
-// tuneDeesser adapts de-esser intensity based on spectral analysis.
-// Uses both spectral centroid (energy concentration) and rolloff (HF extension)
-// to detect likelihood of harsh sibilance.
+// tuneDeesser sets de-esser intensity from the speech-region sibilance excess
+// (sibilant-band RMS minus body-band RMS). It requires a SpeechProfile with both
+// bands measured; full-file metrics are diluted by silence/noise and produce
+// false positives, and unmeasured bands read as a spurious 0 dB excess, so
+// without measured bands the de-esser stays OFF.
 //
-// Strategy:
-// - High centroid + high rolloff → likely sibilance, use more de-essing
-// - Low rolloff → limited HF content, skip or reduce de-essing
-// - Dark voice with no HF extension → disable de-esser entirely
+// Mapping (sibilanceExcess in dB):
+//
+//	excess < -6           → i = 0.0  (OFF)
+//	-6 .. -3              → linear ramp i 0.0 → 0.6
+//	-3 ..  0              → linear ramp i 0.6 → 0.85
+//	>  0                  → i = 0.85 (cap)
 func tuneDeesser(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
-	// Require speech profile for reliable sibilance detection.
-	// Full-file spectral metrics are diluted by silence/noise regions
-	// and produce false positives for sibilance in speech-sparse recordings.
-	if measurements.SpeechProfile == nil {
+	if measurements.SpeechProfile == nil || !measurements.SpeechProfile.BandsMeasured {
 		config.Deesser.Intensity = 0.0
 		return
 	}
 
-	// Both centroid and rolloff available - full adaptive logic
-	if measurements.Spectral.Centroid > 0 && measurements.Spectral.Rolloff > 0 {
-		tuneDeesserFull(config, measurements)
-		return
-	}
+	sibilanceExcess := measurements.SpeechProfile.SibBandRMS - measurements.SpeechProfile.BodyBandRMS
 
-	// Only centroid available - simplified fallback
-	if measurements.Spectral.Centroid > 0 {
-		tuneDeesserCentroidOnly(config, measurements)
-		return
-	}
-
-	// No spectral analysis available - keep default 0.0 (disabled)
-}
-
-// tuneDeesserFull uses both centroid and rolloff for precise de-esser tuning
-func tuneDeesserFull(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
-	// Prefer speech-specific measurements for sibilance detection
-	centroid := measurements.Spectral.Centroid
-	rolloff := measurements.Spectral.Rolloff
-	if measurements.SpeechProfile != nil {
-		centroid = preferSpeechMetric(centroid, measurements.SpeechProfile.Spectral.Centroid)
-		rolloff = preferSpeechMetric(rolloff, measurements.SpeechProfile.Spectral.Rolloff)
-	}
-
-	// Determine baseline intensity from centroid
-	var baseIntensity float64
 	switch {
-	case centroid > centroidVeryBright:
-		baseIntensity = deessIntensityBright // Bright voice
-	case centroid > centroidBright:
-		baseIntensity = deessIntensityNormal // Normal voice
-	default:
-		baseIntensity = deessIntensityDark // Dark voice
-	}
-
-	// Refine based on spectral rolloff (HF extension)
-	switch {
-	case rolloff < rolloffNoSibilance:
-		// Very limited HF content - no sibilance expected
+	case sibilanceExcess < deessExcessOffDB:
 		config.Deesser.Intensity = 0.0
-
-	case rolloff < rolloffLimited:
-		// Limited HF extension - reduce intensity
-		config.Deesser.Intensity = baseIntensity * 0.7
-		if config.Deesser.Intensity < deessIntensityMin {
-			config.Deesser.Intensity = 0.0 // Skip if too low
-		}
-
-	case rolloff > rolloffExtensive:
-		// Extensive HF content - likely sibilance
-		config.Deesser.Intensity = min(baseIntensity*1.2, deessIntensityMax)
-
+	case sibilanceExcess < deessExcessMidDB:
+		// Ramp 0.0 → deessIntensityMid across [deessExcessOffDB, deessExcessMidDB].
+		frac := (sibilanceExcess - deessExcessOffDB) / (deessExcessMidDB - deessExcessOffDB)
+		config.Deesser.Intensity = frac * deessIntensityMid
+	case sibilanceExcess < deessExcessMaxDB:
+		// Ramp deessIntensityMid → deessIntensityMax across [deessExcessMidDB, deessExcessMaxDB].
+		frac := (sibilanceExcess - deessExcessMidDB) / (deessExcessMaxDB - deessExcessMidDB)
+		config.Deesser.Intensity = deessIntensityMid + frac*(deessIntensityMax-deessIntensityMid)
 	default:
-		// Normal HF extension (8-12 kHz)
-		config.Deesser.Intensity = baseIntensity
-	}
-}
-
-// tuneDeesserCentroidOnly provides fallback when rolloff is unavailable
-func tuneDeesserCentroidOnly(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
-	// Prefer speech-specific centroid when available.
-	// Full-file averages are diluted by silence in multi-track recordings.
-	centroid := measurements.Spectral.Centroid
-	if measurements.SpeechProfile != nil {
-		centroid = preferSpeechMetric(centroid, measurements.SpeechProfile.Spectral.Centroid)
-	}
-
-	switch {
-	case centroid > centroidVeryBright:
-		config.Deesser.Intensity = deessIntensityBright
-	case centroid > centroidBright:
-		config.Deesser.Intensity = deessIntensityNormal
-	default:
-		config.Deesser.Intensity = deessIntensityDark
+		config.Deesser.Intensity = deessIntensityMax
 	}
 }
