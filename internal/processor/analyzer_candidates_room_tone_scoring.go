@@ -49,8 +49,8 @@ const (
 	// independent absolute crest. The population-relative test only rejects a candidate whose
 	// crest is anomalous *for its own population*. Dimensionless statistical multiplier, mirrors
 	// roomToneDispersionMADs. The sweep at .bench/crosstalk-crest-sweep found k = 4 the
-	// validated plateau: EP68-popey flips from electing an out-of-band region by luck to
-	// electing an in-band region on merit, while EP83 stays bit-identical and genuine crosstalk
+	// validated plateau: a sparse-conversational stem flips from electing an out-of-band region by luck to
+	// electing an in-band region on merit, while a noisier stem stays bit-identical and genuine crosstalk
 	// is still rejected by the kurtosis and 45 dB co-signals.
 	roomToneCrosstalkCrestMADs = 4.0
 

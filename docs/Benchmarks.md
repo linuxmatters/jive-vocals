@@ -376,7 +376,7 @@ The §4 and §5 speedup numbers were measured on the 5-minute fixture in isolati
 |--------|----------|--------------|-------------|--------------|----------------------|
 | 0.3.1 | 150.38 | 145.28 | 0.26 | 68,492 | 11.9× |
 | current | 89.51 | 84.52 | 0.26 | 61,964 | 20.0× |
-| **delta** | **−60.87 s (−40.5 %)** | **−60.76 s (−41.8 %)** | 0.00 s | −6,528 kB | — |
+| **delta** | **−60.87 s (−40.5 %)** | **−60.76 s (−41.8 %)** | 0.00 s | −6,528 kB | n/a |
 
 User-CPU savings track wall savings almost exactly; the work removed is real arithmetic, not stalls. Max RSS is incidentally ~6 MB lower on current (no deliberate memory work was done in either investigation).
 

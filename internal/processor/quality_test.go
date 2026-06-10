@@ -86,9 +86,9 @@ func TestComputeQualityScoreNoisyOutputDropsNoise(t *testing.T) {
 // scorer rewarded the *reduction amount*, so the clean file scored lower; the new
 // scorer rewards output cleanliness, so the clean output wins or ties.
 func TestComputeQualityScoreCleanInputNotPenalised(t *testing.T) {
-	// Clean recording: -80 dBFS input, stays clean at -80 dBFS output (mark/popey).
+	// Clean recording: -80 dBFS input, stays clean at -80 dBFS output.
 	clean := ComputeQualityScore(resultWith(-16.0, -2.0, -80.0, -80.0))
-	// Noisier recording: -67 dBFS input, processed to -67 dBFS output (martin).
+	// Noisier recording: -67 dBFS input, processed to -67 dBFS output.
 	noisy := ComputeQualityScore(resultWith(-16.0, -2.0, -67.0, -67.0))
 
 	if clean.Score < noisy.Score {
