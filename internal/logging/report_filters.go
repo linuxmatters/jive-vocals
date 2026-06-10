@@ -39,7 +39,7 @@ func formatFilter(f *os.File, filterID processor.FilterID, cfg *processor.Effect
 	case processor.FilterResample:
 		formatResampleFilter(f, cfg, prefix)
 	case processor.FilterDS201HighPass:
-		formatDS201HighpassFilter(f, cfg, m, prefix)
+		formatDS201HighpassFilter(f, cfg, prefix)
 	case processor.FilterDS201LowPass:
 		formatDS201LowPassFilter(f, cfg, diagnostics, m, prefix)
 	case processor.FilterNoiseRemove:
@@ -56,113 +56,32 @@ func formatFilter(f *os.File, filterID processor.FilterID, cfg *processor.Effect
 }
 
 // formatDS201HighpassFilter outputs DS201-inspired highpass filter details
-func formatDS201HighpassFilter(f *os.File, cfg *processor.EffectiveFilterConfig, m *processor.AudioMeasurements, prefix string) {
+func formatDS201HighpassFilter(f *os.File, cfg *processor.EffectiveFilterConfig, prefix string) {
 	highpass := cfg.DS201HighPass
 	if !highpass.Enabled {
 		fmt.Fprintf(f, "%sDS201 highpass: DISABLED\n", prefix)
 		return
 	}
 
-	// Show slope (6dB/oct for gentle, 12dB/oct for standard)
-	slope := "12dB/oct"
-	if highpass.Poles == 1 {
-		slope = "6dB/oct"
-	}
-
-	// Build header with all relevant parameters
-	header := fmt.Sprintf("%sDS201 highpass: %.0f Hz cutoff (%s", prefix, highpass.Frequency, slope)
-
-	// Show Q if not default Butterworth
-	if highpass.Width > 0 && highpass.Width != 0.707 {
-		header += fmt.Sprintf(", Q=%.2f", highpass.Width)
-	}
-
-	// Show transform if specified
-	if highpass.Transform == "tdii" {
-		header += ", tdii"
-	} else if highpass.Transform != "" {
-		header += ", " + highpass.Transform
-	}
-
-	header += ")"
-	fmt.Fprintln(f, header)
-
-	// Show adaptive rationale
-	if m != nil && m.Spectral.Centroid > 0 {
-		voiceType := "normal"
-		if m.Spectral.Centroid > 6000 {
-			voiceType = "bright"
-		} else if m.Spectral.Centroid < 4000 {
-			voiceType = "dark/warm"
-		}
-		fmt.Fprintf(f, "        Rationale: %s voice (centroid %.0f Hz)\n", voiceType, m.Spectral.Centroid)
-
-		// Show warm voice protection if applicable (using mix)
-		if highpass.Mix > 0 && highpass.Mix < 1.0 {
-			reason := "warm voice"
-			if m.Spectral.Decrease < -0.08 {
-				reason = "very warm voice"
-			} else if m.Spectral.Skewness > 1.0 {
-				reason = "LF emphasis"
-			}
-			fmt.Fprintf(f, "        Mix: %.0f%% (%s — blending filtered with dry signal)\n", highpass.Mix*100, reason)
-		}
-
-		// Show why low frequency was chosen for warm voices
-		if highpass.Frequency <= 40 {
-			fmt.Fprintf(f, "        Frequency: %.0f Hz (subsonic only — protecting bass foundation)\n", highpass.Frequency)
-		}
-
-		// Show gentle slope explanation
-		if highpass.Poles == 1 {
-			fmt.Fprintf(f, "        Slope: 6dB/oct (gentle rolloff — preserving warmth)\n")
-		}
-	}
+	fmt.Fprintf(f, "%sDS201 highpass: %.0f Hz cutoff (12dB/oct Butterworth, tdii) — fixed corner below the vocal fundamental, removes subsonic rumble\n", prefix, highpass.Frequency)
 }
 
 // formatDS201LowPassFilter outputs DS201-inspired low-pass filter details
 func formatDS201LowPassFilter(f *os.File, cfg *processor.EffectiveFilterConfig, diagnostics *processor.AdaptiveDiagnostics, _ *processor.AudioMeasurements, prefix string) {
 	lowpass := cfg.DS201LowPass
 	if !lowpass.Enabled {
-		// Show reason for being disabled (pass-through mode)
-		if diagnostics != nil && diagnostics.DS201LPReason != "" {
-			fmt.Fprintf(f, "%sDS201 lowpass: DISABLED (%s)\n", prefix, diagnostics.DS201LPReason)
-		} else {
-			fmt.Fprintf(f, "%sDS201 lowpass: DISABLED\n", prefix)
-		}
+		fmt.Fprintf(f, "%sDS201 lowpass: DISABLED\n", prefix)
 		return
 	}
 
-	// Show slope (6dB/oct for gentle, 12dB/oct for standard)
-	slope := "12dB/oct"
-	if lowpass.Poles == 1 {
-		slope = "6dB/oct"
-	}
-
-	// Build header with all relevant parameters
-	header := fmt.Sprintf("%sDS201 lowpass: %.0f Hz cutoff (%s", prefix, lowpass.Frequency, slope)
-
-	// Show Q if not default Butterworth
-	if lowpass.Width > 0 && lowpass.Width != 0.707 {
-		header += fmt.Sprintf(", Q=%.2f", lowpass.Width)
-	}
-
-	// Show transform if specified
-	if lowpass.Transform == "tdii" {
-		header += ", tdii"
-	} else if lowpass.Transform != "" {
+	// Fixed 20.5 kHz / 12dB/oct Butterworth band-limit (always on, no adaptation).
+	header := fmt.Sprintf("%sDS201 lowpass: %.0f Hz cutoff (12dB/oct Butterworth", prefix, lowpass.Frequency)
+	if lowpass.Transform != "" {
 		header += ", " + lowpass.Transform
 	}
-
-	// Show mix if not full wet
-	if lowpass.Mix > 0 && lowpass.Mix < 1.0 {
-		header += fmt.Sprintf(", mix %.0f%%", lowpass.Mix*100)
-	}
-
 	header += ")"
 	fmt.Fprintln(f, header)
 
-	// Show rationale
 	if diagnostics != nil && diagnostics.DS201LPReason != "" {
 		fmt.Fprintf(f, "        Rationale: %s\n", diagnostics.DS201LPReason)
 	}

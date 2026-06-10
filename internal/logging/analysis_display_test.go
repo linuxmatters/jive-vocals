@@ -198,7 +198,7 @@ func TestDisplayAnalysisResults_FullOutputFixture(t *testing.T) {
 	config.Deesser.Intensity = 0.35
 	config.LA2A.Threshold = -21
 	config.LA2A.Ratio = 2.5
-	config.DS201HighPass.Frequency = 85
+	config.DS201HighPass.Frequency = 80
 	config.DS201Gate.Threshold = processor.DbToLinear(-51.2)
 	config.DS201Gate.Ratio = 3.0
 	timings := AnalysisTimings{
@@ -276,7 +276,7 @@ DERIVED MEASUREMENTS
   NR Headroom:    24.6 dB (noise-to-speech gap)
 
 FILTER ADAPTATION
-  Highpass:       85 Hz (from spectral analysis)
+  Highpass:       80 Hz (fixed)
   Lowpass:        20500 Hz
   Gate Threshold: -51.2 dB (speech-aware)
   Gate Ratio:     3.0:1

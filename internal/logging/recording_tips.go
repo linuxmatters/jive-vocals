@@ -268,7 +268,7 @@ func tipBackgroundNoise(m *processor.AudioMeasurements, _ *processor.EffectiveFi
 }
 
 // tipMainsHum fires when the elected room tone shows tonal noise characteristics.
-// Requires NoiseProfile with low entropy (< 0.30, matching roomToneEntropyTonal in adaptive.go),
+// Requires NoiseProfile with low entropy (< 0.30, indicating tonal noise),
 // low flatness (< 0.3, confirming tonal character), and audible noise (> -65 dBFS).
 func tipMainsHum(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	if m.NoiseProfile == nil {
@@ -306,9 +306,8 @@ func tipTooFarFromMic(m *processor.AudioMeasurements, _ *processor.EffectiveFilt
 
 // tipProximityEffect fires when spectral analysis indicates bass boost
 // from being too close to a directional microphone.
-// Thresholds from adaptive.go: spectralDecreaseVeryWarm = -0.10,
-// spectralDecreaseWarm = -0.05. Skewness > 2.5 is tip-specific (stricter
-// than adaptive.go's spectralSkewnessLFEmphasis = 1.0).
+// Thresholds are tip-specific: spectral decrease < -0.10 (very warm), or
+// < -0.05 with skewness > 2.5 (warm with strong LF emphasis).
 func tipProximityEffect(m *processor.AudioMeasurements, _ *processor.EffectiveFilterConfig) *RecordingTip {
 	decrease := m.Spectral.Decrease
 	skewness := m.Spectral.Skewness

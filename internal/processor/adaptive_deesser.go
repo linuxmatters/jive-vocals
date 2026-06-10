@@ -3,8 +3,9 @@ package processor
 const (
 	defaultDeessIntensity = 0.0
 
-	// Spectral centroid threshold for de-esser intensity
+	// Spectral centroid thresholds for de-esser intensity
 	centroidVeryBright = 6000.0
+	centroidBright     = 4000.0
 
 	// Spectral rolloff thresholds (Hz) for HF content classification
 	rolloffNoSibilance = 4000.0  // Below: no sibilance expected

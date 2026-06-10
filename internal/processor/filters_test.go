@@ -522,22 +522,12 @@ func TestBuildDS201HighpassFilter(t *testing.T) {
 		wantIn  string
 	}{
 		{
-			name:    "default frequency",
+			// HP is a fixed 80 Hz corner (no adaptation); only this and the
+			// disabled case are reachable in production.
+			name:    "fixed 80 Hz corner",
 			enabled: true,
 			freq:    80.0,
 			wantIn:  "highpass=f=80:",
-		},
-		{
-			name:    "dark voice frequency",
-			enabled: true,
-			freq:    60.0,
-			wantIn:  "highpass=f=60:",
-		},
-		{
-			name:    "bright voice frequency",
-			enabled: true,
-			freq:    120.0,
-			wantIn:  "highpass=f=120:",
 		},
 		{
 			name:    "disabled returns empty",
@@ -1586,7 +1576,7 @@ func TestPass2FilterOrder(t *testing.T) {
 	t.Run("includes all processing filters", func(t *testing.T) {
 		requiredFilters := []FilterID{
 			FilterDownmix,
-			FilterDS201HighPass, // Composite: includes hum notch filters
+			FilterDS201HighPass, // fixed 80 Hz HP corner
 			FilterDS201LowPass,
 			FilterNoiseRemove,
 			FilterDS201Gate,

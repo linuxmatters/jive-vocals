@@ -652,6 +652,8 @@ func TestProcessAudio(t *testing.T) {
 	config.Analysis.Enabled = true
 	config.Resample.Enabled = true
 	config.DS201HighPass.Enabled = true // Basic processing
+	// Non-default seed on purpose: the HP is fixed, so it must pass through
+	// AdaptConfig unchanged (asserted below). Do not "simplify" to 80.
 	config.DS201HighPass.Frequency = 95.0
 	baseFilterOrder := append([]FilterID(nil), config.FilterOrder...)
 
@@ -722,8 +724,10 @@ func TestProcessAudio(t *testing.T) {
 	if !reflect.DeepEqual(result.Config.FilterOrder, Pass2FilterOrder) {
 		t.Errorf("result config FilterOrder = %v, want %v", result.Config.FilterOrder, Pass2FilterOrder)
 	}
-	if result.Config.DS201HighPass.Frequency == 95.0 {
-		t.Fatal("result config DS201HighPass.Frequency did not adapt from base seed value")
+	// The DS201 highpass is fixed and non-adaptive: the effective config carries
+	// the seed frequency through unchanged (no tuning step overwrites it).
+	if result.Config.DS201HighPass.Frequency != 95.0 {
+		t.Errorf("result config DS201HighPass.Frequency = %.1f, want seed 95.0 passed through unchanged", result.Config.DS201HighPass.Frequency)
 	}
 	result.Config.FilterOrder[0] = FilterDeesser
 	if config.FilterOrder[0] == FilterDeesser {

@@ -55,8 +55,10 @@ func TestAdaptConfigReturnsEffectiveConfig(t *testing.T) {
 	if base.FilterOrder[0] == FilterDownmix {
 		t.Fatal("effective FilterOrder mutation changed base FilterOrder")
 	}
-	if effective.DS201HighPass.Frequency == 95.0 {
-		t.Fatal("effective DS201HighPass.Frequency did not adapt from base seed value")
+	// The DS201 highpass is fixed and non-adaptive: the effective config carries
+	// the seed frequency through unchanged (no tuning step overwrites it).
+	if effective.DS201HighPass.Frequency != 95.0 {
+		t.Errorf("effective DS201HighPass.Frequency = %.1f, want seed 95.0 passed through unchanged", effective.DS201HighPass.Frequency)
 	}
 	if diagnostics.DS201LPReason != "20.5 kHz band-limit (always on)" {
 		t.Errorf("diagnostics DS201LPReason = %q, want 20.5 kHz band-limit (always on)", diagnostics.DS201LPReason)
@@ -105,7 +107,7 @@ func TestAdaptConfigFilterSpecBehaviourBaseline(t *testing.T) {
 		{
 			name:         "warm voice without noise profile",
 			measurements: orderIndependenceWarmNoProfileMeasurements(),
-			want: "highpass=f=60:poles=1:width_type=q:width=0.500:normalize=1:a=tdii:m=0.80," +
+			want: "highpass=f=80:poles=2:width_type=q:width=0.707:normalize=1:a=tdii," +
 				"lowpass=f=20500:poles=2:width_type=q:width=0.707:normalize=1," +
 				"anlmdn=s=0.00001:p=0.0060:r=0.0058:m=11," +
 				"afftdn=nr=12:nt=w:tn=1," +
@@ -115,7 +117,7 @@ func TestAdaptConfigFilterSpecBehaviourBaseline(t *testing.T) {
 		{
 			name:         "bright speech with noise profile",
 			measurements: orderIndependenceBrightSpeechMeasurements(),
-			want: "highpass=f=110:poles=2:width_type=q:width=0.707:normalize=1:a=tdii," +
+			want: "highpass=f=80:poles=2:width_type=q:width=0.707:normalize=1:a=tdii," +
 				"lowpass=f=20500:poles=2:width_type=q:width=0.707:normalize=1," +
 				"anlmdn=s=0.00001:p=0.0060:r=0.0058:m=11," +
 				"afftdn=nr=12:nt=w:tn=1," +
@@ -266,336 +268,6 @@ func assertOrderIndependentAdaptiveDiagnostics(t *testing.T, got, want *Adaptive
 			t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
 		}
 	}
-}
-
-func TestTuneDS201HighPass(t *testing.T) {
-	// Helper to create noise profile with given characteristics
-	makeNoiseProfile := func(noiseFloor, entropy float64) *NoiseProfile {
-		return &NoiseProfile{
-			MeasuredNoiseFloor: noiseFloor,
-			Entropy:            entropy,
-		}
-	}
-
-	tests := []struct {
-		name             string
-		centroid         float64       // spectral centroid (Hz)
-		spectralDecrease float64       // spectral decrease (negative = warm voice)
-		spectralSkewness float64       // spectral skewness (positive = LF emphasis)
-		noiseProfile     *NoiseProfile // room-tone region noise profile characteristics
-		wantFreqMin      float64       // minimum expected frequency
-		wantFreqMax      float64       // maximum expected frequency
-		wantPoles        int           // expected poles (0 = don't check, 1 = gentle, 2 = standard)
-		wantWidth        float64       // expected Q (0 = don't check, uses Butterworth 0.707 default)
-		wantMix          float64       // expected mix (0 = don't check, uses 1.0 default)
-		wantDisabled     bool          // expect highpass to be disabled entirely (legacy, now rarely used)
-	}{
-		// Voice brightness classification (no noise profile - base frequencies only)
-		// Thresholds: centroidNormal=2500 Hz, centroidBright=4000 Hz
-		{
-			name:             "dark voice, no noise profile",
-			centroid:         2000, // below centroidNormal (2500)
-			spectralDecrease: 0.0,
-			noiseProfile:     nil,
-			wantFreqMin:      60, // highpassMinFreq
-			wantFreqMax:      60,
-		},
-		{
-			name:             "normal voice, no noise profile",
-			centroid:         3500, // between centroidNormal (2500) and centroidBright (4000)
-			spectralDecrease: 0.0,
-			noiseProfile:     nil,
-			wantFreqMin:      80, // highpassDefaultFreq
-			wantFreqMax:      80,
-		},
-		{
-			name:             "bright voice, no noise profile",
-			centroid:         5000, // above centroidBright (4000)
-			spectralDecrease: 0.0,
-			noiseProfile:     nil,
-			wantFreqMin:      100, // highpassBrightFreq
-			wantFreqMax:      100,
-		},
-
-		// Clean room-tone region (< -70 dBFS) - no boost regardless of entropy
-		{
-			name:             "bright voice, clean room tone, broadband noise",
-			centroid:         5000,
-			spectralDecrease: 0.0,
-			noiseProfile:     makeNoiseProfile(-75.0, 0.8), // clean, broadband
-			wantFreqMin:      100,                          // no boost - too clean (bright base)
-			wantFreqMax:      100,
-		},
-
-		// Moderate noise (> -70 dBFS) with broadband character - moderate boost
-		{
-			name:             "bright voice, moderate noise, broadband",
-			centroid:         5000,
-			spectralDecrease: 0.0,
-			noiseProfile:     makeNoiseProfile(-65.0, 0.7), // moderate, broadband
-			wantFreqMin:      110,                          // 100 + 10 boost
-			wantFreqMax:      110,
-		},
-
-		// Noisy room tone (> -55 dBFS) with broadband character - aggressive boost
-		{
-			name:             "bright voice, noisy room tone, broadband",
-			centroid:         5000,
-			spectralDecrease: 0.0,
-			noiseProfile:     makeNoiseProfile(-50.0, 0.8), // noisy, broadband
-			wantFreqMin:      120,                          // 100 + 20 boost (capped at max)
-			wantFreqMax:      120,
-		},
-
-		// Tonal noise (low entropy) - no boost, bandreject handles it
-		{
-			name:             "bright voice, noisy room tone, tonal (hum)",
-			centroid:         5000,
-			spectralDecrease: 0.0,
-			noiseProfile:     makeNoiseProfile(-50.0, 0.25), // noisy but tonal (below 0.30 threshold)
-			wantFreqMin:      100,                           // no boost - tonal noise (bright base)
-			wantFreqMax:      100,
-		},
-
-		// Warm voice protection (spectral decrease < -0.05, tiered at -0.10)
-		{
-			name:             "warm voice, noisy broadband - capped at 80Hz",
-			centroid:         5000,
-			spectralDecrease: -0.06, // warm voice (between -0.05 and -0.10)
-			noiseProfile:     makeNoiseProfile(-50.0, 0.8),
-			wantFreqMin:      80, // would be 120, but capped at 80Hz due to warm voice
-			wantFreqMax:      80,
-			wantPoles:        0, // standard slope (don't check, defaults to 2)
-		},
-		{
-			name:             "very warm voice - gentle highpass",
-			centroid:         5000,                         // bright voice base = 100Hz
-			spectralDecrease: -0.12,                        // very warm voice (< -0.10)
-			noiseProfile:     makeNoiseProfile(-50.0, 0.8), // broadband noise
-			wantFreqMin:      60,                           // highpassVeryWarmFreq
-			wantFreqMax:      60,
-			wantPoles:        1,   // gentle 6dB/oct
-			wantWidth:        0.5, // gentle Q
-			wantMix:          0.8, // 80% wet
-		},
-		{
-			name:             "very warm dark voice - gentle highpass",
-			centroid:         2000,                         // dark voice base = 60Hz
-			spectralDecrease: -0.15,                        // very warm (< -0.10)
-			noiseProfile:     makeNoiseProfile(-45.0, 0.9), // broadband noise
-			wantFreqMin:      60,                           // highpassVeryWarmFreq
-			wantFreqMax:      60,
-			wantPoles:        1,   // gentle 6dB/oct
-			wantWidth:        0.5, // gentle Q
-			wantMix:          0.8, // 80% wet
-		},
-
-		// Bright voice with warm spectral decrease (unusual but possible)
-		{
-			name:             "very bright voice, warm characteristics - capped at 80Hz",
-			centroid:         5000,
-			spectralDecrease: -0.06, // warm despite bright centroid (between -0.05 and -0.10)
-			noiseProfile:     makeNoiseProfile(-50.0, 0.8),
-			wantFreqMin:      80, // would be 120, but capped at 80Hz due to warm voice
-			wantFreqMax:      80,
-			wantPoles:        0, // standard slope (don't check)
-		},
-		{
-			name:             "very bright voice, very warm characteristics - gentle highpass",
-			centroid:         5000,
-			spectralDecrease: -0.12,                        // very warm despite bright centroid (< -0.10)
-			noiseProfile:     makeNoiseProfile(-50.0, 0.8), // broadband noise
-			wantFreqMin:      60,                           // highpassVeryWarmFreq
-			wantFreqMax:      60,
-			wantPoles:        1,   // gentle 6dB/oct
-			wantWidth:        0.5, // gentle Q
-			wantMix:          0.8, // 80% wet
-		},
-
-		// Skewness-based protection (moderate decrease but LF emphasis)
-		{
-			name:             "moderate decrease, high skewness - warm highpass",
-			centroid:         5785,                           // bright centroid (> 4000)
-			spectralDecrease: -0.026,                         // moderate decrease (between -0.05 and 0)
-			spectralSkewness: 1.132,                          // LF emphasis (> 1.0)
-			noiseProfile:     makeNoiseProfile(-80.0, 0.076), // tonal noise
-			wantFreqMin:      70,                             // highpassWarmFreq for LF emphasis
-			wantFreqMax:      70,
-			wantPoles:        1,   // gentle 6dB/oct
-			wantWidth:        0.5, // gentle Q
-			wantMix:          0.9, // 90% wet
-		},
-		{
-			name:             "moderate decrease, low skewness - standard slope",
-			centroid:         5000,
-			spectralDecrease: -0.03,                        // moderate decrease
-			spectralSkewness: 0.8,                          // NOT LF emphasis (< 1.0)
-			noiseProfile:     makeNoiseProfile(-75.0, 0.3), // clean, tonal - no boost
-			wantFreqMin:      100,                          // bright voice (centroid 5000 > 4000)
-			wantFreqMax:      100,
-			wantPoles:        2,
-			wantDisabled:     false, // skewness < 1.0, highpass at normal settings
-		},
-		{
-			name:             "balanced decrease, high skewness - warm highpass",
-			centroid:         4500,
-			spectralDecrease: -0.01,                        // balanced (between -0.05 and 0)
-			spectralSkewness: 1.5,                          // strong LF emphasis
-			noiseProfile:     makeNoiseProfile(-75.0, 0.3), // clean, tonal - no boost
-			wantFreqMin:      70,                           // highpassWarmFreq for LF emphasis
-			wantFreqMax:      70,
-			wantPoles:        1,   // gentle 6dB/oct
-			wantWidth:        0.5, // gentle Q
-			wantMix:          0.9, // 90% wet
-		},
-		{
-			name:             "thin voice, high skewness - skewness still triggers warm protection",
-			centroid:         6500,                         // > 4000 centroidBright threshold
-			spectralDecrease: 0.02,                         // thin voice (> 0)
-			spectralSkewness: 1.2,                          // > 1.0 triggers warm protection regardless of decrease
-			noiseProfile:     makeNoiseProfile(-75.0, 0.3), // clean, tonal - no boost
-			wantFreqMin:      70,                           // highpassWarmFreq (skewness overrides centroid)
-			wantFreqMax:      70,
-			wantPoles:        1,   // gentle 6dB/oct
-			wantWidth:        0.5, // gentle Q
-			wantMix:          0.9, // 90% wet
-		},
-
-		// Edge cases
-		{
-			name:             "no spectral data - keeps default",
-			centroid:         0, // triggers early return
-			spectralDecrease: 0.0,
-			noiseProfile:     makeNoiseProfile(-50.0, 0.8),
-			wantFreqMin:      80, // DefaultFilterConfig().DS201HighPass.Frequency
-			wantFreqMax:      80,
-		},
-		{
-			name:             "negative centroid - keeps default",
-			centroid:         -100,
-			spectralDecrease: 0.0,
-			noiseProfile:     nil,
-			wantFreqMin:      80,
-			wantFreqMax:      80,
-		},
-		{
-			name:             "boundary: exactly at centroidNormal",
-			centroid:         2500, // exactly at centroidNormal threshold
-			spectralDecrease: 0.0,
-			noiseProfile:     nil,
-			wantFreqMin:      60, // dark voice (not > centroidNormal)
-			wantFreqMax:      60,
-		},
-		{
-			name:             "boundary: exactly at centroidBright",
-			centroid:         4000, // exactly at centroidBright threshold
-			spectralDecrease: 0.0,
-			noiseProfile:     nil,
-			wantFreqMin:      80, // normal voice (not > centroidBright)
-			wantFreqMax:      80,
-		},
-		{
-			name:             "boundary: exactly at roomToneEntropyTonal",
-			centroid:         5000,
-			spectralDecrease: 0.0,
-			noiseProfile:     makeNoiseProfile(-50.0, 0.30), // exactly at threshold
-			wantFreqMin:      120,                           // broadband (>= 0.30), gets boost (bright base 100 + 20)
-			wantFreqMax:      120,
-		},
-		{
-			name:             "boundary: exactly at roomToneNoiseFloorClean",
-			centroid:         5000,
-			spectralDecrease: 0.0,
-			noiseProfile:     makeNoiseProfile(-70.0, 0.8), // exactly at clean threshold
-			wantFreqMin:      100,                          // no boost (not > -70), bright base
-			wantFreqMax:      100,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup: create test config and measurements
-			config := newTestConfig()
-			// Start with highpass enabled to test tuning behavior
-			config.DS201HighPass.Enabled = true
-			measurements := &AudioMeasurements{
-				BaseMeasurements: BaseMeasurements{Spectral: SpectralMetrics{Centroid: tt.centroid, Decrease: tt.spectralDecrease, Skewness: tt.spectralSkewness}},
-				NoiseProfile:     tt.noiseProfile,
-			}
-
-			// Execute
-			tuneDS201HighPass(config, measurements)
-
-			// Verify disabled state (legacy - now rarely used)
-			if tt.wantDisabled {
-				if config.DS201HighPass.Enabled {
-					t.Errorf("DS201HighPass.Enabled = true, want false")
-				}
-				return // no further checks needed for disabled
-			}
-
-			// Verify enabled (warm voices now use gentle settings instead of disabling)
-			if !config.DS201HighPass.Enabled {
-				t.Errorf("DS201HighPass.Enabled = false, want true")
-			}
-
-			// Verify frequency
-			if config.DS201HighPass.Frequency < tt.wantFreqMin || config.DS201HighPass.Frequency > tt.wantFreqMax {
-				t.Errorf("DS201HighPass.Frequency = %.1f Hz, want [%.1f, %.1f] Hz",
-					config.DS201HighPass.Frequency, tt.wantFreqMin, tt.wantFreqMax)
-			}
-
-			// Verify poles (slope) if specified
-			if tt.wantPoles > 0 && config.DS201HighPass.Poles != tt.wantPoles {
-				t.Errorf("DS201HighPass.Poles = %d, want %d", config.DS201HighPass.Poles, tt.wantPoles)
-			}
-
-			// Verify width (Q) if specified
-			if tt.wantWidth > 0 && config.DS201HighPass.Width != tt.wantWidth {
-				t.Errorf("DS201HighPass.Width = %.3f, want %.3f", config.DS201HighPass.Width, tt.wantWidth)
-			}
-
-			// Verify mix if specified
-			if tt.wantMix > 0 && config.DS201HighPass.Mix != tt.wantMix {
-				t.Errorf("DS201HighPass.Mix = %.2f, want %.2f", config.DS201HighPass.Mix, tt.wantMix)
-			}
-		})
-	}
-
-	t.Run("resets adaptive baseline after warm tuning", func(t *testing.T) {
-		config := newTestConfig()
-		config.DS201HighPass.Enabled = true
-
-		tuneDS201HighPass(config, &AudioMeasurements{
-			BaseMeasurements: BaseMeasurements{Spectral: SpectralMetrics{Centroid: 5000, Decrease: -0.12}},
-			NoiseProfile:     makeNoiseProfile(-50.0, 0.8),
-		})
-
-		if config.DS201HighPass.Poles != 1 || config.DS201HighPass.Width != ds201HPWarmWidth || config.DS201HighPass.Mix != ds201HPVeryWarmMix {
-			t.Fatalf("warm tuning did not enter gentle baseline: poles=%d width=%.3f mix=%.2f",
-				config.DS201HighPass.Poles, config.DS201HighPass.Width, config.DS201HighPass.Mix)
-		}
-
-		tuneDS201HighPass(config, &AudioMeasurements{
-			BaseMeasurements: BaseMeasurements{Spectral: SpectralMetrics{Centroid: 5000}},
-		})
-
-		if config.DS201HighPass.Frequency != ds201HPBrightFreq {
-			t.Errorf("DS201HighPass.Frequency = %.1f, want %.1f", config.DS201HighPass.Frequency, ds201HPBrightFreq)
-		}
-		if config.DS201HighPass.Poles != ds201HPDefaultPoles {
-			t.Errorf("DS201HighPass.Poles = %d, want %d", config.DS201HighPass.Poles, ds201HPDefaultPoles)
-		}
-		if config.DS201HighPass.Width != ds201HPDefaultWidth {
-			t.Errorf("DS201HighPass.Width = %.3f, want %.3f", config.DS201HighPass.Width, ds201HPDefaultWidth)
-		}
-		if config.DS201HighPass.Mix != ds201HPDefaultMix {
-			t.Errorf("DS201HighPass.Mix = %.2f, want %.2f", config.DS201HighPass.Mix, ds201HPDefaultMix)
-		}
-		if config.DS201HighPass.Transform != ds201HPDefaultTransform {
-			t.Errorf("DS201HighPass.Transform = %q, want %q", config.DS201HighPass.Transform, ds201HPDefaultTransform)
-		}
-	})
 }
 
 func TestDetectContentType(t *testing.T) {
@@ -1739,8 +1411,8 @@ func TestSanitizeConfig(t *testing.T) {
 
 		sanitizeConfig(&config)
 
-		if config.DS201HighPass.Frequency != ds201DefaultHPFreq || config.DS201HighPass.Width != 0.707 || config.DS201HighPass.Mix != 1.0 {
-			t.Errorf("DS201HighPass sanitised to %+v, want frequency %.1f width 0.707 mix 1.0", config.DS201HighPass, ds201DefaultHPFreq)
+		if config.DS201HighPass.Frequency != ds201HPDefaultFreq || config.DS201HighPass.Width != 0.707 || config.DS201HighPass.Mix != 1.0 {
+			t.Errorf("DS201HighPass sanitised to %+v, want frequency %.1f width 0.707 mix 1.0", config.DS201HighPass, ds201HPDefaultFreq)
 		}
 		if config.DS201LowPass.Frequency != ds201LPBandLimitFreq || config.DS201LowPass.Width != 0.707 || config.DS201LowPass.Mix != 1.0 {
 			t.Errorf("DS201LowPass sanitised to %+v, want frequency %.1f width 0.707 mix 1.0", config.DS201LowPass, ds201LPBandLimitFreq)
