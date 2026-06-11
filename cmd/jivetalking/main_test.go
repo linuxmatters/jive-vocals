@@ -171,7 +171,9 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 		printError: func(message string) {
 			t.Fatalf("printError called: %s", message)
 		},
-		createLog: logs.create,
+		createLog:      logs.create,
+		writeRunRecord: func(*processor.RunRecord, string) error { return nil },
+		writeSidecars:  func(*processor.AudioMeasurements, string) error { return nil },
 	})
 
 	got := output.String()
@@ -276,7 +278,9 @@ func TestRunAnalysisOnlyWithDeps_UsesPerFileResultConfig(t *testing.T) {
 		printError: func(message string) {
 			t.Fatalf("printError called: %s", message)
 		},
-		createLog: newLogCapture().create,
+		createLog:      newLogCapture().create,
+		writeRunRecord: func(*processor.RunRecord, string) error { return nil },
+		writeSidecars:  func(*processor.AudioMeasurements, string) error { return nil },
 	})
 
 	if len(analyzedConfigs) != len(files) {
@@ -369,7 +373,9 @@ func TestRunAnalysisOnlyWithDeps_OrderedOutputParityAcrossJobs(t *testing.T) {
 			printError: func(message string) {
 				t.Fatalf("printError called: %s", message)
 			},
-			createLog: logs.create,
+			createLog:      logs.create,
+			writeRunRecord: func(*processor.RunRecord, string) error { return nil },
+			writeSidecars:  func(*processor.AudioMeasurements, string) error { return nil },
 		})
 		return output.String(), logs
 	}
@@ -475,7 +481,9 @@ func TestRunAnalysisOnlyWithDeps_NonTTYBannerThenOrderedReports(t *testing.T) {
 		printError: func(message string) {
 			t.Fatalf("printError called: %s", message)
 		},
-		createLog: logs.create,
+		createLog:      logs.create,
+		writeRunRecord: func(*processor.RunRecord, string) error { return nil },
+		writeSidecars:  func(*processor.AudioMeasurements, string) error { return nil },
 	})
 
 	got := output.String()
@@ -588,7 +596,9 @@ func TestRunAnalysisOnlyWithDeps_FailureIsolation(t *testing.T) {
 			printErrors = append(printErrors, message)
 			printErrMu.Unlock()
 		},
-		createLog: logs.create,
+		createLog:      logs.create,
+		writeRunRecord: func(*processor.RunRecord, string) error { return nil },
+		writeSidecars:  func(*processor.AudioMeasurements, string) error { return nil },
 	})
 
 	// The failing file reports exactly one error naming the file and "boom".

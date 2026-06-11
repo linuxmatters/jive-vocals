@@ -110,21 +110,26 @@ const (
 )
 
 type filterConfigDefaults struct {
-	Downmix       DownmixConfig
-	Analysis      AnalysisConfig
-	Resample      ResampleConfig
-	DS201HighPass DS201HighPassConfig
-	DS201LowPass  DS201LowPassConfig
-	NoiseRemove   NoiseRemoveConfig
-	DS201Gate     DS201GateConfig
-	LA2A          LA2AConfig
-	Deesser       DeesserConfig
-	Adeclick      AdeclickConfig
-	Loudnorm      LoudnormConfig
+	// Orchestration configs are not part of the §8.1 `filters` block (which
+	// enumerates the six adaptive filters only); they are pipeline plumbing,
+	// excluded from the run record.
+	Downmix  DownmixConfig  `json:"-"`
+	Analysis AnalysisConfig `json:"-"`
+	Resample ResampleConfig `json:"-"`
+
+	DS201HighPass DS201HighPassConfig `json:"ds201_highpass"`
+	DS201LowPass  DS201LowPassConfig  `json:"ds201_lowpass"`
+	NoiseRemove   NoiseRemoveConfig   `json:"noiseremove"`
+	DS201Gate     DS201GateConfig     `json:"ds201_gate"`
+	LA2A          LA2AConfig          `json:"la2a"`
+	Deesser       DeesserConfig       `json:"deesser"`
+
+	Adeclick AdeclickConfig `json:"-"`
+	Loudnorm LoudnormConfig `json:"-"`
 
 	// Filter chain order - controls the sequence of filters in the processing chain
 	// Use Pass2FilterOrder or customise for experimentation
-	FilterOrder []FilterID
+	FilterOrder []FilterID `json:"-"`
 }
 
 type DownmixConfig struct {
@@ -147,69 +152,76 @@ type ResampleConfig struct {
 }
 
 type DS201HighPassConfig struct {
-	Enabled   bool
-	Frequency float64
-	Poles     int
-	Width     float64
-	Mix       float64
-	Transform string
+	Enabled   bool    `json:"enabled"`
+	Frequency float64 `json:"frequency_hz"`
+	Poles     int     `json:"poles_count"`
+	Width     float64 `json:"width"`
+	Mix       float64 `json:"mix"`
+	Transform string  `json:"transform"`
 }
 
 type DS201LowPassConfig struct {
-	Enabled   bool
-	Frequency float64
-	Poles     int
-	Width     float64
-	Mix       float64
-	Transform string
+	Enabled   bool    `json:"enabled"`
+	Frequency float64 `json:"frequency_hz"`
+	Poles     int     `json:"poles_count"`
+	Width     float64 `json:"width"`
+	Mix       float64 `json:"mix"`
+	Transform string  `json:"transform"`
 }
 
 type NoiseRemoveConfig struct {
-	Enabled     bool
-	Strength    float64
-	PatchSec    float64
-	ResearchSec float64
-	Smooth      float64
+	Enabled     bool    `json:"enabled"`
+	Strength    float64 `json:"strength"`
+	PatchSec    float64 `json:"patch_s"`
+	ResearchSec float64 `json:"research_s"`
+	Smooth      float64 `json:"smooth"`
 	// afftdn FFT spectral denoise, appended after anlmdn. Targets broadband
 	// noise under speech that anlmdn and the gate do not reach. It replaced the
 	// former compand residual-suppression stage, which resolved to its gentlest
 	// 4 dB expansion on every stem and added floor pumping. Reduction is fixed
 	// (nr=12) and validated; not adaptively tuned, because the noisiest voice
 	// must be capped at ~12 to avoid warble.
-	AfftdnEnabled        bool
-	AfftdnNoiseReduction float64
-	AfftdnNoiseType      string
-	AfftdnTrackNoise     bool
+	AfftdnEnabled        bool    `json:"afftdn_enabled"`
+	AfftdnNoiseReduction float64 `json:"afftdn_noise_reduction_db"`
+	AfftdnNoiseType      string  `json:"afftdn_noise_type"`
+	AfftdnTrackNoise     bool    `json:"afftdn_track_noise"`
 }
 
 type DS201GateConfig struct {
-	Enabled   bool
-	Threshold float64
-	Ratio     float64
-	Attack    float64
-	Release   float64
-	Range     float64
-	Knee      float64
-	Makeup    float64
-	Detection string
+	Enabled bool `json:"enabled"`
+	// Threshold and Range are stored as LINEAR amplitudes (FFmpeg agate consumes
+	// linear). The §8.4 keys carry the _db suffix because the catalogue (§2.2)
+	// documents the conceptual derivation in dB; the emitted number is the linear
+	// amplitude, convertible via 20·log10.
+	Threshold float64 `json:"threshold_db"`
+	Ratio     float64 `json:"ratio"`
+	Attack    float64 `json:"attack_ms"`
+	Release   float64 `json:"release_ms"`
+	Range     float64 `json:"range_db"`
+	Knee      float64 `json:"knee"`
+	Makeup    float64 `json:"makeup"`
+	Detection string  `json:"detection"`
 }
 
 type LA2AConfig struct {
-	Enabled   bool
-	Threshold float64
-	Ratio     float64
-	Attack    float64
-	Release   float64
-	Makeup    float64
-	Knee      float64
-	Mix       float64
+	Enabled   bool    `json:"enabled"`
+	Threshold float64 `json:"threshold_db"`
+	Ratio     float64 `json:"ratio"`
+	Attack    float64 `json:"attack_ms"`
+	Release   float64 `json:"release_ms"`
+	Makeup    float64 `json:"makeup_db"`
+	Knee      float64 `json:"knee"`
+	Mix       float64 `json:"mix"`
 }
 
 type DeesserConfig struct {
-	Enabled   bool
-	Intensity float64
-	Amount    float64
-	Frequency float64
+	Enabled bool `json:"enabled"`
+	// Intensity (i), Amount (m), Frequency (f) are FFmpeg deesser's 0-1 normalised
+	// params, not physical units. Frequency is the split-band corner fraction, NOT
+	// Hz, so it stays bare (no _hz suffix).
+	Intensity float64 `json:"intensity"`
+	Amount    float64 `json:"amount"`
+	Frequency float64 `json:"frequency"`
 }
 
 type AdeclickConfig struct {
@@ -257,16 +269,16 @@ type BaseFilterConfig struct {
 
 // AdaptiveDiagnostics holds report-only adaptation explanations.
 type AdaptiveDiagnostics struct {
-	DS201LPReason string
+	DS201LPReason string `json:"ds201_lowpass_reason"`
 
-	DS201GateAggression          float64
-	DS201GateDynamicRange        float64
-	DS201GateQuietSpeechEstimate float64
-	DS201GateSpeechSeparation    float64
-	DS201GateSpeechHeadroom      float64
-	DS201GateThresholdUnclamped  float64
-	DS201GateClampReason         string
-	DS201GateGentleMode          bool
+	DS201GateAggression          float64 `json:"aggression"`
+	DS201GateDynamicRange        float64 `json:"dynamic_range_db"`
+	DS201GateQuietSpeechEstimate float64 `json:"quiet_speech_estimate_dbfs"`
+	DS201GateSpeechSeparation    float64 `json:"separation_db"`
+	DS201GateSpeechHeadroom      float64 `json:"speech_headroom_db"`
+	DS201GateThresholdUnclamped  float64 `json:"threshold_unclamped_db"`
+	DS201GateClampReason         string  `json:"clamp_reason"`
+	DS201GateGentleMode          bool    `json:"gentle_mode"`
 }
 
 // ProcessingFilterContext holds pass execution state outside caller-owned defaults.

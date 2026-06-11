@@ -42,22 +42,22 @@ type RoomToneRegion struct {
 // Note: The room tone region is also re-measured in Pass 2 and Pass 4 for
 // before/after comparison of noise reduction effectiveness.
 type NoiseProfile struct {
-	Start              time.Duration `json:"start"`                        // Start time of room tone region used
-	Duration           time.Duration `json:"duration"`                     // Duration of extracted sample
-	MeasuredNoiseFloor float64       `json:"measured_noise_floor"`         // dBFS, RMS level of room tone (average noise)
-	PeakLevel          float64       `json:"peak_level"`                   // dBFS, peak level in room tone (transient noise indicator)
-	CrestFactor        float64       `json:"crest_factor"`                 // Peak - RMS in dB (high = impulsive noise, low = steady noise)
+	Start              time.Duration `json:"start"`                        // Start time of room tone region used (time.Duration ns)
+	Duration           time.Duration `json:"duration"`                     // Duration of extracted sample (time.Duration ns)
+	MeasuredNoiseFloor float64       `json:"measured_floor_dbfs"`          // dBFS, RMS level of room tone (average noise)
+	PeakLevel          float64       `json:"peak_level_dbfs"`              // dBFS, peak level in room tone (transient noise indicator)
+	CrestFactor        float64       `json:"crest_factor_db"`              // Peak - RMS in dB (high = impulsive noise, low = steady noise)
 	Entropy            float64       `json:"entropy"`                      // Signal randomness (1.0 = white noise, lower = tonal noise like hum)
 	ExtractionWarning  string        `json:"extraction_warning,omitempty"` // Warning message if extraction had issues
 
 	// Spectral characteristics for contamination detection (added during candidate evaluation)
-	SpectralCentroid float64 `json:"spectral_centroid,omitempty"` // Hz, where energy is concentrated (voice range: 300-4000 Hz)
-	SpectralFlatness float64 `json:"spectral_flatness,omitempty"` // 0-1, noise-like vs tonal (higher = more noise-like)
-	SpectralKurtosis float64 `json:"spectral_kurtosis,omitempty"` // Peakiness (high = peaked harmonics like speech)
+	SpectralCentroid float64 `json:"spectral_centroid_hz,omitempty"` // Hz, where energy is concentrated (voice range: 300-4000 Hz)
+	SpectralFlatness float64 `json:"spectral_flatness,omitempty"`    // 0-1, noise-like vs tonal (higher = more noise-like)
+	SpectralKurtosis float64 `json:"spectral_kurtosis,omitempty"`    // Peakiness (high = peaked harmonics like speech)
 
 	// Golden sub-region refinement info (populated when a long candidate is refined)
-	OriginalStart    time.Duration `json:"original_start,omitempty"`    // Original candidate start before refinement
-	OriginalDuration time.Duration `json:"original_duration,omitempty"` // Original candidate duration before refinement
+	OriginalStart    time.Duration `json:"original_start,omitempty"`    // Original candidate start before refinement (time.Duration ns)
+	OriginalDuration time.Duration `json:"original_duration,omitempty"` // Original candidate duration before refinement (time.Duration ns)
 	WasRefined       bool          `json:"was_refined,omitempty"`       // True if region was refined from a longer candidate
 }
 
@@ -69,18 +69,18 @@ type NoiseProfile struct {
 // (`m.RMSLevel`, `m.Spectral.Centroid`) and the default-marshalled JSON identical.
 type RegionSample struct {
 	// Amplitude metrics
-	RMSLevel    float64 `json:"rms_level"`    // dBFS, average level
-	PeakLevel   float64 `json:"peak_level"`   // dBFS, max peak level across region
-	CrestFactor float64 `json:"crest_factor"` // Peak - RMS in dB
+	RMSLevel    float64 `json:"rms_level_dbfs"`  // dBFS, average level
+	PeakLevel   float64 `json:"peak_level_dbfs"` // dBFS, max peak level across region
+	CrestFactor float64 `json:"crest_factor_db"` // Peak - RMS in dB
 
 	// Spectral metrics (averaged across region)
 	Spectral SpectralMetrics `json:"spectral"`
 
 	// Loudness metrics (averaged/max across region)
-	MomentaryLUFS float64 `json:"momentary_lufs"`  // LUFS, average momentary loudness
-	ShortTermLUFS float64 `json:"short_term_lufs"` // LUFS, average short-term loudness
-	TruePeak      float64 `json:"true_peak"`       // dBTP, max true peak across region
-	SamplePeak    float64 `json:"sample_peak"`     // dBFS, max sample peak across region
+	MomentaryLUFS float64 `json:"momentary_lufs"`   // LUFS, average momentary loudness
+	ShortTermLUFS float64 `json:"short_term_lufs"`  // LUFS, average short-term loudness
+	TruePeak      float64 `json:"true_peak_dbtp"`   // dBTP, max true peak across region
+	SamplePeak    float64 `json:"sample_peak_dbfs"` // dBFS, max sample peak across region
 }
 
 // RoomToneCandidateMetrics contains measurements for evaluating room tone region candidates.
@@ -138,9 +138,9 @@ type SpeechCandidateMetrics struct {
 	// Speech-region band RMS (populated for the elected SpeechProfile only).
 	// Body = 1-3 kHz vocal presence, Sibilant = 6-9 kHz "s"/"sh" energy (both dBFS).
 	// The de-esser engages on the band excess (Sibilant - Body); see adaptive_deesser.go.
-	BodyBandRMS   float64 `json:"speech_band_body_rms,omitempty"`  // dBFS, 1-3 kHz RMS over the speech region
-	SibBandRMS    float64 `json:"speech_band_sib_rms,omitempty"`   // dBFS, 6-9 kHz RMS over the speech region
-	BandsMeasured bool    `json:"speech_bands_measured,omitempty"` // True only when both body and sibilant bands measured successfully
+	BodyBandRMS   float64 `json:"speech_band_body_rms_dbfs,omitempty"` // dBFS, 1-3 kHz RMS over the speech region
+	SibBandRMS    float64 `json:"speech_band_sib_rms_dbfs,omitempty"`  // dBFS, 6-9 kHz RMS over the speech region
+	BandsMeasured bool    `json:"speech_bands_measured,omitempty"`     // True only when both body and sibilant bands measured successfully
 
 	// Scoring
 	Score float64 `json:"score"` // Composite score for candidate ranking
@@ -155,9 +155,9 @@ type SpeechCandidateMetrics struct {
 // input and output stages (momentary/short-term/sample-peak). Reused as the base
 // of the input/output stage-specific loudness blocks (8.1 loudness domain).
 type LoudnessMetrics struct {
-	MomentaryLoudness float64 `json:"momentary_loudness"`  // Momentary loudness (400ms window, LUFS)
-	ShortTermLoudness float64 `json:"short_term_loudness"` // Short-term loudness (3s window, LUFS)
-	SamplePeak        float64 `json:"sample_peak"`         // Sample peak (dBFS)
+	MomentaryLoudness float64 `json:"momentary_lufs"`   // Momentary loudness (400ms window, LUFS)
+	ShortTermLoudness float64 `json:"short_term_lufs"`  // Short-term loudness (3s window, LUFS)
+	SamplePeak        float64 `json:"sample_peak_dbfs"` // Sample peak (dBFS)
 }
 
 // InputLoudnessMetrics is the Pass-1 loudness domain block: the shared windowed
@@ -166,38 +166,38 @@ type LoudnessMetrics struct {
 type InputLoudnessMetrics struct {
 	LoudnessMetrics // shared windowed loudness, promoted flat into this stage block
 
-	InputI       float64 `json:"input_i"`       // Integrated loudness (LUFS)
-	InputTP      float64 `json:"input_tp"`      // True peak (dBTP)
-	InputLRA     float64 `json:"input_lra"`     // Loudness range (LU)
-	InputThresh  float64 `json:"input_thresh"`  // Threshold level
-	TargetOffset float64 `json:"target_offset"` // Offset for normalization (config.TargetI - InputI)
+	InputI       float64 `json:"integrated_lufs"`  // Integrated loudness (LUFS)
+	InputTP      float64 `json:"true_peak_dbtp"`   // True peak (dBTP)
+	InputLRA     float64 `json:"lra_lu"`           // Loudness range (LU)
+	InputThresh  float64 `json:"thresh_lufs"`      // Threshold level (LUFS)
+	TargetOffset float64 `json:"target_offset_db"` // Offset for normalization (config.TargetI - InputI)
 }
 
 // DynamicsMetrics holds the astats time-domain measurements shared by the input
 // and output stages (8.1 dynamics domain). The astats noise-floor estimate is not
 // here: it lives in the input-only NoiseMetrics block (8.2, floor_astats).
 type DynamicsMetrics struct {
-	DynamicRange float64 `json:"dynamic_range"` // Measured dynamic range (dB)
-	RMSLevel     float64 `json:"rms_level"`     // Overall RMS level (dBFS)
-	PeakLevel    float64 `json:"peak_level"`    // Overall peak level (dBFS)
-	RMSTrough    float64 `json:"rms_trough"`    // RMS level of quietest segments (dBFS)
-	RMSPeak      float64 `json:"rms_peak"`      // RMS level of loudest segments (dBFS)
+	DynamicRange float64 `json:"dynamic_range_db"` // Measured dynamic range (dB)
+	RMSLevel     float64 `json:"rms_level_dbfs"`   // Overall RMS level (dBFS)
+	PeakLevel    float64 `json:"peak_level_dbfs"`  // Overall peak level (dBFS)
+	RMSTrough    float64 `json:"rms_trough_dbfs"`  // RMS level of quietest segments (dBFS)
+	RMSPeak      float64 `json:"rms_peak_dbfs"`    // RMS level of loudest segments (dBFS)
 
-	DCOffset          float64 `json:"dc_offset"`           // Mean amplitude displacement from zero
-	FlatFactor        float64 `json:"flat_factor"`         // Consecutive samples at peak (clipping indicator)
-	CrestFactor       float64 `json:"crest_factor"`        // Peak-to-RMS ratio in dB (converted from linear)
-	ZeroCrossingsRate float64 `json:"zero_crossings_rate"` // Zero crossing rate (low=bass, high=noise/sibilance)
-	ZeroCrossings     float64 `json:"zero_crossings"`      // Total zero crossings
-	MaxDifference     float64 `json:"max_difference"`      // Largest sample-to-sample change (clicks/pops indicator)
-	MinDifference     float64 `json:"min_difference"`      // Smallest sample-to-sample change
-	MeanDifference    float64 `json:"mean_difference"`     // Average sample-to-sample change
-	RMSDifference     float64 `json:"rms_difference"`      // RMS of sample-to-sample changes
-	Entropy           float64 `json:"entropy"`             // Signal randomness (1.0 = white noise, lower = structured)
-	MinLevel          float64 `json:"min_level"`           // dBFS, minimum sample level (converted from linear)
-	MaxLevel          float64 `json:"max_level"`           // dBFS, maximum sample level (converted from linear)
-	NoiseFloorCount   float64 `json:"noise_floor_count"`   // Number of samples in noise floor measurement
-	BitDepth          float64 `json:"bit_depth"`           // Effective bit depth
-	NumberOfSamples   float64 `json:"number_of_samples"`   // Total samples processed
+	DCOffset          float64 `json:"dc_offset"`              // Mean amplitude displacement from zero
+	FlatFactor        float64 `json:"flat_factor"`            // Consecutive samples at peak (clipping indicator)
+	CrestFactor       float64 `json:"crest_factor_astats_db"` // Peak-to-RMS ratio in dB (astats Crest_factor, converted from linear)
+	ZeroCrossingsRate float64 `json:"zero_crossings_rate"`    // Zero crossing rate (low=bass, high=noise/sibilance)
+	ZeroCrossings     float64 `json:"zero_crossings_count"`   // Total zero crossings
+	MaxDifference     float64 `json:"max_difference"`         // Largest sample-to-sample change (clicks/pops indicator)
+	MinDifference     float64 `json:"min_difference"`         // Smallest sample-to-sample change
+	MeanDifference    float64 `json:"mean_difference"`        // Average sample-to-sample change
+	RMSDifference     float64 `json:"rms_difference"`         // RMS of sample-to-sample changes
+	Entropy           float64 `json:"entropy"`                // Signal randomness (1.0 = white noise, lower = structured)
+	MinLevel          float64 `json:"min_level_dbfs"`         // dBFS, minimum sample level (converted from linear)
+	MaxLevel          float64 `json:"max_level_dbfs"`         // dBFS, maximum sample level (converted from linear)
+	NoiseFloorCount   float64 `json:"noise_floor_count"`      // Number of samples in noise floor measurement
+	BitDepth          float64 `json:"bit_depth"`              // Effective bit depth
+	NumberOfSamples   float64 `json:"number_of_samples"`      // Total samples processed
 }
 
 // NoiseMetrics is the input-only noise domain block (8.1/8.2). It holds the
@@ -205,13 +205,13 @@ type DynamicsMetrics struct {
 // estimates kept separate (prescan, astats), the adaptive room-tone detect level,
 // the voice-activated flag, and the noise-reduction headroom.
 type NoiseMetrics struct {
-	Floor               float64 `json:"floor"`                  // Derived noise floor (dBFS), three-tier; overwritten by room-tone profile if elected
-	FloorSource         string  `json:"floor_source"`           // Source of Floor: "astats" / "rms_estimate" / "ebur128_estimate" / "silence_profile"
-	FloorPrescan        float64 `json:"floor_prescan"`          // Noise floor estimated from interval data (dBFS)
-	FloorAstats         float64 `json:"floor_astats"`           // FFmpeg astats noise floor estimate (dBFS)
-	RoomToneDetectLevel float64 `json:"room_tone_detect_level"` // Adaptive room tone detection threshold (dBFS)
-	VoiceActivated      bool    `json:"voice_activated"`        // True when >= 95% of room tone candidates are digital silence
-	ReductionHeadroom   float64 `json:"reduction_headroom"`     // dB gap between noise and quiet speech
+	Floor               float64 `json:"floor_dbfs"`                  // Derived noise floor (dBFS), three-tier; overwritten by room-tone profile if elected
+	FloorSource         string  `json:"floor_source"`                // Source of Floor: "astats" / "rms_estimate" / "ebur128_estimate" / "silence_profile"
+	FloorPrescan        float64 `json:"floor_prescan_dbfs"`          // Noise floor estimated from interval data (dBFS)
+	FloorAstats         float64 `json:"floor_astats_dbfs"`           // FFmpeg astats noise floor estimate (dBFS)
+	RoomToneDetectLevel float64 `json:"room_tone_detect_level_dbfs"` // Adaptive room tone detection threshold (dBFS)
+	VoiceActivated      bool    `json:"voice_activated"`             // True when >= 95% of room tone candidates are digital silence
+	ReductionHeadroom   float64 `json:"reduction_headroom_db"`       // dB gap between noise and quiet speech
 }
 
 // RegionMetrics is the input-only regions domain block (8.1). It holds the
@@ -225,6 +225,15 @@ type RegionMetrics struct {
 	SpeechCandidates   []SpeechCandidateMetrics   `json:"speech_candidates,omitempty"`    // All evaluated candidates with scores
 	SpeechProfile      *SpeechCandidateMetrics    `json:"speech_profile,omitempty"`       // Elected best speech candidate (pointer into SpeechCandidates)
 	NoiseProfile       *NoiseProfile              `json:"noise_profile,omitempty"`        // Metrics from elected room tone region; nil if extraction failed
+
+	// ElectedRoomToneSample is the embedded RegionSample of the elected room-tone
+	// candidate (the candidate whose region matches NoiseProfile). NoiseProfile is a
+	// slimmer struct without a RegionSample, so the record cannot reach the elected
+	// candidate's bare amplitude/spectral/loudness sample through it. This captures
+	// that already-computed sample at election (no new measurement, no DSP change) so
+	// the run record can wire regions.room_tone.samples.input. json:"-" keeps it out
+	// of the flat RegionMetrics marshalling; only the record assembly reads it.
+	ElectedRoomToneSample *RegionSample `json:"-"`
 }
 
 // BaseMeasurements contains fields shared between input (Pass 1) and output (Pass 2) measurements.
@@ -266,6 +275,18 @@ type BaseMeasurements struct {
 	SamplePeak        float64 `json:"sample_peak"`         // Sample peak (dBFS)
 }
 
+// Stage identifies one of the three measurement snapshots the pipeline produces
+// of the same regions/loudness/dynamics/spectral blocks (§8.1). The §8.4 stage
+// enum keys the per-stage maps assembled in RunRecord (task 2.4); this task only
+// defines the type and its constants.
+type Stage string
+
+const (
+	StageInput    Stage = "input"    // Pass 1, raw input measurements
+	StageFiltered Stage = "filtered" // Pass 2 output, post filter-chain, pre-normalisation
+	StageFinal    Stage = "final"    // Pass 4 output, post-loudnorm
+)
+
 // AudioMeasurements contains the measurements from Pass 1 analysis.
 // Uses ebur128 (LUFS/LRA), astats (dynamic range/noise floor), and aspectralstats (spectral analysis).
 // Room tone detection runs in Go using 250ms interval sampling rather than an FFmpeg silence filter.
@@ -288,8 +309,9 @@ type AudioMeasurements struct {
 	Duration float64 `json:"-"`
 
 	// SuggestedGateThreshold is an early gate-threshold estimate (linear amplitude).
-	// Not part of the 8.1 domain skeleton; record placement deferred to Phase 2.
-	SuggestedGateThreshold float64 `json:"suggested_gate_threshold"`
+	// Not part of the §8.1 domain skeleton (display-only "Gate Baseline"); excluded
+	// from the record JSON.
+	SuggestedGateThreshold float64 `json:"-"`
 }
 
 // OutputLoudnessMetrics is the Filtered/Final-stage loudness domain block: the
@@ -303,23 +325,23 @@ type AudioMeasurements struct {
 type OutputLoudnessMetrics struct {
 	LoudnessMetrics // shared windowed loudness, promoted flat into this stage block
 
-	OutputI      float64 `json:"output_i"`      // Integrated loudness (LUFS)
-	OutputTP     float64 `json:"output_tp"`     // True peak (dBTP)
-	OutputLRA    float64 `json:"output_lra"`    // Loudness range (LU)
-	OutputThresh float64 `json:"output_thresh"` // Gating threshold (LUFS) - for loudnorm
-	TargetOffset float64 `json:"target_offset"` // Pre-limiter offset (dB) - from loudnorm measurement
+	OutputI      float64 `json:"integrated_lufs"`  // Integrated loudness (LUFS)
+	OutputTP     float64 `json:"true_peak_dbtp"`   // True peak (dBTP)
+	OutputLRA    float64 `json:"lra_lu"`           // Loudness range (LU)
+	OutputThresh float64 `json:"thresh_lufs"`      // Gating threshold (LUFS) - for loudnorm
+	TargetOffset float64 `json:"target_offset_db"` // Pre-limiter offset (dB) - from loudnorm measurement
 }
 
 // OutputLoudnormMeasurement groups the loudnorm first-pass (measurement mode)
 // values captured during Pass 2/3. Kept together for the later §8.1 normalisation
 // block. Distinct from normalise.go's LoudnormMeasurement (parsed Pass-3 floats).
 type OutputLoudnormMeasurement struct {
-	LoudnormInputI       float64 `json:"loudnorm_input_i"`       // Loudnorm's measured integrated loudness (LUFS)
-	LoudnormInputTP      float64 `json:"loudnorm_input_tp"`      // Loudnorm's measured true peak (dBTP)
-	LoudnormInputLRA     float64 `json:"loudnorm_input_lra"`     // Loudnorm's measured loudness range (LU)
-	LoudnormInputThresh  float64 `json:"loudnorm_input_thresh"`  // Loudnorm's measured threshold (LUFS)
-	LoudnormTargetOffset float64 `json:"loudnorm_target_offset"` // Loudnorm's calculated offset for second pass
-	LoudnormMeasured     bool    `json:"loudnorm_measured"`      // True if loudnorm measurement was captured
+	LoudnormInputI       float64 `json:"input_integrated_lufs"` // Loudnorm's measured integrated loudness (LUFS)
+	LoudnormInputTP      float64 `json:"input_true_peak_dbtp"`  // Loudnorm's measured true peak (dBTP)
+	LoudnormInputLRA     float64 `json:"input_lra_lu"`          // Loudnorm's measured loudness range (LU)
+	LoudnormInputThresh  float64 `json:"input_thresh_lufs"`     // Loudnorm's measured threshold (LUFS)
+	LoudnormTargetOffset float64 `json:"target_offset_db"`      // Loudnorm's calculated offset for second pass
+	LoudnormMeasured     bool    `json:"measured"`              // True if loudnorm measurement was captured
 }
 
 // OutputMeasurements contains the measurements from Pass 2 (Filtered) / Pass 4
@@ -420,6 +442,19 @@ func selectNoiseProfile(measurements *AudioMeasurements, intervals, silenceInter
 
 	selection.noiseProfile = profile
 	measurements.Regions.NoiseProfile = profile
+
+	// Capture the elected candidate's already-computed RegionSample for the run
+	// record (regions.room_tone.samples.input). The elected candidate is the one in
+	// Candidates whose Region matches the elected BestRegion (the same region the
+	// NoiseProfile is built from). Pure read of an existing measurement; no scoring,
+	// election, or DSP value changes - audio stays bit-exact.
+	for i := range roomToneResult.Candidates {
+		c := &roomToneResult.Candidates[i]
+		if c.Region.Start == originalRegion.Start && c.Region.Duration == originalRegion.Duration {
+			measurements.Regions.ElectedRoomToneSample = &c.RegionSample
+			break
+		}
+	}
 
 	if wasRefined {
 		profile.WasRefined = true

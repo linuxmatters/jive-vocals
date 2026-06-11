@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,6 +105,24 @@ func runWorkerPool(ctx context.Context, p *tea.Program, files []string, base *pr
 			if err := logging.GenerateReport(reportData); err != nil {
 				wlog("[POOL] Failed to generate log file: %v", err)
 				reportWarnings <- fmt.Sprintf("Report was not written for %s: %v", inputPath, err)
+			}
+
+			// Emit the run record beside the .log. The .json path is derived from
+			// OutputPath exactly as report.go derives the .log, so they sit
+			// together. A write failure is non-fatal: the processed audio is the
+			// product, the record a side artefact (matches GenerateReport above).
+			recordPath := strings.TrimSuffix(result.OutputPath, filepath.Ext(result.OutputPath)) + ".json"
+			if err := processor.WriteRunRecord(processor.NewRunRecord(result), recordPath); err != nil {
+				wlog("[POOL] Failed to write run record: %v", err)
+				reportWarnings <- fmt.Sprintf("Run record was not written for %s: %v", inputPath, err)
+			}
+
+			// Stream the full interval and candidate series to .jsonl sidecars
+			// beside the record (§8.5 call 2 / §9.3): the bulk data the summary
+			// stands in for. Same non-fatal contract as the record above.
+			if err := processor.WriteRunRecordSidecars(result.Measurements, recordPath); err != nil {
+				wlog("[POOL] Failed to write run record sidecars: %v", err)
+				reportWarnings <- fmt.Sprintf("Run record sidecars were not written for %s: %v", inputPath, err)
 			}
 
 			finalNoiseFloor, _ := processor.FinalNoiseFloor(result)
