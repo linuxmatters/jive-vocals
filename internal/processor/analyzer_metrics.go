@@ -652,20 +652,20 @@ func linearSampleToDBFS(sample float64) float64 {
 // SpectralMetrics holds the 13 aspectralstats measurements extracted from FFmpeg metadata.
 // These metrics characterise the frequency content of audio frames.
 type SpectralMetrics struct {
-	Mean     float64 `json:"mean"`     // Average spectral power
-	Variance float64 `json:"variance"` // Spectral variance
-	Centroid float64 `json:"centroid"` // Spectral centroid (Hz) - where energy is concentrated
-	Spread   float64 `json:"spread"`   // Spectral spread (Hz) - bandwidth/fullness indicator
-	Skewness float64 `json:"skewness"` // Spectral asymmetry - positive=bright, negative=dark
-	Kurtosis float64 `json:"kurtosis"` // Spectral peakiness - tonal vs broadband content
-	Entropy  float64 `json:"entropy"`  // Spectral randomness (0-1) - noise classification
-	Flatness float64 `json:"flatness"` // Noise vs tonal ratio (0-1) - low=tonal, high=noisy
-	Crest    float64 `json:"crest"`    // Spectral peak-to-RMS - transient indicator
-	Flux     float64 `json:"flux"`     // Frame-to-frame spectral change
-	Slope    float64 `json:"slope"`    // Spectral tilt - negative=more bass
-	Decrease float64 `json:"decrease"` // Average spectral decrease
-	Rolloff  float64 `json:"rolloff"`  // Spectral rolloff (Hz) - HF energy dropoff point
-	Found    bool    `json:"-"`        // True if any spectral metric was extracted
+	Mean     float64 `json:"mean"`        // Average spectral power
+	Variance float64 `json:"variance"`    // Spectral variance
+	Centroid float64 `json:"centroid_hz"` // Spectral centroid (Hz) - where energy is concentrated
+	Spread   float64 `json:"spread_hz"`   // Spectral spread (Hz) - bandwidth/fullness indicator
+	Skewness float64 `json:"skewness"`    // Spectral asymmetry - positive=bright, negative=dark
+	Kurtosis float64 `json:"kurtosis"`    // Spectral peakiness - tonal vs broadband content
+	Entropy  float64 `json:"entropy"`     // Spectral randomness (0-1) - noise classification
+	Flatness float64 `json:"flatness"`    // Noise vs tonal ratio (0-1) - low=tonal, high=noisy
+	Crest    float64 `json:"crest"`       // Spectral peak-to-RMS - transient indicator
+	Flux     float64 `json:"flux"`        // Frame-to-frame spectral change
+	Slope    float64 `json:"slope"`       // Spectral tilt - negative=more bass
+	Decrease float64 `json:"decrease"`    // Average spectral decrease
+	Rolloff  float64 `json:"rolloff_hz"`  // Spectral rolloff (Hz) - HF energy dropoff point
+	Found    bool    `json:"-"`           // True if any spectral metric was extracted
 }
 
 // SpectralAccumulator accumulates spectral measurements across frames and

@@ -491,34 +491,34 @@ func calculateLinearModeTarget(measuredI, measuredTP, desiredI, targetTP float64
 
 // NormalisationResult contains the outcome of the normalisation pass.
 type NormalisationResult struct {
-	InputLUFS         float64        // Pre-normalisation loudness (from Pass 2 loudnorm measurement)
-	InputTP           float64        // Pre-normalisation true peak (from Pass 2 loudnorm measurement)
-	OutputLUFS        float64        // Post-normalisation loudness (measured)
-	OutputTP          float64        // Post-normalisation true peak (measured)
-	GainApplied       float64        // Gain adjustment applied (dB) - loudnorm's target_offset
-	WithinTarget      bool           // True if final output is within tolerance of target
-	Skipped           bool           // True if normalisation was skipped (already within tolerance)
-	LoudnormStats     *LoudnormStats // Diagnostic output from loudnorm second pass (nil if capture failed)
-	RequestedTargetI  float64        // The target I that was requested (from config)
-	EffectiveTargetI  float64        // The target I actually used (may be lower to ensure linear mode)
-	LinearModeForced  bool           // True if target was adjusted to force linear mode
-	ActualNormDynamic bool           // True if loudnorm's reported normalization_type was "dynamic" (detective)
+	InputLUFS         float64        `json:"input_lufs"`            // Pre-normalisation loudness (from Pass 2 loudnorm measurement)
+	InputTP           float64        `json:"input_dbtp"`            // Pre-normalisation true peak (from Pass 2 loudnorm measurement)
+	OutputLUFS        float64        `json:"output_lufs"`           // Post-normalisation loudness (measured)
+	OutputTP          float64        `json:"output_dbtp"`           // Post-normalisation true peak (measured)
+	GainApplied       float64        `json:"gain_applied_db"`       // Gain adjustment applied (dB) - loudnorm's target_offset
+	WithinTarget      bool           `json:"within_target"`         // True if final output is within tolerance of target
+	Skipped           bool           `json:"skipped"`               // True if normalisation was skipped (already within tolerance)
+	LoudnormStats     *LoudnormStats `json:"loudnorm_measured"`     // Diagnostic output from loudnorm second pass (nil if capture failed)
+	RequestedTargetI  float64        `json:"requested_target_lufs"` // The target I that was requested (from config)
+	EffectiveTargetI  float64        `json:"effective_target_lufs"` // The target I actually used (may be lower to ensure linear mode)
+	LinearModeForced  bool           `json:"linear_mode_forced"`    // True if target was adjusted to force linear mode
+	ActualNormDynamic bool           `json:"actual_norm_dynamic"`   // True if loudnorm's reported normalization_type was "dynamic" (detective)
 
 	// Limiter diagnostics (Pass 4 pre-limiting)
-	LimiterEnabled    bool    // True if pre-limiting was applied
-	LimiterCeiling    float64 // Ceiling in dBTP (only valid if LimiterEnabled)
-	LimiterGain       float64 // Gain required that triggered limiting (dB)
-	LimiterFilteredTP float64 // Pass-2 filtered true peak (dBTP) the limiter acts on
-	PreGainDB         float64 // Pre-gain amount in dB (0.0 when no pre-gain applied)
-	LimiterClamped    bool    // True when calculateLimiterCeiling clamped ceiling to minimum
-	Pass3FilterPrefix string  // Filter prefix used for Pass 3 measurement (empty when no pre-gain/limiting)
+	LimiterEnabled    bool    `json:"limiter_enabled"`     // True if pre-limiting was applied
+	LimiterCeiling    float64 `json:"ceiling_dbtp"`        // Ceiling in dBTP (only valid if LimiterEnabled)
+	LimiterGain       float64 `json:"gain_db"`             // Gain required that triggered limiting (dB)
+	LimiterFilteredTP float64 `json:"filtered_dbtp"`       // Pass-2 filtered true peak (dBTP) the limiter acts on
+	PreGainDB         float64 `json:"pre_gain_db"`         // Pre-gain amount in dB (0.0 when no pre-gain applied)
+	LimiterClamped    bool    `json:"limiter_clamped"`     // True when calculateLimiterCeiling clamped ceiling to minimum
+	Pass3FilterPrefix string  `json:"pass3_filter_prefix"` // Filter prefix used for Pass 3 measurement (empty when no pre-gain/limiting)
 
-	RegionMeasurementTime time.Duration // Final-output room tone/speech region measurement duration
+	RegionMeasurementTime time.Duration `json:"region_measurement_ns"` // Final-output room tone/speech region measurement duration (ns)
 
-	// FinalMeasurements contains full analysis after normalisation (Pass 4)
-	// Includes spectral characteristics, amplitude stats, and loudness measurements
-	// for comparison with Pass 1 input and Pass 2 filtered measurements
-	FinalMeasurements *OutputMeasurements
+	// FinalMeasurements is the FINAL-stage OutputMeasurements; it is assembled into
+	// the record's `stages` map at RunRecord (2.4). Excluded here to avoid a nested
+	// duplicate of the final stage under `normalisation`.
+	FinalMeasurements *OutputMeasurements `json:"-"`
 }
 
 // loudnormFellBackToDynamic reports whether loudnorm's stats say it ran in

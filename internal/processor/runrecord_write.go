@@ -1,0 +1,173 @@
+package processor
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+)
+
+// WriteRunRecord marshals the run record to indented JSON (via the NaN/±Inf-safe
+// MarshalRunRecord) and writes it to path. Sibling to file_write.go. The record
+// is a side artefact: callers treat a write failure as non-fatal and keep the
+// processed audio, which is the product.
+func WriteRunRecord(record *RunRecord, path string) error {
+	data, err := MarshalRunRecord(record)
+	if err != nil {
+		return fmt.Errorf("failed to marshal run record: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write run record to %s: %w", path, err)
+	}
+	return nil
+}
+
+// sidecarBase derives the shared sidecar basename from the .json record path by
+// trimming the trailing ".json" so the sidecars sit beside the record with a
+// matching stem (e.g. <name>-LUFS-NN-processed.json -> <name>-LUFS-NN-processed,
+// then .intervals.jsonl / .candidates.jsonl).
+func sidecarBase(recordPath string) string {
+	return strings.TrimSuffix(recordPath, ".json")
+}
+
+// IntervalsSidecarPath returns the .intervals.jsonl path for a given record path.
+func IntervalsSidecarPath(recordPath string) string {
+	return sidecarBase(recordPath) + ".intervals.jsonl"
+}
+
+// CandidatesSidecarPath returns the .candidates.jsonl path for a given record path.
+func CandidatesSidecarPath(recordPath string) string {
+	return sidecarBase(recordPath) + ".candidates.jsonl"
+}
+
+// candidateSidecarLine is one tagged line in the .candidates.jsonl sidecar: the
+// kind ("room_tone"/"speech") plus the candidate's full metrics. The metrics are
+// embedded by reference so the line carries the candidate's existing JSON shape
+// (region, region-sample, scoring, bands) without copying values.
+type candidateSidecarLine struct {
+	Kind     string `json:"kind"`
+	RoomTone *RoomToneCandidateMetrics
+	Speech   *SpeechCandidateMetrics
+}
+
+// MarshalJSON flattens the kind tag and the active candidate metrics into one
+// object. Exactly one of RoomTone/Speech is non-nil per line.
+func (l candidateSidecarLine) MarshalJSON() ([]byte, error) {
+	var metrics any
+	switch {
+	case l.RoomTone != nil:
+		metrics = l.RoomTone
+	case l.Speech != nil:
+		metrics = l.Speech
+	}
+	raw, err := json.Marshal(metrics)
+	if err != nil {
+		return nil, err
+	}
+	// Splice the kind tag in front of the metric object's fields.
+	prefix := fmt.Sprintf(`{"kind":%q,`, l.Kind)
+	if len(raw) >= 2 && raw[0] == '{' {
+		return append([]byte(prefix), raw[1:]...), nil
+	}
+	// Metric serialised to something other than an object (should not happen);
+	// fall back to a nested object so the line stays valid JSON.
+	return json.Marshal(struct {
+		Kind    string `json:"kind"`
+		Metrics any    `json:"metrics"`
+	}{Kind: l.Kind, Metrics: metrics})
+}
+
+// WriteIntervalsSidecar streams the full per-250ms IntervalSamples series to a
+// .jsonl sidecar, one JSON object per line in order. Uses a buffered streaming
+// writer (one line at a time), never a giant in-memory array marshal. Each line
+// is the IntervalSample's own JSON (its MarshalJSON flattens the spectral block
+// to spectral_* keys). Like WriteRunRecord, a write failure is non-fatal to the
+// caller: the audio is the product. count(lines) == len(samples).
+func WriteIntervalsSidecar(samples []IntervalSample, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create intervals sidecar %s: %w", path, err)
+	}
+	defer f.Close()
+
+	if err := streamIntervals(f, samples); err != nil {
+		return fmt.Errorf("failed to write intervals sidecar %s: %w", path, err)
+	}
+	return nil
+}
+
+// streamIntervals writes the interval series to w one JSON object per line via a
+// buffered streaming encoder (no giant in-memory array). Factored out so the file
+// writer and the unit tests exercise the same streaming path. Each line uses
+// IntervalSample.MarshalJSON to flatten the spectral block to spectral_* keys.
+func streamIntervals(w io.Writer, samples []IntervalSample) error {
+	bw := bufio.NewWriter(w)
+	enc := json.NewEncoder(bw) // Encoder writes one object + newline per Encode call.
+	for i := range samples {
+		if err := enc.Encode(samples[i]); err != nil {
+			return err
+		}
+	}
+	return bw.Flush()
+}
+
+// WriteCandidatesSidecar streams the full room-tone and speech candidate arrays
+// to a .jsonl sidecar, one candidate per line, each tagged with its kind.
+// Room-tone lines come first, then speech, preserving each array's order. Uses a
+// buffered streaming writer (one line at a time). A write failure is non-fatal to
+// the caller. count(lines) == len(roomTone)+len(speech).
+func WriteCandidatesSidecar(roomTone []RoomToneCandidateMetrics, speech []SpeechCandidateMetrics, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create candidates sidecar %s: %w", path, err)
+	}
+	defer f.Close()
+
+	if err := streamCandidates(f, roomTone, speech); err != nil {
+		return fmt.Errorf("failed to write candidates sidecar %s: %w", path, err)
+	}
+	return nil
+}
+
+// streamCandidates writes the room-tone then speech candidate arrays to w, one
+// tagged JSON object per line, via a buffered streaming encoder. Factored out so
+// the file writer and the unit tests share the same streaming path.
+func streamCandidates(w io.Writer, roomTone []RoomToneCandidateMetrics, speech []SpeechCandidateMetrics) error {
+	bw := bufio.NewWriter(w)
+	enc := json.NewEncoder(bw)
+	for i := range roomTone {
+		if err := enc.Encode(candidateSidecarLine{Kind: "room_tone", RoomTone: &roomTone[i]}); err != nil {
+			return err
+		}
+	}
+	for i := range speech {
+		if err := enc.Encode(candidateSidecarLine{Kind: "speech", Speech: &speech[i]}); err != nil {
+			return err
+		}
+	}
+	return bw.Flush()
+}
+
+// WriteRunRecordSidecars writes both the intervals and candidates sidecars for a
+// record at recordPath, pulling the full series off the supplied measurements.
+// Returns the first error encountered; callers treat any failure as non-fatal
+// (the audio is the product, sidecars are a side artefact). measurements may be
+// nil (no Pass-1 data), in which case empty sidecars are written so the file set
+// stays consistent.
+func WriteRunRecordSidecars(measurements *AudioMeasurements, recordPath string) error {
+	var samples []IntervalSample
+	var roomTone []RoomToneCandidateMetrics
+	var speech []SpeechCandidateMetrics
+	if measurements != nil {
+		samples = measurements.Regions.IntervalSamples
+		roomTone = measurements.Regions.RoomToneCandidates
+		speech = measurements.Regions.SpeechCandidates
+	}
+
+	if err := WriteIntervalsSidecar(samples, IntervalsSidecarPath(recordPath)); err != nil {
+		return err
+	}
+	return WriteCandidatesSidecar(roomTone, speech, CandidatesSidecarPath(recordPath))
+}

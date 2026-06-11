@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -226,6 +227,8 @@ type analysisOnlyDeps struct {
 	displayResults  func(io.Writer, string, *audio.Metadata, *processor.AudioMeasurements, *processor.EffectiveFilterConfig, *processor.AdaptiveDiagnostics, ...logging.AnalysisTimings)
 	printError      func(string)
 	createLog       func(string) (io.WriteCloser, error)
+	writeRunRecord  func(*processor.RunRecord, string) error
+	writeSidecars   func(*processor.AudioMeasurements, string) error
 }
 
 func defaultAnalysisOnlyDeps() analysisOnlyDeps {
@@ -237,6 +240,8 @@ func defaultAnalysisOnlyDeps() analysisOnlyDeps {
 		displayResults:  logging.DisplayAnalysisResultsWithDiagnostics,
 		printError:      cli.PrintError,
 		createLog:       createAnalysisLogFile,
+		writeRunRecord:  processor.WriteRunRecord,
+		writeSidecars:   processor.WriteRunRecordSidecars,
 	}
 }
 
@@ -394,6 +399,31 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 		if err := logFile.Close(); err != nil {
 			deps.printError(fmt.Sprintf("Failed to write analysis log for %s: %v", files[i], err))
 			continue
+		}
+
+		// Emit the Pass-1-only run record beside the analysis log. The .json path
+		// is derived from AnalysisLogPath by swapping the .log extension, so both
+		// share the <stem>-<ext>-analysis basename. metas[i] supplies provenance
+		// (sample rate, channels) that the Pass-1 record cannot carry on its own.
+		// A write failure is non-fatal, matching the analysis log above.
+		recordPath := strings.TrimSuffix(logPath, filepath.Ext(logPath)) + ".json"
+		record := processor.NewAnalysisRunRecord(files[i], results[i].Measurements)
+		if metas[i] != nil {
+			record.Run.SampleRateHz = metas[i].SampleRate
+			record.Run.Channels = metas[i].Channels
+			if metas[i].Duration > 0 {
+				record.Run.DurationS = metas[i].Duration
+			}
+		}
+		if err := deps.writeRunRecord(record, recordPath); err != nil {
+			deps.printError(fmt.Sprintf("Failed to write analysis run record for %s: %v", files[i], err))
+		}
+
+		// Stream the Pass-1 interval and candidate series to .jsonl sidecars
+		// beside the analysis record (§8.5 call 2 / §9.3). Non-fatal, matching
+		// the record write above.
+		if err := deps.writeSidecars(results[i].Measurements, recordPath); err != nil {
+			deps.printError(fmt.Sprintf("Failed to write analysis run record sidecars for %s: %v", files[i], err))
 		}
 
 		if noTTY {
