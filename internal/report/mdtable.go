@@ -12,15 +12,20 @@ import (
 // =============================================================================
 
 // mdTable renders a GitHub-flavoured Markdown table: a header row, a `---`
-// separator row, then one row per data slice. Cells are emitted verbatim; the
-// caller pre-formats numeric values via the formatMetric* helpers below.
+// separator row, then one row per data slice. Cell content is escaped via
+// escapeCell so a literal `|` or newline (e.g. the `|min|,|max|` glosses in the
+// metric-definition catalogue) cannot break the table structure.
 //
 // Rows shorter than the header are padded with the placeholder; cells beyond
 // the header width are dropped so the column count stays consistent.
 func mdTable(headers []string, rows [][]string) string {
 	var b strings.Builder
 
-	b.WriteString("| " + strings.Join(headers, " | ") + " |\n")
+	hs := make([]string, len(headers))
+	for i, h := range headers {
+		hs[i] = escapeCell(h)
+	}
+	b.WriteString("| " + strings.Join(hs, " | ") + " |\n")
 
 	sep := make([]string, len(headers))
 	for i := range sep {
@@ -32,7 +37,7 @@ func mdTable(headers []string, rows [][]string) string {
 		cells := make([]string, len(headers))
 		for i := range headers {
 			if i < len(row) {
-				cells[i] = row[i]
+				cells[i] = escapeCell(row[i])
 			} else {
 				cells[i] = placeholder
 			}
@@ -41,6 +46,23 @@ func mdTable(headers []string, rows [][]string) string {
 	}
 
 	return b.String()
+}
+
+// escapeCell makes a value safe to drop into a Markdown table cell: a literal
+// pipe is backslash-escaped (GFM cell convention) and any newline or carriage
+// return collapses to a space, so neither character can split the row or column.
+// Image-link cells (![alt](path)) are unaffected — they carry no bare pipe or
+// newline.
+func escapeCell(s string) string {
+	if !strings.ContainsAny(s, "|\n\r") {
+		return s
+	}
+	r := strings.NewReplacer(
+		"|", "\\|",
+		"\n", " ",
+		"\r", " ",
+	)
+	return r.Replace(s)
 }
 
 // =============================================================================

@@ -85,12 +85,18 @@ func (l candidateSidecarLine) MarshalJSON() ([]byte, error) {
 // is the IntervalSample's own JSON (its MarshalJSON flattens the spectral block
 // to spectral_* keys). Like WriteRunRecord, a write failure is non-fatal to the
 // caller: the audio is the product. count(lines) == len(samples).
-func WriteIntervalsSidecar(samples []IntervalSample, path string) error {
+func WriteIntervalsSidecar(samples []IntervalSample, path string) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to create intervals sidecar %s: %w", path, err)
 	}
-	defer f.Close()
+	// Surface a Close failure (the buffered final flush can fail here) only when
+	// the stream itself succeeded, so a successful return means the bytes landed.
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("failed to close intervals sidecar %s: %w", path, cerr)
+		}
+	}()
 
 	if err := streamIntervals(f, samples); err != nil {
 		return fmt.Errorf("failed to write intervals sidecar %s: %w", path, err)
@@ -118,12 +124,18 @@ func streamIntervals(w io.Writer, samples []IntervalSample) error {
 // Room-tone lines come first, then speech, preserving each array's order. Uses a
 // buffered streaming writer (one line at a time). A write failure is non-fatal to
 // the caller. count(lines) == len(roomTone)+len(speech).
-func WriteCandidatesSidecar(roomTone []RoomToneCandidateMetrics, speech []SpeechCandidateMetrics, path string) error {
+func WriteCandidatesSidecar(roomTone []RoomToneCandidateMetrics, speech []SpeechCandidateMetrics, path string) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to create candidates sidecar %s: %w", path, err)
 	}
-	defer f.Close()
+	// Surface a Close failure (the buffered final flush can fail here) only when
+	// the stream itself succeeded, so a successful return means the bytes landed.
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("failed to close candidates sidecar %s: %w", path, cerr)
+		}
+	}()
 
 	if err := streamCandidates(f, roomTone, speech); err != nil {
 		return fmt.Errorf("failed to write candidates sidecar %s: %w", path, err)
