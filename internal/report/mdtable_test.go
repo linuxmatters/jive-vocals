@@ -50,6 +50,36 @@ func TestMdTableShortRowPadding(t *testing.T) {
 	}
 }
 
+// TestMdTableEscapesCellContent asserts a literal pipe is backslash-escaped and
+// newlines/carriage returns collapse to a space, so neither can break the row or
+// column structure (the metric-definition glosses carry `|min|,|max|`).
+func TestMdTableEscapesCellContent(t *testing.T) {
+	got := mdTable(
+		[]string{"Metric", "Definition"},
+		[][]string{
+			{"Peak", "20*log10(max(|min|,|max|))"},
+			{"Multi\nline", "carriage\rreturn"},
+		},
+	)
+	want := "" +
+		"| Metric | Definition |\n" +
+		"| --- | --- |\n" +
+		"| Peak | 20*log10(max(\\|min\\|,\\|max\\|)) |\n" +
+		"| Multi line | carriage return |\n"
+	if got != want {
+		t.Errorf("escaping mismatch\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// TestEscapeCellPassThrough asserts a value with no special characters is
+// returned unchanged (the fast path), so ordinary cells are untouched.
+func TestEscapeCellPassThrough(t *testing.T) {
+	const in = "Integrated -16.0 LUFS"
+	if got := escapeCell(in); got != in {
+		t.Errorf("escapeCell(%q) = %q, want unchanged", in, got)
+	}
+}
+
 // TestIsDigitalSilence pins the legacy threshold semantics (table.go:131): -Inf
 // or at/below -120 dBFS is digital silence.
 func TestIsDigitalSilence(t *testing.T) {

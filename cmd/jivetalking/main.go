@@ -464,9 +464,15 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 			Analysis:   results[i].AnalysisDuration,
 			Adaptation: results[i].AdaptationDuration,
 		}
+		// A Markdown write failure is non-fatal and must NOT skip the rest: the
+		// run record and sidecars are independent artefacts, so keep emitting them
+		// (matching the processing path in pool.go, which logs and proceeds). Only
+		// the "source → report" confirmation is suppressed below, since the report
+		// it points at did not land.
+		reportWritten := true
 		if err := deps.writeMarkdownReport(record, timings, reportPath); err != nil {
 			deps.printError(fmt.Sprintf("Failed to write analysis report for %s: %v", files[i], err))
-			continue
+			reportWritten = false
 		}
 
 		if err := deps.writeRunRecord(record, recordPath); err != nil {
@@ -515,7 +521,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 			}(img, files[i])
 		}
 
-		if noTTY {
+		if noTTY && reportWritten {
 			printAnalysisConfirmation(deps.stdout, files[i], reportPath, results[i].Measurements)
 		}
 	}

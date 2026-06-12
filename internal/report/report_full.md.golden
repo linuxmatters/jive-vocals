@@ -38,9 +38,9 @@
 | Metric | Definition | Input |
 | --- | --- | --- |
 | RMS level | RMS amplitude of the samples, 20*log10(sqrt(sum(x^2)/N)). (dBFS) | -44.46 |
-| Peak level | Largest absolute sample, 20*log10(max(|min|,|max|)). (dBFS) | -6.22 |
+| Peak level | Largest absolute sample, 20*log10(max(\|min\|,\|max\|)). (dBFS) | -6.22 |
 | Crest factor | Time-domain peak-to-RMS ratio (peak/RMS), stored converted linear to dB. (dB) | 128.5400 |
-| Dynamic range | Span between loudest and quietest non-zero sample, 20*log10(2*max(|min|,|max|)/min_nonzero). (dB) | 90.1000 |
+| Dynamic range | Span between loudest and quietest non-zero sample, 20*log10(2*max(\|min\|,\|max\|)/min_nonzero). (dB) | 90.1000 |
 | Min level | Smallest signed sample, converted to dBFS. (dBFS) | -6.22 |
 | Max level | Largest signed sample, converted to dBFS. (dBFS) | -7.61 |
 | RMS peak | Maximum per-window RMS over the short measurement window. (dBFS) | -16.14 |
@@ -92,7 +92,7 @@
 | Start | Start time of the elected region from the input origin. (s) | 7.00 |
 | Duration | Length of the elected region. (s) | 10.00 |
 | Measured floor | RMS level of the elected room-tone region. (dBFS) | -84.58 |
-| Peak level | Largest absolute sample, 20*log10(max(|min|,|max|)). (dBFS) | -71.22 |
+| Peak level | Largest absolute sample, 20*log10(max(\|min\|,\|max\|)). (dBFS) | -71.22 |
 | Crest factor | Region-scoped time-domain peak-to-RMS ratio (peak/RMS), stored converted linear to dB. (dB) | 13.36 |
 | Entropy | Magnitude-weighted spectral entropy, -sum(mag*ln(mag+eps))/ln(N); for astats stages, the sample-value distribution entropy. | 0.0011 |
 | Spectral centroid | Magnitude-weighted mean frequency of the elected region's spectrum. (Hz) | 8707.02 |
@@ -111,7 +111,7 @@
 | Metric | Definition | Input |
 | --- | --- | --- |
 | RMS level | RMS amplitude of the samples, 20*log10(sqrt(sum(x^2)/N)). (dBFS) | -84.58 |
-| Peak level | Largest absolute sample, 20*log10(max(|min|,|max|)). (dBFS) | -71.22 |
+| Peak level | Largest absolute sample, 20*log10(max(\|min\|,\|max\|)). (dBFS) | -71.22 |
 | Crest factor | Region-scoped time-domain peak-to-RMS ratio (peak/RMS), stored converted linear to dB. (dB) | 0.0000 |
 | Momentary loudness | BS.1770 loudness over a 400 ms sliding window. (LUFS) | 0.00 |
 | Short-term loudness | BS.1770 loudness over a 3 s sliding window. (LUFS) | 0.00 |
@@ -139,7 +139,7 @@
 | --- | --- | --- |
 | Duration | Length of the elected region. (s) | 60.00 |
 | RMS level | RMS amplitude of the samples, 20*log10(sqrt(sum(x^2)/N)). (dBFS) | -45.37 |
-| Peak level | Largest absolute sample, 20*log10(max(|min|,|max|)). (dBFS) | -15.46 |
+| Peak level | Largest absolute sample, 20*log10(max(\|min\|,\|max\|)). (dBFS) | -15.46 |
 | Crest factor | Region-scoped time-domain peak-to-RMS ratio (peak/RMS), stored converted linear to dB. (dB) | 29.91 |
 | Momentary loudness | BS.1770 loudness over a 400 ms sliding window. (LUFS) | -40.93 |
 | Short-term loudness | BS.1770 loudness over a 3 s sliding window. (LUFS) | -36.88 |
@@ -162,7 +162,7 @@
 | Metric | Definition | Input |
 | --- | --- | --- |
 | RMS level | RMS amplitude of the samples, 20*log10(sqrt(sum(x^2)/N)). (dBFS) | -45.37 |
-| Peak level | Largest absolute sample, 20*log10(max(|min|,|max|)). (dBFS) | -15.46 |
+| Peak level | Largest absolute sample, 20*log10(max(\|min\|,\|max\|)). (dBFS) | -15.46 |
 | Crest factor | Region-scoped time-domain peak-to-RMS ratio (peak/RMS), stored converted linear to dB. (dB) | 29.9100 |
 | Momentary loudness | BS.1770 loudness over a 400 ms sliding window. (LUFS) | -40.93 |
 | Short-term loudness | BS.1770 loudness over a 3 s sliding window. (LUFS) | -36.88 |

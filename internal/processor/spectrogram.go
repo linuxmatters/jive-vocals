@@ -9,6 +9,7 @@ package processor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -283,7 +284,10 @@ func pullSpectrumFrame(ctx context.Context, reader *audio.Reader, src, sink *ffm
 
 	pull := func() (*ffmpeg.AVFrame, error) {
 		if _, err := ffmpeg.AVBuffersinkGetFrame(sink, scratch); err != nil {
-			return nil, nil //nolint:nilnil // EAGAIN/EOF: nothing ready yet
+			if errors.Is(err, ffmpeg.EAgain) || errors.Is(err, ffmpeg.AVErrorEOF) {
+				return nil, nil //nolint:nilnil // EAGAIN/EOF: nothing ready yet
+			}
+			return nil, fmt.Errorf("read rendered video frame: %w", err)
 		}
 		out := ffmpeg.AVFrameClone(scratch)
 		ffmpeg.AVFrameUnref(scratch)

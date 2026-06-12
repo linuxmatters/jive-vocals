@@ -14,6 +14,20 @@ import (
 	"github.com/linuxmatters/jivetalking/internal/ui"
 )
 
+// sendWarning delivers a non-fatal warning to the reportWarnings channel without
+// ever blocking the sending worker. The channel is buffered to len(files) and is
+// only drained after the pool fully unwinds, but a single file can now emit
+// several warnings (report, run record, sidecars, one per spectrogram), so a
+// burst of failures could otherwise fill the buffer and block a worker - which
+// would stall wg.Wait()/specWG.Wait() and deadlock the run. The warnings are
+// best-effort diagnostics, so dropping one under saturation is the safe trade.
+func sendWarning(ch chan<- string, msg string) {
+	select {
+	case ch <- msg:
+	default:
+	}
+}
+
 // poolProcessAudio is the processing entry point, a package var so tests can
 // substitute a fake to observe concurrency without running real FFmpeg. It
 // defaults to the real processor call, mirroring the loudnormRunFilterGraph
@@ -135,7 +149,7 @@ func runWorkerPool(ctx context.Context, p *tea.Program, files []string, base *pr
 			mdPath := outputStem + ".md"
 			if err := report.WriteMarkdownReport(rec, buildProcessingTimings(fileStartTime, ph.timings(pass2Time), result), mdPath); err != nil {
 				wlog("[POOL] Failed to write Markdown report: %v", err)
-				reportWarnings <- fmt.Sprintf("Report was not written for %s: %v", inputPath, err)
+				sendWarning(reportWarnings, fmt.Sprintf("Report was not written for %s: %v", inputPath, err))
 			}
 
 			// Emit the run record beside the .md. The .json path is derived from
@@ -144,7 +158,7 @@ func runWorkerPool(ctx context.Context, p *tea.Program, files []string, base *pr
 			recordPath := outputStem + ".json"
 			if err := processor.WriteRunRecord(rec, recordPath); err != nil {
 				wlog("[POOL] Failed to write run record: %v", err)
-				reportWarnings <- fmt.Sprintf("Run record was not written for %s: %v", inputPath, err)
+				sendWarning(reportWarnings, fmt.Sprintf("Run record was not written for %s: %v", inputPath, err))
 			}
 
 			// Stream the full interval and candidate series to .jsonl sidecars
@@ -155,7 +169,7 @@ func runWorkerPool(ctx context.Context, p *tea.Program, files []string, base *pr
 			if diagnostics {
 				if err := processor.WriteRunRecordSidecars(result.Measurements, recordPath); err != nil {
 					wlog("[POOL] Failed to write run record sidecars: %v", err)
-					reportWarnings <- fmt.Sprintf("Run record sidecars were not written for %s: %v", inputPath, err)
+					sendWarning(reportWarnings, fmt.Sprintf("Run record sidecars were not written for %s: %v", inputPath, err))
 				}
 			}
 
@@ -186,7 +200,7 @@ func runWorkerPool(ctx context.Context, p *tea.Program, files []string, base *pr
 
 					if err := processor.RenderSpectrogramImage(ctx, img, rec, inputPath, result.OutputPath, destDir); err != nil {
 						wlog("[POOL] Failed to render spectrogram %s: %v", img.Path, err)
-						reportWarnings <- fmt.Sprintf("Spectrogram %s was not written for %s: %v", img.Path, inputPath, err)
+						sendWarning(reportWarnings, fmt.Sprintf("Spectrogram %s was not written for %s: %v", img.Path, inputPath, err))
 					}
 				}(img)
 			}

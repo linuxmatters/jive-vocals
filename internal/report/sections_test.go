@@ -171,7 +171,10 @@ func TestRenderLoudnessDefinitionPerRow(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing definition for %q", key)
 		}
-		if !strings.Contains(got, d.Gloss) {
+		// The renderer escapes cell content (mdTable), so compare against the
+		// escaped gloss; a gloss with a literal pipe (e.g. |min|,|max|) renders
+		// backslash-escaped.
+		if !strings.Contains(got, escapeCell(d.Gloss)) {
 			t.Errorf("loudness output missing gloss for %q: %q", key, d.Gloss)
 		}
 	}
@@ -184,7 +187,7 @@ func TestRenderDynamicsAndSpectralDefinitions(t *testing.T) {
 		"dynamic_range_db", "flat_factor", "bit_depth", "entropy",
 	} {
 		d, _ := DefinitionFor(key)
-		if !strings.Contains(dyn, d.Gloss) {
+		if !strings.Contains(dyn, escapeCell(d.Gloss)) {
 			t.Errorf("dynamics missing gloss for %q", key)
 		}
 	}
@@ -195,7 +198,7 @@ func TestRenderDynamicsAndSpectralDefinitions(t *testing.T) {
 		"kurtosis", "flatness", "crest", "flux", "slope", "decrease", "rolloff_hz",
 	} {
 		d, _ := DefinitionFor(key)
-		if !strings.Contains(spec, d.Gloss) {
+		if !strings.Contains(spec, escapeCell(d.Gloss)) {
 			t.Errorf("spectral missing gloss for %q", key)
 		}
 	}
