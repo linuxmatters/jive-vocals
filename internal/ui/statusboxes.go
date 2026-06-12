@@ -22,16 +22,18 @@ const (
 	// symmetric 1-space gutter on both sides. Widest rows (measured via
 	// lipgloss.Width, wide unit glyphs ㏈/㎑/㎐ count as 2):
 	//   chain    — Mix "● Mix       mono/44.1㎑"        = 23
-	//   analysis — Dynamics "● Dynamics      20.0 LU → 2.5:1" = 31
+	//   analysis — Dynamics "● Dynamics     20.0 LU → 2.5:1" = 30
 	// Sized against the widest plausible values (3-digit dB, 2-digit LRA, longest
 	// sample rate), so realistic values never overflow fitWidth's hard truncate.
 	chainBoxInnerWidth    = 23
-	analysisBoxInnerWidth = 31
+	analysisBoxInnerWidth = 30
 
 	// chainLabelWidth / analysisLabelWidth reserve a column for the row label so the
-	// values align. The glyph + space sits to the left of the label.
+	// values align. The glyph + space sits to the left of the label. Each is the
+	// longest label + a 2-space gap to the value: chain "De-esser" (8) + 2 = 10;
+	// analysis "Noise floor" (11) + 2 = 13.
 	chainLabelWidth    = 10
-	analysisLabelWidth = 14
+	analysisLabelWidth = 13
 
 	// statusBoxChrome is the horizontal chrome per box: RoundedBorder (2) +
 	// Padding(0,1) (2). Used by the narrow-terminal fit test.
@@ -281,7 +283,7 @@ func renderAnalysisBox(s AdaptedSummary, height int) string {
 			pendingRow("SNR Gap", w),
 			pendingRow("Dynamics", w),
 			pendingRow("True peak", w),
-			pendingRow("Gentle mode", w),
+			pendingRow("Soft Gate", w),
 			pendingRow("Sibilance", w),
 			pendingRow("Loudness", w),
 		}
@@ -304,12 +306,12 @@ func renderAnalysisBox(s AdaptedSummary, height int) string {
 		sibilance = activeRow("Sibilance", w, 0, fmt.Sprintf("%.0f %s", s.SibilanceDB, unitDB))
 	}
 
-	gentle := offRow("Gentle mode", w, "OFF")
+	gentle := offRow("Soft Gate", w, "OFF")
 	if s.GentleMode {
-		gentle = activeRow("Gentle mode", w, 0, "ON")
+		gentle = activeRow("Soft Gate", w, 0, "ON")
 	}
 
-	// Gentle mode on row 6 and Sibilance on row 7 so Sibilance lines up with the
+	// Soft Gate (gate gentle mode) on row 6 and Sibilance on row 7 so Sibilance lines up with the
 	// De-esser at Filter Chain row 7 (its driver). Loudness stays the bottom row.
 	rows := []string{
 		voiceAvg,

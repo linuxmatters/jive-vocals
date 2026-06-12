@@ -196,9 +196,14 @@ func TestAnalysisBoxLitRows(t *testing.T) {
 	if !strings.Contains(plain, "▰") {
 		t.Errorf("separation row should show an inline bar:\n%s", plain)
 	}
-	// Gentle mode on → ● ON (caps).
-	if !strings.Contains(plain, "Gentle mode") || !strings.Contains(plain, "ON") {
-		t.Errorf("gentle mode should show its state in caps:\n%s", plain)
+	// Longest Analysis label "Noise floor" (11) has exactly a 2-space gap to its
+	// value: analysisLabelWidth (13) − 11 = 2 trailing pad spaces.
+	if !strings.Contains(plain, "Noise floor  -68 "+unitDB) {
+		t.Errorf("Noise floor should have a 2-space gap before its value:\n%s", plain)
+	}
+	// Soft Gate on → ● ON (caps).
+	if !strings.Contains(plain, "Soft Gate") || !strings.Contains(plain, "ON") {
+		t.Errorf("Soft Gate should show its state in caps:\n%s", plain)
 	}
 }
 
@@ -356,19 +361,19 @@ func TestPassBoxTitleInBorder(t *testing.T) {
 	}
 }
 
-// TestAnalysisRowOrder confirms Gentle mode sits on row 6 and Sibilance on row 7
+// TestAnalysisRowOrder confirms Soft Gate sits on row 6 and Sibilance on row 7
 // (level with the De-esser at Filter Chain row 7), with Loudness on the bottom
 // data row.
 func TestAnalysisRowOrder(t *testing.T) {
 	plain := ansi.Strip(renderAnalysisBox(litSummary(), 0))
-	gentle := strings.Index(plain, "Gentle mode")
+	gentle := strings.Index(plain, "Soft Gate")
 	sibilance := strings.Index(plain, "Sibilance")
 	loudness := strings.Index(plain, "Loudness")
 	truePeak := strings.Index(plain, "True peak")
 	if gentle < 0 || sibilance < 0 || loudness < 0 || truePeak < 0 {
 		t.Fatalf("missing a row:\n%s", plain)
 	}
-	// True peak (row 5) → Gentle mode (row 6) → Sibilance (row 7) → Loudness (row 8).
+	// True peak (row 5) → Soft Gate (row 6) → Sibilance (row 7) → Loudness (row 8).
 	if truePeak >= gentle || gentle >= sibilance || sibilance >= loudness {
 		t.Errorf("row order wrong: truePeak=%d gentle=%d sibilance=%d loudness=%d\n%s",
 			truePeak, gentle, sibilance, loudness, plain)
@@ -381,9 +386,9 @@ func TestAnalysisRowOrder(t *testing.T) {
 // Padding(0,1) remains, leaving that row reading "… value │" with a single space
 // before the border on both sides. Each box is fed a summary whose widest row fills
 // the inner width exactly (chain: Mix "mono/44.1㎑" = 23; analysis: Dynamics
-// "20.0 LU → 2.5:1" = 31, the widest plausible value the widths are sized to).
+// "20.0 LU → 2.5:1" = 30, the widest plausible value the widths are sized to).
 func TestStatusBoxGutterSymmetric(t *testing.T) {
-	// Analysis summary whose Dynamics row fills the 31-col inner width.
+	// Analysis summary whose Dynamics row fills the 30-col inner width.
 	fullAnalysis := litSummary()
 	fullAnalysis.InputLRA = 20.0
 	fullAnalysis.GateRatio = 2.5
@@ -396,7 +401,7 @@ func TestStatusBoxGutterSymmetric(t *testing.T) {
 	}{
 		// Chain: the Mix row "mono/44.1㎑" is the widest (23 cols).
 		{"chain", ansi.Strip(renderChainBox(litSummary(), 0)), "mono/44.1" + unitKHz},
-		// Analysis: the Dynamics row "20.0 LU → 2.5:1" fills the 31-col inner width.
+		// Analysis: the Dynamics row "20.0 LU → 2.5:1" fills the 30-col inner width.
 		{"analysis", ansi.Strip(renderAnalysisBox(fullAnalysis, 0)), "20.0 LU → 2.5:1"},
 	} {
 		var got string
