@@ -502,26 +502,14 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 		// generateSpectrogram. The list is empty when --diagnostics is off, so the loop
 		// launches nothing.
 		destDir := filepath.Dir(reportPath)
-		for _, img := range record.Spectrograms {
-			specWG.Add(1)
-			go func(img processor.SpectrogramImage, inputPath string) {
-				// Register specWG.Done() before the acquire select so a render skipped
-				// on a cancelled specCtx still decrements specWG; otherwise the deferred
-				// specWG.Wait() hangs.
-				defer specWG.Done()
-
-				select {
-				case specSem <- struct{}{}:
-					defer func() { <-specSem }()
-				case <-specCtx.Done():
-					return
-				}
-
-				if err := processor.RenderSpectrogramImage(specCtx, img, record, inputPath, "", destDir); err != nil {
-					deps.printError(fmt.Sprintf("Failed to render analysis spectrogram %s for %s: %v", img.Path, inputPath, err))
-				}
-			}(img, files[i])
-		}
+		inputPath := files[i]
+		launchSpectrogramRenders(specCtx, record.Spectrograms, specSem, &specWG,
+			func(ctx context.Context, img processor.SpectrogramImage) error {
+				return processor.RenderSpectrogramImage(ctx, img, record, inputPath, "", destDir)
+			},
+			func(img processor.SpectrogramImage, err error) {
+				deps.printError(fmt.Sprintf("Failed to render analysis spectrogram %s for %s: %v", img.Path, inputPath, err))
+			})
 
 		if noTTY && reportWritten {
 			printAnalysisConfirmation(deps.stdout, files[i], reportPath, results[i].Measurements)

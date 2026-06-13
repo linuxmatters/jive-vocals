@@ -28,6 +28,45 @@ func sendWarning(ch chan<- string, msg string) {
 	}
 }
 
+// launchSpectrogramRenders schedules each image in imgs as a bounded background
+// render goroutine, the shared pattern for both the processing pool and the
+// analysis-only path. Each goroutine registers specWG.Done() BEFORE the acquire
+// select so a render skipped on a cancelled ctx still decrements specWG;
+// otherwise specWG.Wait() hangs. It then acquires a specSem slot or bails on
+// ctx.Done() (a not-yet-started render skips cleanly, releasing the slot only on
+// the branch that took one), and invokes render(ctx, img). render owns the
+// RenderSpectrogramImage call (it varies by caller: the source/output paths and
+// the run record differ between processing and analysis-only); on a non-fatal
+// error it returns it and onError surfaces the warning. ctx cancellation aborts
+// the render and cleans partial PNGs inside generateSpectrogram. imgs is empty
+// when --diagnostics is off, so nothing is launched.
+func launchSpectrogramRenders(
+	ctx context.Context,
+	imgs []processor.SpectrogramImage,
+	specSem chan struct{},
+	specWG *sync.WaitGroup,
+	render func(context.Context, processor.SpectrogramImage) error,
+	onError func(processor.SpectrogramImage, error),
+) {
+	for _, img := range imgs {
+		specWG.Add(1)
+		go func(img processor.SpectrogramImage) {
+			defer specWG.Done()
+
+			select {
+			case specSem <- struct{}{}:
+				defer func() { <-specSem }()
+			case <-ctx.Done():
+				return
+			}
+
+			if err := render(ctx, img); err != nil {
+				onError(img, err)
+			}
+		}(img)
+	}
+}
+
 // workerPoolDeps injects the pool's processing entry point so tests can
 // substitute a fake to observe concurrency without running real FFmpeg or
 // mutating package state, following the analysisOnlyDeps pattern in main.go.
@@ -189,27 +228,14 @@ func runWorkerPool(ctx context.Context, p *tea.Program, files []string, base *pr
 			// inside generateSpectrogram. The list is empty when --diagnostics is off,
 			// so the loop launches nothing.
 			destDir := filepath.Dir(result.OutputPath)
-			for _, img := range rec.Spectrograms {
-				specWG.Add(1)
-				go func(img processor.SpectrogramImage) {
-					// Register specWG.Done() before the acquire select so a render
-					// skipped on a cancelled ctx still decrements specWG; otherwise
-					// specWG.Wait() hangs.
-					defer specWG.Done()
-
-					select {
-					case specSem <- struct{}{}:
-						defer func() { <-specSem }()
-					case <-ctx.Done():
-						return
-					}
-
-					if err := processor.RenderSpectrogramImage(ctx, img, rec, inputPath, result.OutputPath, destDir); err != nil {
-						wlog("[POOL] Failed to render spectrogram %s: %v", img.Path, err)
-						sendWarning(reportWarnings, fmt.Sprintf("Spectrogram %s was not written for %s: %v", img.Path, inputPath, err))
-					}
-				}(img)
-			}
+			launchSpectrogramRenders(ctx, rec.Spectrograms, specSem, &specWG,
+				func(ctx context.Context, img processor.SpectrogramImage) error {
+					return processor.RenderSpectrogramImage(ctx, img, rec, inputPath, result.OutputPath, destDir)
+				},
+				func(img processor.SpectrogramImage, err error) {
+					wlog("[POOL] Failed to render spectrogram %s: %v", img.Path, err)
+					sendWarning(reportWarnings, fmt.Sprintf("Spectrogram %s was not written for %s: %v", img.Path, inputPath, err))
+				})
 
 			finalNoiseFloor, _ := processor.FinalNoiseFloor(result)
 
