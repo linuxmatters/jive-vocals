@@ -696,11 +696,6 @@ func (a SpectralAccumulator) Average() SpectralMetrics {
 	return average
 }
 
-// Count returns the number of found spectral frames accumulated.
-func (a SpectralAccumulator) Count() int {
-	return a.count
-}
-
 // Found reports whether at least one spectral frame was accumulated.
 func (a SpectralAccumulator) Found() bool {
 	return a.count > 0

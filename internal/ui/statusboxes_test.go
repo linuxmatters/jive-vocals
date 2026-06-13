@@ -35,7 +35,6 @@ func litSummary() AdaptedSummary {
 		SibilanceDB:  -4,
 		GentleMode:   true,
 		InputLUFS:    -24.3,
-		TargetLUFS:   -16,
 	}
 }
 

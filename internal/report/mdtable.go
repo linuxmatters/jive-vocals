@@ -83,10 +83,6 @@ const digitalSilenceThreshold = -120.0
 // values below it are too quiet to measure reliably.
 const lufsMeasurementFloor = -70.0
 
-// spectralSilenceValue is rendered for spectral metrics under digital silence,
-// where the spectrum is undefined.
-const spectralSilenceValue = "n/a"
-
 // isDigitalSilence reports whether value represents digital silence: true zero
 // (-Inf) or at/below the measurement floor.
 func isDigitalSilence(value float64) bool {
@@ -130,29 +126,8 @@ func formatMetricLUFS(value float64, decimals int) string {
 	return formatFloat(value, decimals)
 }
 
-// formatMetricPeak formats a linear peak (0.0-1.0) as dB, rendering "< -120"
-// for digital silence (peak <= 0 or converted dB below the floor) and the
-// placeholder for NaN.
-func formatMetricPeak(value float64, decimals int) string {
-	if math.IsNaN(value) {
-		return placeholder
-	}
-	if value <= 0 {
-		return "< -120"
-	}
-	dB := 20.0 * math.Log10(value)
-	if dB < digitalSilenceThreshold {
-		return "< -120"
-	}
-	return formatFloat(dB, decimals)
-}
-
-// formatMetricSpectral formats a spectral metric, rendering "n/a" under digital
-// silence (the spectrum is undefined) and otherwise delegating to formatMetric.
-func formatMetricSpectral(value float64, decimals int, digitalSilence bool) string {
-	if digitalSilence {
-		return spectralSilenceValue
-	}
+// formatMetricSpectral formats a spectral metric, delegating to formatMetric.
+func formatMetricSpectral(value float64, decimals int) string {
 	return formatMetric(value, decimals)
 }
 
@@ -214,15 +189,4 @@ func formatSampleRate(hz int) string {
 		return placeholder
 	}
 	return formatFloat(float64(hz)/1000.0, 1) + " kHz"
-}
-
-// realTimeFactor computes the real-time factor: audio duration over wall-clock
-// processing time. Returns 0 when total is non-positive, so the factor renders
-// only once audio duration is known and time has elapsed.
-func realTimeFactor(audioDurationSecs float64, total time.Duration) float64 {
-	if total <= 0 {
-		return 0
-	}
-	audioDuration := time.Duration(audioDurationSecs * float64(time.Second))
-	return float64(audioDuration) / float64(total)
 }

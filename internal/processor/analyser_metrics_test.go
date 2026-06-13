@@ -119,27 +119,26 @@ func TestFinalizeSpectral_AssignsBaseSpectral(t *testing.T) {
 		})
 	}
 
-	var bm BaseMeasurements
-	bm.Spectral = acc.finalizeSpectral()
+	spectral := acc.finalizeSpectral()
 
 	checks := []struct {
 		name string
 		got  float64
 		want float64
 	}{
-		{"Mean", bm.Spectral.Mean, 10.0},
-		{"Variance", bm.Spectral.Variance, 20.0},
-		{"Centroid", bm.Spectral.Centroid, 3000.0},
-		{"Spread", bm.Spectral.Spread, 500.0},
-		{"Skewness", bm.Spectral.Skewness, 2.0},
-		{"Kurtosis", bm.Spectral.Kurtosis, 4.0},
-		{"Entropy", bm.Spectral.Entropy, 0.7},
-		{"Flatness", bm.Spectral.Flatness, 0.3},
-		{"Crest", bm.Spectral.Crest, 5.0},
-		{"Flux", bm.Spectral.Flux, 1.0},
-		{"Slope", bm.Spectral.Slope, -0.02},
-		{"Decrease", bm.Spectral.Decrease, 0.4},
-		{"Rolloff", bm.Spectral.Rolloff, 8000.0},
+		{"Mean", spectral.Mean, 10.0},
+		{"Variance", spectral.Variance, 20.0},
+		{"Centroid", spectral.Centroid, 3000.0},
+		{"Spread", spectral.Spread, 500.0},
+		{"Skewness", spectral.Skewness, 2.0},
+		{"Kurtosis", spectral.Kurtosis, 4.0},
+		{"Entropy", spectral.Entropy, 0.7},
+		{"Flatness", spectral.Flatness, 0.3},
+		{"Crest", spectral.Crest, 5.0},
+		{"Flux", spectral.Flux, 1.0},
+		{"Slope", spectral.Slope, -0.02},
+		{"Decrease", spectral.Decrease, 0.4},
+		{"Rolloff", spectral.Rolloff, 8000.0},
 	}
 	for _, c := range checks {
 		if math.Abs(c.got-c.want) > spectralTestEpsilon {
@@ -153,9 +152,6 @@ func TestSpectralAccumulator_ZeroFrameCount(t *testing.T) {
 
 	if acc.Found() {
 		t.Fatal("expected Found to be false before adding spectral metrics")
-	}
-	if got := acc.Count(); got != 0 {
-		t.Fatalf("Count() = %d, want 0", got)
 	}
 	if got := acc.Average(); got != (SpectralMetrics{}) {
 		t.Fatalf("Average() = %+v, want zero-value SpectralMetrics", got)
@@ -178,9 +174,6 @@ func TestSpectralAccumulator_MixedFoundAndUnfound(t *testing.T) {
 
 	if !acc.Found() {
 		t.Fatal("expected Found to be true after adding found spectral metrics")
-	}
-	if got := acc.Count(); got != 1 {
-		t.Fatalf("Count() = %d, want 1", got)
 	}
 
 	average := acc.Average()
