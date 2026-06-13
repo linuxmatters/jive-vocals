@@ -36,22 +36,16 @@ func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) (*Ef
 
 // sanitizeConfig ensures no NaN or Inf values remain after adaptive tuning.
 func sanitizeConfig(config *EffectiveFilterConfig) {
-	sanitizeRumbleHighPassConfig(&config.RumbleHighPass)
-	sanitizeBandlimitLowPassConfig(&config.BandlimitLowPass)
+	sanitizeBiquadConfig(&config.RumbleHighPass, rumbleHPDefaultFreq)
+	sanitizeBiquadConfig(&config.BandlimitLowPass, bandlimitLPFreq)
 	sanitizeNoiseReductionConfig(&config.NoiseReduction)
 	sanitizeSpeechGateConfig(&config.SpeechGate)
 	sanitizeLevellingCompressorConfig(&config.LevellingCompressor)
 	sanitizeDeesserConfig(&config.Deesser)
 }
 
-func sanitizeRumbleHighPassConfig(config *RumbleHighPassConfig) {
-	config.Frequency = sanitizeFloat(config.Frequency, rumbleHPDefaultFreq)
-	config.Width = sanitizeFloat(config.Width, 0.707)
-	config.Mix = sanitizeFloat(config.Mix, 1.0)
-}
-
-func sanitizeBandlimitLowPassConfig(config *BandlimitLowPassConfig) {
-	config.Frequency = sanitizeFloat(config.Frequency, bandlimitLPFreq)
+func sanitizeBiquadConfig(config *BiquadFilterConfig, defaultFreq float64) {
+	config.Frequency = sanitizeFloat(config.Frequency, defaultFreq)
 	config.Width = sanitizeFloat(config.Width, 0.707)
 	config.Mix = sanitizeFloat(config.Mix, 1.0)
 }
