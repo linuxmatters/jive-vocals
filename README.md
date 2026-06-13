@@ -159,16 +159,15 @@ jivetalking -a --room-tone-scan-duration=2m30s presenter1.flac
 
 ### Analysis-Only Mode
 
-Pass `-a` to run only Pass 1 analysis, printing a detailed report to the console without creating any output files. Useful for quickly understanding what jivetalking sees in your recordings, diagnosing setup problems, or checking whether a file needs processing at all.
+Pass `-a` to run only Pass 1 analysis. It writes a Markdown analysis report (`<input>-analysis.md`) next to each input and shows the Recording stars plus gain advice on screen, without producing any processed audio. Useful for quickly understanding what jivetalking sees in your recordings, diagnosing setup problems, or checking whether a file needs processing at all.
 
-The report covers:
+The analysis report covers:
 
 - **Loudness & dynamics**: integrated LUFS, true peak, loudness range, crest factor
 - **Room tone & speech detection**: candidate regions scored and elected for noise profiling and speech-aware metrics; voice-activated recording detected automatically (Riverside, Zencastr)
 - **Derived measurements**: noise floor, gate baseline, noise-to-speech headroom
-- **Filter adaptation**: the exact parameters jivetalking would apply: highpass frequency, gate threshold, NR settings, de-esser intensity, levelling-compressor configuration
-- **Spectral summary**: full spectral characterisation with human-readable interpretations
-- **Recording score and gain advice**: the same Recording star rating shown after processing, plus a one-line input-gain verdict (see below)
+- **Filter adaptation**: the exact parameters jivetalking would apply, including highpass frequency, gate threshold, NR settings, de-esser intensity, and levelling-compressor configuration
+- **Spectral summary**: full spectral characterisation with objective metric definitions
 
 #### Gain advice
 
@@ -189,42 +188,6 @@ The verdict reads `Interpretation. Level. Advice.` and keys off the input true p
 | **Quiet** | < -12 ㏈TP | Raise input gain by the stated amount |
 
 The stars and the gain advice are console-only: the Markdown report stays empirical and verdict-free.
-
-Example output (trimmed):
-
-```
-======================================================================
-ANALYSIS: presenter1.flac
-======================================================================
-Duration:    5m 23s
-Sample Rate: 48000 Hz
-Channels:    mono
-
-LOUDNESS
-  Integrated:     -32.4 LUFS
-  True Peak:      -6.0 dBTP
-  Loudness Range: 18.2 LU
-
-DERIVED MEASUREMENTS
-  Noise Floor:    -52.3 dBFS (from elected room tone)
-  Gate Baseline:  -46.0 dB (noise floor + margin)
-  NR Headroom:    19.9 dB (noise-to-speech gap)
-
-FILTER ADAPTATION
-  Highpass:       80 Hz (from spectral analysis)
-  Gate Threshold: -40.2 dB (with breath reduction)
-  Gate Ratio:     2.0:1
-  NR Threshold:   -47 dB
-  NR Expansion:   8 dB
-  De-esser:       32% intensity
-  Comp Thresh:    -28 dB
-  Comp Ratio:     3.2:1
-
-Recording  ★★★☆☆  Good
-Gain       ▰▰▰▱▱  Level well set. Peaks at -6.0 ㏈TP. No action required.
-```
-
-Output files are named with the measured LUFS value: `recording.flac` becomes `recording-LUFS-16-processed.flac`.
 
 ---
 
@@ -270,38 +233,10 @@ just test
 just install
 ```
 
-### Project Structure
-
-```
-cmd/jivetalking/main.go     # CLI entry, Kong flags, Bubbletea TUI
-internal/
-├── audio/reader.go         # FFmpeg demuxer/decoder wrapper
-├── processor/
-│   ├── analyzer.go         # Pass 1: ebur128 + astats + aspectralstats
-│   ├── processor.go        # Pass 2: adaptive filter chain execution
-│   ├── filters.go          # BaseFilterConfig, EffectiveFilterConfig, BuildFilterSpec()
-│   └── adaptive.go         # Measurement-driven parameter tuning
-├── ui/                     # Bubbletea model, views, messages
-└── cli/                    # Help styling, version output
-```
+The full source layout, architecture, and contribution standards live in [AGENTS.md](AGENTS.md).
 
 ### Design Documentation
 
 - [Audio Pipeline](docs/Pipeline.md): how and why the processing pipeline is built and tuned, with a diagram
 - [The hardware that taught me](docs/Inspiration.md): the influences and heritage behind jivetalking's processing approach
 - [Spectral Metrics Reference](docs/Spectral-Metrics-Reference.md): how measurements drive adaptation
-
-See [AGENTS.md](AGENTS.md) for complete development guidelines, architecture details, and contribution standards.
-
----
-
-## Contributing
-
-```bash
-# Run tests before committing
-just test
-```
-
-- Follow [Conventional Commits](https://www.conventionalcommits.org/) format
-- Use `just build` for any releases (CGO + version injection required)
-- GitHub Actions builds binaries for linux-amd64, linux-arm64, darwin-amd64, darwin-arm64 automatically
