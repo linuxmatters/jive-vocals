@@ -68,6 +68,8 @@ With `--diagnostics`, each worker attaches the deterministic before/after PNG pa
 
 ## Audio processing pipeline
 
+> Plain-language how-and-why of the pipeline (for engineers and creators) lives in `docs/Pipeline.md`. This section is the developer/agent spec: pass order, filter chain, and the exact stage parameters.
+
 **Four-pass architecture:**
 
 1. **Pass 1 (Analysis):** Measures LUFS, true peak, LRA, noise floor, spectral characteristics; detects room-tone/speech regions via 250ms interval sampling
@@ -137,6 +139,8 @@ Two separate message sets exist for the two TUI modes.
 
 ## Adaptive processing
 
+> For why each adaptation exists, in plain audio terms, see `docs/Pipeline.md`. This section is the spec: which knobs adapt, the functions and constants that drive them, and the corpus justification for the fixed values.
+
 `AdaptConfig()` in `adaptive.go` derives per-file filter state from Pass 1 `AudioMeasurements`: it accepts caller-owned `BaseFilterConfig` defaults, returns `EffectiveFilterConfig` for filter building, and returns `AdaptiveDiagnostics` for report-only adaptation explanations. Do not reintroduce `FilterChainConfig` or store pass execution state in config; use `ProcessingFilterContext` for pass-local state. Each pool worker calls `BaseFilterConfig.CloneForWorker()` (shallow copy + deep-copy `FilterOrder` + per-worker logger) so concurrent workers share no mutable config or logger.
 
 - **Rumble high-pass:** Fixed 80 Hz, 12 dB/oct (2-pole Butterworth), mix 1.0, non-adaptive. 80 Hz sits below every vocal fundamental (lowest measured male F0 ~91 Hz; female ~165+ Hz) and removes subsonic rumble before the gate. No content detection, no notch; tonal hum is left alone since a highpass cannot remove it
@@ -161,7 +165,7 @@ When working on audio analysis code (especially `internal/processor/analyser.go`
 - Consult `docs/Spectral-Metrics-Reference.md` (aligned with the `audio-metrics` skill) for what each metric is - definition, ffmpeg computation, units, range, source filter - when reading or producing audio measurements. It is an objective reference, not a source of thresholds or quality verdicts
 - Threshold values and scoring constants live in the code, justified against the validation corpus per the "no theatre - meaningful, exercised adaptation or a fixed correct value" principle and the bit-exact validation sweeps; do not derive them from documented "good ranges"
 
-For the influences behind the processing approach, see `docs/Inspiration.md` - the classic audio devices that shaped jivetalking's quality bar, named honestly as inspiration, not as circuits being reproduced.
+For how and why the pipeline is built and tuned the way it is, in plain audio terms, see `docs/Pipeline.md`. For the influences behind the approach, see `docs/Inspiration.md` - the classic audio devices that shaped jivetalking's quality bar, named honestly as inspiration, not as circuits being reproduced.
 
 ## Release workflow
 
