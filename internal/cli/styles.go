@@ -43,19 +43,12 @@ var (
 	ColorBlue = compat.AdaptiveColor{Light: lipgloss.Color("#2563EB"), Dark: lipgloss.Color("#3B82F6")}
 )
 
-// Color palette aliases retained for the cli styles below.
-var (
-	primaryColor = ColorRed
-	mutedColor   = ColorMuted
-	textColor    = ColorText
-)
-
 // Styles
 var (
 	// Error message style
 	ErrorStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(primaryColor)
+			Foreground(ColorRed)
 
 	// Warning message style
 	WarningStyle = lipgloss.NewStyle().
@@ -64,11 +57,11 @@ var (
 
 	// Key-value pair styles
 	KeyStyle = lipgloss.NewStyle().
-			Foreground(mutedColor)
+			Foreground(ColorMuted)
 
 	ValueStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(textColor)
+			Foreground(ColorText)
 )
 
 // RenderTitle returns the "Jivetalking 🕺" wordmark drawn as a per-letter
