@@ -315,6 +315,7 @@ internal/
 
 ### Design Documentation
 
+- [Audio Pipeline](docs/Pipeline.md): how and why the processing pipeline is built and tuned, with a diagram
 - [The hardware that taught me](docs/Inspiration.md): the influences and heritage behind jivetalking's processing approach
 - [Spectral Metrics Reference](docs/Spectral-Metrics-Reference.md): how measurements drive adaptation
 

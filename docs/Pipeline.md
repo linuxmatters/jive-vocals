@@ -1,0 +1,362 @@
+# Pipeline
+
+How Jivetalking turns a raw voice recording into a broadcast-ready file at
+-16 LUFS / -1 dBTP, and why each stage is built and tuned the way it is. Written
+for an audio engineer or a curious podcast creator: it explains the *what* and
+the *why* in plain audio terms, not the FFmpeg source line by line.
+
+## The big picture: four passes
+
+Jivetalking processes one file in four passes, with a short derivation step
+between the first two. It measures first, decides second, treats third, measures
+the result, and sets the loudness last.
+
+1. **Analyse (Pass 1).** Read the whole file and measure it: loudness (LUFS),
+   true peak, loudness range (LRA), noise floor, and spectral shape. Detect the
+   quiet gaps (room tone) and the spoken passages (speech) by sampling the file
+   in 250 ms intervals. Nothing is changed; this pass only listens.
+   - **Adapt.** Between Pass 1 and Pass 2, those measurements become per-file
+     filter settings. A cleaner recording gets a deeper gate; a quiet recording
+     gets the same levelling as a loud one; sibilant material gets more
+     de-essing. It is a pure calculation, no audio is touched (shown as Pass 1.5
+     in the diagram). Only the settings that genuinely benefit from the
+     measurements are adapted; the rest are fixed at values that are correct for
+     spoken word.
+2. **Process (Pass 2).** Run the adapted filter chain: downmix, clean up the
+   frequency extremes, reduce noise, gate the gaps, level the dynamics, tame
+   sibilance, then measure the result for comparison.
+3. **Measure (Pass 3).** Run loudnorm in measure-only mode over the processed
+   signal, through the same limiter prefix Pass 4 will apply, so the loudness
+   pass gets accurate numbers to work from.
+4. **Normalise (Pass 4).** Set the final loudness to -16 LUFS using loudnorm in
+   linear mode, with a limiter ahead of it to create the headroom that keeps
+   loudnorm linear, and a final brickwall limiter that delivers -1 dBTP.
+
+The audio output is identical whether or not diagnostics are enabled; the
+`--diagnostics` flag only adds reports and spectrograms, it never touches the
+signal.
+
+## The whole pipeline
+
+```mermaid
+flowchart TD
+    IN([Raw recording]) --> P1
+
+    subgraph P1 [Pass 1: Analyse]
+        A1[Measure loudness, true peak, LRA] --> A2[Measure noise floor, spectral shape]
+        A2 --> A3[Detect room-tone and speech regions]
+    end
+
+    P1 --> P2A[Pass 1.5: Adapt<br/>derive per-file settings]
+
+    P2A --> P2
+
+    subgraph P2 [Pass 2: Process]
+        direction TB
+        F1[downmix] --> F2[rumble_highpass]
+        F2 --> F3[bandlimit_lowpass]
+        F3 --> F4[noise_reduction]
+        F4 --> F5[speech_gate]
+        F5 --> F6[levelling_compressor]
+        F6 --> F7[deesser]
+        F7 --> F8[analysis]
+        F8 --> F9[resample]
+    end
+
+    P2 --> P3
+
+    subgraph P3 [Pass 3: Measure]
+        M1[levelling limiter prefix] --> M2[loudnorm measure-only]
+    end
+
+    P3 --> P4
+
+    subgraph P4 [Pass 4: Normalise]
+        N1[pre-gain + levelling limiter] --> N2[loudnorm linear mode]
+        N2 --> N3[adeclick] --> N4[peak limiter brickwall]
+        N4 --> N5[measure output]
+    end
+
+    P4 --> OUT([Broadcast-ready -16 LUFS / -1 dBTP])
+```
+
+## The Pass 2 filter chain
+
+```text
+downmix → rumble_highpass → bandlimit_lowpass → noise_reduction → speech_gate → levelling_compressor → deesser → analysis → resample
+```
+
+The order is deliberate. Each stage hands the next one a cleaner signal to work
+on.
+
+## Stage by stage through Pass 2
+
+### downmix
+
+**What:** Folds the input to a single mono channel.
+
+**Why here, first:** Every downstream filter measures and treats one channel.
+Downmixing first means the gate, compressor, and de-esser see one consistent
+signal rather than two channels that might drift apart. Podcast voice is mono in
+practice, so nothing of value is lost.
+
+### rumble_highpass
+
+**What:** A fixed 80 Hz high-pass, 12 dB/octave (2-pole Butterworth).
+
+**Why:** Removes subsonic rumble (HVAC, footfalls, desk knocks, mic handling)
+before anything else acts on the signal. 80 Hz sits below every vocal
+fundamental with margin (the lowest measured male voice is around 91 Hz, female
+165 Hz and up), so it clears the rumble without thinning the voice.
+
+**Why here:** It runs before the gate so the gate's level detector is not fooled
+by low-frequency energy that the listener cannot hear. This is the
+"frequency-conscious gating" idea: clean the spectrum the gate listens to before
+the gate decides. It is fixed, not adaptive, because the correct corner is the
+same for every voice.
+
+### bandlimit_lowpass
+
+**What:** An unconditional 20.5 kHz low-pass, 12 dB/octave.
+
+**Why:** Caps the top of the band at the edge of human hearing. It removes only
+inaudible ultrasonics, which the downstream lossy encoders (AAC, Opus, MP3)
+would discard anyway, and gives every file a consistent bandwidth going into
+those encoders.
+
+**Why here:** Paired with the high-pass, it trims the other frequency extreme
+before the gate, completing the band the gate listens to. It is fixed at
+20.5 kHz with no content detection; the band-limit is audibly transparent, so
+there is nothing to adapt.
+
+### noise_reduction
+
+**What:** Two denoisers in series. First a non-local-means time-domain denoiser
+that finds and averages similar patches of waveform; then an FFT spectral
+denoiser that suppresses the broadband hiss left under the speech.
+
+Non-local means is borrowed from image processing. It was devised to clean
+photographs by replacing each patch with a weighted average of the patches that
+most resemble it from anywhere in the frame, near or far, and it has since become
+a mainstay of medical imaging, where it is widely used to denoise MRI scans
+without blurring fine anatomical detail. FFmpeg applies the same principle to a
+one-dimensional audio signal: it compares short windows of the waveform, a few
+milliseconds wide, and averages the ones that match. Steady hiss, which repeats
+all across the recording, is averaged away; speech, which rarely repeats exactly,
+is left standing.
+
+**Why:** The first stage lifts the obvious noise; the second cleans the residual
+floor under the voice that the first stage and the gate cannot reach. The FFT
+stage replaced an older downward expander that pumped the floor; the two-denoiser
+pairing keeps the gaps clean with less floor modulation.
+
+**Why here:** Denoising runs **before** the gate so the gate sees a lower, more
+stable noise floor. That lets the gate set its threshold closer to the noise and
+open and close more cleanly.
+
+**What is fixed:** Both denoisers run at fixed, validated strengths. The FFT
+reduction is pinned at 12 dB and is deliberately *not* adaptive: a per-voice
+sweep showed the noisiest voice has to be capped near 12 dB to avoid musical
+"warble" artefacts, so a stronger adaptive setting would do harm.
+
+### speech_gate
+
+**What:** A soft expander (a gentle gate) that pulls down the level in the gaps
+between words without chewing on the speech itself.
+
+**Why:** It cleans the silence between phrases so the recording sounds tidy,
+while leaving the voice within a phrase untouched. A soft expander (low ratio)
+rather than a hard gate keeps the transitions natural.
+
+**Why here:** It runs after denoising (lower floor to work against) and before
+the compressor and de-esser, so it removes the inter-speech noise before those
+stages can lift it.
+
+**What adapts** (see *Adaptive tuning* below): the threshold, the range (how
+deep it pulls the gaps down), the ratio, and the release time all track the
+Pass 1 measurements. The attack (10 ms), the knee, and RMS detection are fixed.
+
+### levelling_compressor
+
+**What:** A gentle, programme-dependent compressor: 3:1 ratio, 10 ms attack,
+200 ms release, soft knee, no makeup gain.
+
+**Why:** It evens out the loud-to-quiet swing of the delivery so the later
+loudness normalisation has a steadier signal to work with. The goal is to level,
+not to flatten, so the settings are deliberately mild and the loudness pass, not
+the compressor, sets the final level (hence no makeup gain here).
+
+**Why here:** It runs before the de-esser because compression brings up the
+quieter detail, including sibilance, so de-essing afterwards acts on what the
+listener will actually hear.
+
+**What adapts:** only the threshold, anchored to the measured speech RMS (see
+below). Ratio, attack, release, knee, and mix are fixed.
+
+### deesser
+
+**What:** Reduces harsh "s", "sh", and "t" sibilance in the 6-9 kHz band.
+
+**Why:** Sibilance that was tolerable in the raw take can become harsh once the
+signal is compressed and normalised. The de-esser targets the sibilant band
+(corner around 7.5 kHz) so it acts on the hiss, not on vocal presence.
+
+**Why here:** Last of the tonal stages, after the compressor that emphasises
+sibilance, so it corrects the final tonal balance.
+
+**What adapts:** only the intensity, and only when there is measurable sibilance
+to treat (see below). If the recording is not sibilant, the de-esser stays off
+entirely.
+
+### analysis
+
+**What:** Measures the processed signal (loudness, true peak, dynamics, spectral
+shape) without changing it.
+
+**Why here, before the final resample:** It captures the result of all the
+treatment above so Pass 2's output can be compared against Pass 1's input, and
+so Pass 3/4 have an accurate starting point. It sits at the source sample rate,
+before the output format is forced, so its measurements match the input
+measurements.
+
+### resample
+
+**What:** Standardises the output format: 44.1 kHz, 16-bit, mono.
+
+**Why last:** Format conversion is the final housekeeping step, after every
+filter and measurement has run at the source rate. Doing it last keeps the whole
+chain working at full fidelity and only converts once, on the way out.
+
+## Adaptive tuning in plain audio terms
+
+Jivetalking adapts only where a per-file measurement makes a real difference.
+Everything else is fixed at a value that is correct for spoken word. There is no
+adaptation for its own sake.
+
+### The speech gate tracks the gap between speech and noise
+
+The gate's job is to sit above the noise but below the quiet end of speech, so it
+catches the gaps without clipping soft words. To place it, Pass 1 measures the
+**separation**: how far the quietest speech sits above the noise floor.
+
+- **A cleaner recording gates deeper and more confidently.** When speech sits
+  well clear of the noise, the gate positions its threshold higher within that
+  gap (more "aggression") and pulls the gaps down further. A recording with a
+  noise floor below -70 dBFS takes a deeper range (-22 dB) than a noisier one
+  (-16 dB).
+- **A noisier recording gates more gently.** When speech and noise are close
+  together, the maths that places the threshold becomes unreliable, so a
+  conservative noise-floor-based fallback takes over to avoid gating speech.
+- **Wide dynamics get a gentler ratio.** A recording with a wide loudness range
+  (expressive delivery) gets a softer expansion ratio so quiet expressive moments
+  survive; a narrow range gets tighter control.
+- **The release stretches to avoid pumping.** Sustained speech and
+  narrow-loudness-range material get a longer release so the gate does not
+  open and close audibly between similar-level words.
+- **A "gentle mode" guards uniform quiet recordings.** When a very quiet
+  recording also has a narrow loudness range, the gate's soft expansion can start
+  modulating the level ("hunting"). A gentler ratio and sharper knee prevent it.
+
+Fixed by design: the attack (10 ms, fast enough for any speech), the knee, and
+RMS level detection. These do not vary usefully across real voices.
+
+### The levelling compressor tracks the speech RMS
+
+A compressor threshold set from the whole file is misleading: long silences and
+the occasional loud peak drag a full-file average around, so the same threshold
+engages differently on a quiet recording than on a loud one. Instead, Jivetalking
+sets the threshold to the **measured speech RMS plus 9 dB**.
+
+Anchoring to the speech level means the compressor engages on the upper part of
+the speaking voice at a consistent depth (around 2.5-4.4 dB of gain reduction)
+**regardless of how loud or quiet the recording was captured**. A whispered
+remote take and a hot studio take both get the same gentle levelling. When no
+speech region is detected, it falls back to a peak-relative estimate (peak minus
+20 dB). Everything else about the compressor is fixed.
+
+### The de-esser engages on measured sibilance
+
+The de-esser only treats sibilance that is actually present. Pass 1 measures the
+**sibilance excess** within the speech: how much louder the sibilant band
+(6-9 kHz) is than the vocal body band (1-3 kHz).
+
+- Below -6 dB of excess: **off**. There is nothing harsh to correct.
+- -6 to -3 dB: intensity ramps up from off to moderate.
+- -3 to 0 dB: intensity ramps from moderate to its ceiling.
+- Above 0 dB: held at the ceiling.
+
+A voice that is not sibilant is left alone; only a genuinely sibilant voice gets
+treated, and only as hard as the measurement warrants. The de-esser's frequency
+corner and maximum cut depth are fixed.
+
+### What stays fixed everywhere
+
+The rumble high-pass (80 Hz), the band-limit low-pass (20.5 kHz), and the
+noise-reduction strengths are the same on every file. Each is a single correct
+value for spoken word, validated by ear and by measurement, with nothing in the
+recording that would justify changing it. Adapting them would add risk, not
+quality.
+
+## Normalisation (Pass 3/4): reaching -16 LUFS honestly
+
+The last job is loudness. Jivetalking targets -16 LUFS integrated and -1 dBTP
+true peak, the common podcast spec. It uses FFmpeg's `loudnorm` in **linear
+mode**, which applies one consistent gain to the whole file rather than
+adaptively re-EQing and re-levelling it. Linear mode is the transparent choice:
+it moves the level without reshaping the performance. The challenge is keeping
+loudnorm *in* linear mode, because it silently falls back to a less transparent
+dynamic mode if it cannot hit the target without exceeding the true-peak ceiling.
+
+The trick is to give loudnorm the headroom it needs **before** it runs.
+
+### Pass 3: measure through the same chain it will be normalised through
+
+Pass 3 runs loudnorm in measure-only mode over the Pass 2 output, with the same
+limiter prefix that Pass 4 will apply. Measuring through that prefix means the
+loudness and true-peak numbers loudnorm gets already reflect the limiting to
+come, so its second pass has no surprise to recover from.
+
+### The levelling limiter creates the headroom
+
+Ahead of loudnorm sits a transparent limiter (gentle 5 ms attack, 100 ms
+release, lookahead enabled). Its job is not to make the file loud; it is to pull
+down the occasional peak so the true peak sits low enough that loudnorm can apply
+its **full** linear gain and still land under the ceiling. Without it, a single
+stray peak would force loudnorm into dynamic mode. This limiter is what keeps the
+normalisation linear, and therefore transparent, on every file.
+
+### Pre-gain rescues very quiet recordings
+
+If a recording is so quiet that the gain needed to reach -16 LUFS would push the
+limiter below the lowest ceiling its engine supports (around -24 dBTP), a
+`volume` pre-gain lifts the whole signal first. That raises it into a range where
+the limiter can work with a viable ceiling, so even a very quiet remote take
+reaches full loudness in linear mode.
+
+### loudnorm's internal target is derived per file
+
+loudnorm is told to aim, internally, at the peak this specific file will actually
+reach after gain, plus a small fixed measurement cushion. Because that internal
+target is derived from the file's own measured peak and loudness, the "stay
+linear" guard is satisfied by construction: every file reaches the full -16 LUFS
+in linear mode without any corpus-tuned fudge factor. loudnorm's own limiter
+therefore never has to fight for the last fraction of a dB.
+
+### The peak limiter delivers -1 dBTP
+
+A final brickwall limiter, running at the source sample rate, owns the true-peak
+delivery. Because it limits *sample* peak while the spec is in oversampled *true*
+peak, its ceiling is set slightly below -1 dBTP (by a corpus-derived inter-sample
+allowance) so the realised true peak lands at or under -1 dBTP. Between loudnorm
+and this limiter, an `adeclick` stage repairs any clicks introduced by the gain
+and limiting transitions; it runs at the source rate to keep it fast.
+
+The result lands at the canonical -16 LUFS / -1 dBTP, normalised linearly, with
+the loudness set without reshaping the voice.
+
+---
+
+For the design philosophy behind these choices, the classic devices that taught
+it, and why their names no longer appear in the code, see
+[Inspiration.md](Inspiration.md). For the objective definitions of every metric
+named here, see [Spectral-Metrics-Reference.md](Spectral-Metrics-Reference.md).
