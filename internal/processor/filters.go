@@ -102,11 +102,7 @@ const (
 	// fundamental with margin (lowest male F0 ~91 Hz; female ~165+ Hz, Anna 188 Hz
 	// an octave clear); the 2-pole/12 dB-oct slope is symmetric with the
 	// unconditional 20.5 kHz lowpass and removes subsonic rumble before the gate.
-	rumbleHPDefaultFreq      = 80.0
-	rumbleHPDefaultPoles     = 2
-	rumbleHPDefaultWidth     = 0.707
-	rumbleHPDefaultMix       = 1.0
-	rumbleHPDefaultTransform = "tdii"
+	rumbleHPDefaultFreq = 80.0
 )
 
 type filterConfigDefaults struct {
@@ -151,7 +147,10 @@ type ResampleConfig struct {
 	FrameSize  int
 }
 
-type RumbleHighPassConfig struct {
+// BiquadFilterConfig holds the shared parameters for a single biquad pole/zero
+// filter (RBJ-style highpass/lowpass). The ffmpeg keyword (highpass/lowpass) is
+// passed to the builder, not serialised, so both filters keep identical JSON.
+type BiquadFilterConfig struct {
 	Enabled   bool    `json:"enabled"`
 	Frequency float64 `json:"frequency_hz"`
 	Poles     int     `json:"poles_count"`
@@ -160,14 +159,14 @@ type RumbleHighPassConfig struct {
 	Transform string  `json:"transform"`
 }
 
-type BandlimitLowPassConfig struct {
-	Enabled   bool    `json:"enabled"`
-	Frequency float64 `json:"frequency_hz"`
-	Poles     int     `json:"poles_count"`
-	Width     float64 `json:"width"`
-	Mix       float64 `json:"mix"`
-	Transform string  `json:"transform"`
-}
+// RumbleHighPassConfig and BandlimitLowPassConfig are the rumble high-pass and
+// band-limit low-pass filter configs. Both are biquad filters with identical
+// shape, so they alias the shared BiquadFilterConfig; the parent field names and
+// JSON keys differ, the struct does not.
+type (
+	RumbleHighPassConfig   = BiquadFilterConfig
+	BandlimitLowPassConfig = BiquadFilterConfig
+)
 
 type NoiseReductionConfig struct {
 	Enabled     bool    `json:"enabled"`
@@ -405,26 +404,26 @@ func defaultResampleConfig() ResampleConfig {
 	}
 }
 
-func defaultRumbleHighPassConfig() RumbleHighPassConfig {
-	return RumbleHighPassConfig{
+// defaultBiquadConfig builds a biquad filter config with the shared fixed
+// parameters (2-pole, 0.707 Butterworth Q, full wet, tdii transform) and a
+// per-filter cutoff frequency.
+func defaultBiquadConfig(frequency float64) BiquadFilterConfig {
+	return BiquadFilterConfig{
 		Enabled:   true,
-		Frequency: rumbleHPDefaultFreq,
-		Poles:     rumbleHPDefaultPoles,
-		Width:     rumbleHPDefaultWidth,
-		Mix:       rumbleHPDefaultMix,
-		Transform: rumbleHPDefaultTransform,
-	}
-}
-
-func defaultBandlimitLowPassConfig() BandlimitLowPassConfig {
-	return BandlimitLowPassConfig{
-		Enabled:   true,
-		Frequency: 20500.0,
+		Frequency: frequency,
 		Poles:     2,
 		Width:     0.707,
 		Mix:       1.0,
 		Transform: "tdii",
 	}
+}
+
+func defaultRumbleHighPassConfig() RumbleHighPassConfig {
+	return defaultBiquadConfig(rumbleHPDefaultFreq)
+}
+
+func defaultBandlimitLowPassConfig() BandlimitLowPassConfig {
+	return defaultBiquadConfig(20500.0)
 }
 
 func defaultNoiseReductionConfig() NoiseReductionConfig {
@@ -678,35 +677,49 @@ func (cfg *EffectiveFilterConfig) buildRequiredOutputFormatFilter() string {
 // - transform: filter algorithm (tdii=best floating-point accuracy)
 // - mix: wet/dry blend (1.0=full filter, fixed)
 func (cfg *EffectiveFilterConfig) buildRumbleHighpassFilter() string {
-	highpass := cfg.RumbleHighPass
-	if !highpass.Enabled {
+	return buildBiquadFilter(cfg.RumbleHighPass, "highpass")
+}
+
+// buildBiquadFilter renders the shared biquad highpass/lowpass filter spec. The
+// keyword ("highpass"/"lowpass") selects the ffmpeg filter; every other byte of
+// the emitted string is identical between the two filters, so they share one
+// builder. Returns empty string when the filter is disabled.
+//
+// Parameters:
+// - f: cutoff frequency in Hz
+// - poles: 1=6dB/oct (gentle), 2=12dB/oct (standard, default)
+// - width: Q factor (0.707=Butterworth, default)
+// - transform: filter algorithm (tdii=best floating-point accuracy)
+// - mix: wet/dry blend (1.0=full filter)
+func buildBiquadFilter(cfg BiquadFilterConfig, keyword string) string {
+	if !cfg.Enabled {
 		return ""
 	}
 
-	poles := highpass.Poles
+	poles := cfg.Poles
 	if poles < 1 {
 		poles = 2 // Default to standard 12dB/oct
 	}
 
-	width := highpass.Width
+	width := cfg.Width
 	if width <= 0 {
 		width = 0.707 // Butterworth default
 	}
 
-	hpSpec := fmt.Sprintf("highpass=f=%.0f:poles=%d:width_type=q:width=%.3f:normalize=1",
-		highpass.Frequency, poles, width)
+	spec := fmt.Sprintf("%s=f=%.0f:poles=%d:width_type=q:width=%.3f:normalize=1",
+		keyword, cfg.Frequency, poles, width)
 
 	// Add transform type if specified (tdii = best floating-point accuracy)
-	if highpass.Transform != "" {
-		hpSpec += fmt.Sprintf(":a=%s", highpass.Transform)
+	if cfg.Transform != "" {
+		spec += fmt.Sprintf(":a=%s", cfg.Transform)
 	}
 
-	// Add mix parameter if not full wet (for warm voice protection)
-	if highpass.Mix > 0 && highpass.Mix < 1.0 {
-		hpSpec += fmt.Sprintf(":m=%.2f", highpass.Mix)
+	// Add mix parameter if not full wet (for subtle application)
+	if cfg.Mix > 0 && cfg.Mix < 1.0 {
+		spec += fmt.Sprintf(":m=%.2f", cfg.Mix)
 	}
 
-	return hpSpec
+	return spec
 }
 
 // buildBandlimitLowPassFilter builds the band-limit low-pass filter specification.
@@ -726,35 +739,7 @@ func (cfg *EffectiveFilterConfig) buildRumbleHighpassFilter() string {
 //
 // Returns empty string if BandlimitLowPass.Enabled is false.
 func (cfg *EffectiveFilterConfig) buildBandlimitLowPassFilter() string {
-	lowpass := cfg.BandlimitLowPass
-	if !lowpass.Enabled {
-		return ""
-	}
-
-	poles := lowpass.Poles
-	if poles < 1 {
-		poles = 2 // Default to standard 12dB/oct
-	}
-
-	width := lowpass.Width
-	if width <= 0 {
-		width = 0.707 // Butterworth default
-	}
-
-	lpSpec := fmt.Sprintf("lowpass=f=%.0f:poles=%d:width_type=q:width=%.3f:normalize=1",
-		lowpass.Frequency, poles, width)
-
-	// Add transform type if specified (tdii = best floating-point accuracy)
-	if lowpass.Transform != "" {
-		lpSpec += fmt.Sprintf(":a=%s", lowpass.Transform)
-	}
-
-	// Add mix parameter if not full wet (for subtle application)
-	if lowpass.Mix > 0 && lowpass.Mix < 1.0 {
-		lpSpec += fmt.Sprintf(":m=%.2f", lowpass.Mix)
-	}
-
-	return lpSpec
+	return buildBiquadFilter(cfg.BandlimitLowPass, "lowpass")
 }
 
 // buildNoiseReductionFilter builds the anlmdn+afftdn noise reduction filter.
