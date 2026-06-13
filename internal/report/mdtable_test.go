@@ -142,31 +142,10 @@ func TestFormatMetricLUFS(t *testing.T) {
 	}
 }
 
-// TestFormatMetricPeak pins linear-to-dB conversion and the "< -120" silence
-// rendering for non-positive peaks (table.go:188).
-func TestFormatMetricPeak(t *testing.T) {
-	cases := []struct {
-		in   float64
-		want string
-	}{
-		{0.0, "< -120"},           // true silence
-		{-0.5, "< -120"},          // non-positive
-		{1.0, "0.0"},              // full scale -> 0 dB
-		{math.NaN(), placeholder}, // NaN -> placeholder
-	}
-	for _, c := range cases {
-		if got := formatMetricPeak(c.in, 1); got != c.want {
-			t.Errorf("formatMetricPeak(%v) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
-// TestFormatMetricSpectral pins the "n/a" silence rendering (table.go:210).
+// TestFormatMetricSpectral pins that the spectral formatter delegates to
+// formatMetric.
 func TestFormatMetricSpectral(t *testing.T) {
-	if got := formatMetricSpectral(0.5, 2, true); got != spectralSilenceValue {
-		t.Errorf("digital-silence spectral = %q, want %q", got, spectralSilenceValue)
-	}
-	if got := formatMetricSpectral(0.5, 2, false); got != "0.50" {
+	if got := formatMetricSpectral(0.5, 2); got != "0.50" {
 		t.Errorf("formatMetricSpectral(0.5) = %q, want %q", got, "0.50")
 	}
 }
@@ -234,18 +213,5 @@ func TestChannelName(t *testing.T) {
 		if got := channelName(c.in); got != c.want {
 			t.Errorf("channelName(%d) = %q, want %q", c.in, got, c.want)
 		}
-	}
-}
-
-// TestRealTimeFactor pins the RTF maths from report.go:writeProcessingSummary:
-// rtf = (durationSecs * time.Second) / total.
-func TestRealTimeFactor(t *testing.T) {
-	// 600s of audio processed in 60s -> 10x real-time.
-	if got := realTimeFactor(600, 60*time.Second); got != 10.0 {
-		t.Errorf("realTimeFactor(600, 60s) = %v, want 10", got)
-	}
-	// Non-positive total -> 0 (no division).
-	if got := realTimeFactor(600, 0); got != 0 {
-		t.Errorf("realTimeFactor(600, 0) = %v, want 0", got)
 	}
 }

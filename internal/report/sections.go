@@ -100,7 +100,7 @@ func formatCell(getter func() (float64, bool), format metricFormat) string {
 	case fmtPeakDB:
 		return formatMetricDB(value, 2)
 	case fmtSpectral:
-		return formatMetricSpectral(value, 4, false)
+		return formatMetricSpectral(value, 4)
 	case fmtSigned:
 		return formatMetricSigned(value, 2)
 	default:
@@ -916,7 +916,7 @@ func parseLoudnormCell(value string, format metricFormat) string {
 	case fmtLUFS:
 		return formatMetricLUFS(f, 2)
 	case fmtSpectral:
-		return formatMetricSpectral(f, 2, false)
+		return formatMetricSpectral(f, 2)
 	case fmtSigned:
 		return formatMetricSigned(f, 2)
 	default:

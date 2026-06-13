@@ -240,56 +240,6 @@ type RegionMetrics struct {
 	ElectedRoomToneSample *RegionSample `json:"-"`
 }
 
-// BaseMeasurements contains fields shared between input (Pass 1) and output (Pass 2) measurements.
-// Embedded in OutputMeasurements; AudioMeasurements carries the equivalent data
-// in nested domain blocks (Loudness/Dynamics/Noise/Regions), and the output side
-// uses the shared LoudnessMetrics/DynamicsMetrics types.
-type BaseMeasurements struct {
-	// Spectral analysis from aspectralstats (all measurements averaged across frames)
-	Spectral SpectralMetrics `json:"-"` // Kept flat in JSON by custom marshal helpers
-
-	// Time-domain statistics from astats
-	DynamicRange float64 `json:"dynamic_range"` // Measured dynamic range (dB)
-	RMSLevel     float64 `json:"rms_level"`     // Overall RMS level (dBFS)
-	PeakLevel    float64 `json:"peak_level"`    // Overall peak level (dBFS)
-	RMSTrough    float64 `json:"rms_trough"`    // RMS level of quietest segments (dBFS)
-	RMSPeak      float64 `json:"rms_peak"`      // RMS level of loudest segments (dBFS)
-
-	// Additional astats measurements
-	DCOffset          float64 `json:"dc_offset"`           // Mean amplitude displacement from zero
-	FlatFactor        float64 `json:"flat_factor"`         // Consecutive samples at peak (clipping indicator)
-	CrestFactor       float64 `json:"crest_factor"`        // Peak-to-RMS ratio in dB (converted from linear)
-	ZeroCrossingsRate float64 `json:"zero_crossings_rate"` // Zero crossing rate (low=bass, high=noise/sibilance)
-	ZeroCrossings     float64 `json:"zero_crossings"`      // Total zero crossings
-	MaxDifference     float64 `json:"max_difference"`      // Largest sample-to-sample change (clicks/pops indicator)
-	MinDifference     float64 `json:"min_difference"`      // Smallest sample-to-sample change
-	MeanDifference    float64 `json:"mean_difference"`     // Average sample-to-sample change
-	RMSDifference     float64 `json:"rms_difference"`      // RMS of sample-to-sample changes
-	Entropy           float64 `json:"entropy"`             // Signal randomness (1.0 = white noise, lower = structured)
-	MinLevel          float64 `json:"min_level"`           // dBFS, minimum sample level (converted from linear)
-	MaxLevel          float64 `json:"max_level"`           // dBFS, maximum sample level (converted from linear)
-	AstatsNoiseFloor  float64 `json:"astats_noise_floor"`  // FFmpeg astats noise floor estimate (dBFS)
-	NoiseFloorCount   float64 `json:"noise_floor_count"`   // Number of samples in noise floor measurement
-	BitDepth          float64 `json:"bit_depth"`           // Effective bit depth
-	NumberOfSamples   float64 `json:"number_of_samples"`   // Total samples processed
-
-	// ebur128 momentary/short-term loudness
-	MomentaryLoudness float64 `json:"momentary_loudness"`  // Momentary loudness (400ms window, LUFS)
-	ShortTermLoudness float64 `json:"short_term_loudness"` // Short-term loudness (3s window, LUFS)
-	SamplePeak        float64 `json:"sample_peak"`         // Sample peak (dBFS)
-}
-
-// Stage identifies one of the three measurement snapshots the pipeline produces
-// of the same regions/loudness/dynamics/spectral blocks. The stage value keys the
-// per-stage maps assembled in RunRecord.
-type Stage string
-
-const (
-	StageInput    Stage = "input"    // Pass 1, raw input measurements
-	StageFiltered Stage = "filtered" // Pass 2 output, post filter-chain, pre-normalisation
-	StageFinal    Stage = "final"    // Pass 4 output, post-loudnorm
-)
-
 // AudioMeasurements contains the measurements from Pass 1 analysis.
 // Uses ebur128 (LUFS/LRA), astats (dynamic range/noise floor), and aspectralstats (spectral analysis).
 // Room tone detection runs in Go using 250ms interval sampling rather than an FFmpeg silence filter.

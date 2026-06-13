@@ -46,7 +46,6 @@ type AdaptedSummary struct {
 	SibilanceDB  float64 // SibBandRMS - BodyBandRMS (dB)
 	GentleMode   bool    // Speech gate gentle mode engaged
 	InputLUFS    float64 // input integrated loudness (LUFS)
-	TargetLUFS   float64 // loudnorm target (LUFS)
 }
 
 // NewAdaptedSummary builds the chain + analysis portion of the summary from the
@@ -80,7 +79,6 @@ func NewAdaptedSummary(cfg *processor.EffectiveFilterConfig, diag *processor.Ada
 	s.GateRatio = cfg.SpeechGate.Ratio
 	s.TruePeakDBTP = m.Loudness.InputTP
 	s.InputLUFS = m.Loudness.InputI
-	s.TargetLUFS = cfg.Loudnorm.TargetI
 
 	if sp := m.Regions.SpeechProfile; sp != nil {
 		s.HasSpeech = true

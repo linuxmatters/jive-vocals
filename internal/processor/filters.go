@@ -283,8 +283,7 @@ type AdaptiveDiagnostics struct {
 
 // ProcessingFilterContext holds pass execution state outside caller-owned defaults.
 type ProcessingFilterContext struct {
-	Pass         PassNumber
-	Measurements *AudioMeasurements
+	Pass PassNumber
 }
 
 // filterBuilderFunc is a function that builds a filter spec from effective config.

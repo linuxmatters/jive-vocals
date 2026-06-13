@@ -66,11 +66,9 @@ type AnalysisProgressMsg struct {
 // AnalysisCompleteMsg signals analysis has completed for the file at FileIndex,
 // carrying the result or an error.
 type AnalysisCompleteMsg struct {
-	FileIndex    int
-	Result       *processor.AnalysisResult
-	Measurements *processor.AudioMeasurements
-	Config       *processor.EffectiveFilterConfig
-	Error        error
+	FileIndex int
+	Result    *processor.AnalysisResult
+	Error     error
 }
 
 // NewAnalysisModel creates a new analysis UI model with the given input files

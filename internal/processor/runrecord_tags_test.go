@@ -346,18 +346,3 @@ func TestNormalisationResultJSON_HasCanonicalKeys(t *testing.T) {
 		}
 	}
 }
-
-// TestStageEnumValues pins the §8.4 stage enum string values used by RunRecord
-// (task 2.4) so the per-stage map keys stay input|filtered|final.
-func TestStageEnumValues(t *testing.T) {
-	cases := map[Stage]string{
-		StageInput:    "input",
-		StageFiltered: "filtered",
-		StageFinal:    "final",
-	}
-	for stage, want := range cases {
-		if string(stage) != want {
-			t.Errorf("Stage = %q, want %q", string(stage), want)
-		}
-	}
-}

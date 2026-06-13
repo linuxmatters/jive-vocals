@@ -18,8 +18,8 @@ Your files emerge at -16 LUFS / -1 dBTP, the loudness standard for spoken-word p
 
 ```
 Record → Process → Edit → Export
-  │         │         │         │
-  │         │         │         └─ Export
+  │         │         │        │
+  │         │         │        └─ Export
   │         │         │
   │         │         └─ Import to Audacity, top/tail, edit
   │         │
@@ -95,6 +95,45 @@ For the full walkthrough, see **[docs/Pipeline.md](docs/Pipeline.md)**: what eac
 
 When a file finishes, the completion box shows two star ratings: **Recording** (your source capture, the one that varies) and **Processed** (the output against the -16 LUFS target, almost always five stars). The pair tells the story: a two-star capture taken to a five-star master.
 
+```
+Jivetalking 🕺
+
+╭──────────────────────────────────────────╮
+│ Processing 3 files, 3 complete, 0 failed │
+╰──────────────────────────────────────────╯
+
+ 🗸 LMP-83-mark-LUFS-16-processed.flac
+╭──────────────────────────────────────────╮
+│ Time        02:31  ·  ⚡ 19.0×           │
+│ Loudness    -35.2 → -16.1 LUFS  Δ +19.1  │
+│ True peak    -6.2 →  -1.7 ㏈TP  Δ  +4.5  │
+│ Dynamics     15.0 →  13.3 LU    Δ  -1.7  │
+│ Noise floor < -96 ㏈                     │
+│ Recording   ★★★★☆  Great                 │
+│ Processed   ★★★★★  Excellent             │
+╰──────────────────────────────────────────╯
+ 🗸 LMP-83-martin-LUFS-16-processed.flac
+╭──────────────────────────────────────────╮
+│ Time        02:38  ·  ⚡ 18.1×           │
+│ Loudness    -27.8 → -16.0 LUFS  Δ +11.8  │
+│ True peak    -4.5 →  -1.8 ㏈TP  Δ  +2.7  │
+│ Dynamics     14.7 →  12.0 LU    Δ  -2.7  │
+│ Noise floor -91 ㏈                       │
+│ Recording   ★★★★☆  Great                 │
+│ Processed   ★★★★★  Excellent             │
+╰──────────────────────────────────────────╯
+ 🗸 LMP-83-popey-LUFS-16-processed.flac
+╭──────────────────────────────────────────╮
+│ Time        02:43  ·  ⚡ 17.6×           │
+│ Loudness    -29.8 → -16.0 LUFS  Δ +13.8  │
+│ True peak    -0.1 →  -1.3 ㏈TP  Δ  -1.2  │
+│ Dynamics     12.3 →   8.9 LU    Δ  -3.4  │
+│ Noise floor -86 ㏈                       │
+│ Recording   ★★☆☆☆  Fair                  │
+│ Processed   ★★★★★  Excellent             │
+╰──────────────────────────────────────────╯
+```
+
 See **[docs/Usage.md](docs/Usage.md#quality-ratings)** for the three axes behind the Recording score and what a low star is telling you to fix.
 
 ---
@@ -145,7 +184,7 @@ See **[docs/Usage.md](docs/Usage.md#diagnostics)** for the spectrogram naming sc
 
 ### Analysis-Only Mode
 
-Pass `-a` to run Pass 1 only. It writes `<input>-analysis.md` next to each input and shows the Recording stars plus a one-line gain verdict on screen, without producing any audio. Useful for checking a capture before you commit to a take.
+Pass `--analysis-only` to run Pass 1 only. It writes `<input>-analysis.md` next to each input and shows the Recording stars plus a one-line gain verdict on screen, without producing any audio. Useful for checking a capture before you commit to a take.
 
 See **[docs/Usage.md](docs/Usage.md#analysis-only-mode)** for what the report covers and how to read the gain-advice thermometer.
 

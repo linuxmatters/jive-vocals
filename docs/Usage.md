@@ -7,8 +7,42 @@ In-depth guide to driving Jivetalking and reading what it produces. For the basi
 When a file finishes, the completion box shows two star ratings:
 
 ```
-Recording   ★★☆☆☆  Fair
-Processed   ★★★★★  Excellent
+Jivetalking 🕺
+
+╭──────────────────────────────────────────╮
+│ Processing 3 files, 3 complete, 0 failed │
+╰──────────────────────────────────────────╯
+
+ 🗸 LMP-83-mark-LUFS-16-processed.flac
+╭──────────────────────────────────────────╮
+│ Time        02:31  ·  ⚡ 19.0×           │
+│ Loudness    -35.2 → -16.1 LUFS  Δ +19.1  │
+│ True peak    -6.2 →  -1.7 ㏈TP  Δ  +4.5  │
+│ Dynamics     15.0 →  13.3 LU    Δ  -1.7  │
+│ Noise floor < -96 ㏈                     │
+│ Recording   ★★★★☆  Great                 │
+│ Processed   ★★★★★  Excellent             │
+╰──────────────────────────────────────────╯
+ 🗸 LMP-83-martin-LUFS-16-processed.flac
+╭──────────────────────────────────────────╮
+│ Time        02:38  ·  ⚡ 18.1×           │
+│ Loudness    -27.8 → -16.0 LUFS  Δ +11.8  │
+│ True peak    -4.5 →  -1.8 ㏈TP  Δ  +2.7  │
+│ Dynamics     14.7 →  12.0 LU    Δ  -2.7  │
+│ Noise floor -91 ㏈                       │
+│ Recording   ★★★★☆  Great                 │
+│ Processed   ★★★★★  Excellent             │
+╰──────────────────────────────────────────╯
+ 🗸 LMP-83-popey-LUFS-16-processed.flac
+╭──────────────────────────────────────────╮
+│ Time        02:43  ·  ⚡ 17.6×           │
+│ Loudness    -29.8 → -16.0 LUFS  Δ +13.8  │
+│ True peak    -0.1 →  -1.3 ㏈TP  Δ  -1.2  │
+│ Dynamics     12.3 →   8.9 LU    Δ  -3.4  │
+│ Noise floor -86 ㏈                       │
+│ Recording   ★★☆☆☆  Fair                  │
+│ Processed   ★★★★★  Excellent             │
+╰──────────────────────────────────────────╯
 ```
 
 **Recording** grades your source capture, the raw audio you fed in. This is the one that varies, and the one you can act on. **Processed** grades the output against the -16 LUFS broadcast target, and it is usually five stars, because hitting that target is jivetalking's job and it reliably does. Side by side, the pair tells the story: we took your two-star capture to a five-star master.
@@ -25,7 +59,7 @@ A low Recording star is a hint to improve the capture next time: record in a qui
 
 ## Analysis-Only Mode
 
-Pass `-a` to run only Pass 1 analysis. It writes a Markdown analysis report (`<input>-analysis.md`) next to each input and shows the Recording stars plus gain advice on screen, without producing any processed audio. Useful for quickly understanding what jivetalking sees in your recordings, diagnosing setup problems, or checking whether a file needs processing at all.
+Pass `--analysis-only` to run only Pass 1 analysis. It writes a Markdown analysis report (`<input>-analysis.md`) next to each input and shows the Recording stars plus gain advice on screen, without producing any processed audio. Useful for quickly understanding what jivetalking sees in your recordings, diagnosing setup problems, or checking whether a file needs processing at all.
 
 The analysis report covers:
 
@@ -40,8 +74,23 @@ The analysis report covers:
 Analysis mode is the place to fix your capture before you commit to a take. Alongside the Recording stars, each file gets a single-line verdict and a five-cell thermometer bar that fills with your input true peak, running cyan (quiet) through green (well set) to red (clipping):
 
 ```
-Recording  ★★☆☆☆  Fair
-Gain       ▰▱▱▱▱  Quiet. Peaks at -14.2 ㏈TP. Raise input gain ~8 ㏈.
+Jivetalking 🕺
+
+╭─────────────────────────────────────────╮
+│ Analysing 3 files, 3 complete, 0 failed │
+╰─────────────────────────────────────────╯
+
+ 🗸 LMP-83-mark.flac → LMP-83-mark-flac-analysis.md
+   Recording  ★★★★☆  Great
+   Gain       ▰▰▰▱▱  Level well set. Peaks at -6.2 ㏈TP. No action required.
+
+ 🗸 LMP-83-martin.flac → LMP-83-martin-flac-analysis.md
+   Recording  ★★★★☆  Great
+   Gain       ▰▰▰▱▱  Level well set. Peaks at -4.5 ㏈TP. No action required.
+
+ 🗸 LMP-83-popey.flac → LMP-83-popey-flac-analysis.md
+   Recording  ★★☆☆☆  Fair
+   Gain       ▰▰▰▰▱  Hot. Peaks at -0.1 ㏈TP. Lower input gain ~6 ㏈.
 ```
 
 The verdict reads `Interpretation. Level. Advice.` and keys off the input true peak alone, with a target of -6 ㏈TP:

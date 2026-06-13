@@ -173,9 +173,6 @@ func TestMetadata_FieldRoundTrip(t *testing.T) {
 		Duration:   123.5,
 		SampleRate: 48000,
 		Channels:   2,
-		SampleFmt:  "fltp",
-		ChLayout:   "stereo",
-		BitDepth:   24,
 	}
 
 	if m.Duration != 123.5 {
@@ -186,14 +183,5 @@ func TestMetadata_FieldRoundTrip(t *testing.T) {
 	}
 	if m.Channels != 2 {
 		t.Errorf("Channels = %d, want 2", m.Channels)
-	}
-	if m.SampleFmt != "fltp" {
-		t.Errorf("SampleFmt = %q, want fltp", m.SampleFmt)
-	}
-	if m.ChLayout != "stereo" {
-		t.Errorf("ChLayout = %q, want stereo", m.ChLayout)
-	}
-	if m.BitDepth != 24 {
-		t.Errorf("BitDepth = %d, want 24", m.BitDepth)
 	}
 }

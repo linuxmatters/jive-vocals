@@ -23,9 +23,6 @@ type Metadata struct {
 	Duration   float64 // seconds
 	SampleRate int
 	Channels   int
-	SampleFmt  string
-	ChLayout   string
-	BitDepth   int
 }
 
 // OpenAudioFile opens an audio file for reading
@@ -100,24 +97,10 @@ func OpenAudioFile(filename string) (*Reader, *Metadata, error) {
 
 	duration := float64(fmtCtx.Duration()) / float64(ffmpeg.AVTimeBase)
 
-	layoutPtr := ffmpeg.AllocCStr(64)
-	defer layoutPtr.Free()
-
-	if _, err := ffmpeg.AVChannelLayoutDescribe(decCtx.ChLayout(), layoutPtr, 64); err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("failed to get channel layout: %w", err)
-	}
-
-	sampleFmtName := ffmpeg.AVGetSampleFmtName(decCtx.SampleFmt())
-	bytesPerSample, _ := ffmpeg.AVGetBytesPerSample(decCtx.SampleFmt())
-
 	metadata := &Metadata{
 		Duration:   duration,
 		SampleRate: decCtx.SampleRate(),
 		Channels:   decCtx.ChLayout().NbChannels(),
-		SampleFmt:  sampleFmtName.String(),
-		ChLayout:   layoutPtr.String(),
-		BitDepth:   bytesPerSample * 8,
 	}
 
 	reader := &Reader{

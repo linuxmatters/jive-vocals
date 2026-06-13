@@ -45,10 +45,6 @@ func TestIntervalSampleJSON_PreservesFlatSpectralFields(t *testing.T) {
 	assertSpectralValues(t, decoded.Spectral)
 }
 
-func TestBaseMeasurements_HasNoFlatSpectralPrimitiveFields(t *testing.T) {
-	assertNoStaleSpectralPrimitiveFields[BaseMeasurements](t)
-}
-
 func assertFlatSpectralJSONKeys(t *testing.T, data []byte) {
 	t.Helper()
 

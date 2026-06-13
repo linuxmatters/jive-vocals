@@ -23,9 +23,6 @@ const (
 	// corpus's level spread.
 	levellingCompressorThresholdSpeechOffsetDB = 9.0
 
-	// LevellingCompressorThresholdSpeechOffsetDB exposes the speech-RMS threshold offset for reporting.
-	LevellingCompressorThresholdSpeechOffsetDB = levellingCompressorThresholdSpeechOffsetDB
-
 	// Threshold clamp bounds (dBFS). Preserve the prior sane range.
 	levellingCompressorThresholdMin = -45.0
 	levellingCompressorThresholdMax = -6.0

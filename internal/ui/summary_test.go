@@ -21,7 +21,6 @@ func TestNewAdaptedSummaryFromConfig(t *testing.T) {
 	cfg.SpeechGate.Ratio = 2.0
 	cfg.LevellingCompressor.Threshold = -11.9
 	cfg.Deesser.Intensity = 0
-	cfg.Loudnorm.TargetI = -16
 
 	m := &processor.AudioMeasurements{}
 	m.Noise.Floor = -68
@@ -72,8 +71,8 @@ func TestNewAdaptedSummaryFromConfig(t *testing.T) {
 	if !s.GentleMode {
 		t.Errorf("gentle mode should follow the diagnostic")
 	}
-	if s.InputLUFS != -24.3 || s.TargetLUFS != -16 {
-		t.Errorf("loudness mapping wrong: in=%v target=%v", s.InputLUFS, s.TargetLUFS)
+	if s.InputLUFS != -24.3 {
+		t.Errorf("loudness mapping wrong: in=%v", s.InputLUFS)
 	}
 	// Limiter not yet known.
 	if s.LimiterReady {

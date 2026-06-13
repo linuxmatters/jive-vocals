@@ -16,8 +16,6 @@ import (
 var (
 	// ColorRed is the Jivetalking brand red (errors, titles, peak zone).
 	ColorRed = compat.AdaptiveColor{Light: lipgloss.Color("#A40000"), Dark: lipgloss.Color("#A40000")}
-	// ColorRedDim is the dark end of the progress gradient.
-	ColorRedDim = compat.AdaptiveColor{Light: lipgloss.Color("#5A0000"), Dark: lipgloss.Color("#5A0000")}
 	// ColorCyanBright is the bright cyan start of the header letter gradient. Its
 	// CIELAB path to ColorSkyBlue stays vivid (no muddy midpoint).
 	ColorCyanBright = compat.AdaptiveColor{Light: lipgloss.Color("#00D4FF"), Dark: lipgloss.Color("#00D4FF")}
@@ -35,8 +33,6 @@ var (
 	ColorCyan = compat.AdaptiveColor{Light: lipgloss.Color("#00AAAA"), Dark: lipgloss.Color("#00AAAA")}
 	// ColorFill is the empty/unfilled fill colour for meters and progress.
 	ColorFill = compat.AdaptiveColor{Light: lipgloss.Color("#CCCCCC"), Dark: lipgloss.Color("#444444")}
-	// ColorLightGrey is the subtle light-grey for panel borders.
-	ColorLightGrey = compat.AdaptiveColor{Light: lipgloss.Color("#666666"), Dark: lipgloss.Color("#CCCCCC")}
 	// ColorSkyBlue is the sky-blue used for panel borders.
 	ColorSkyBlue = compat.AdaptiveColor{Light: lipgloss.Color("#0284C7"), Dark: lipgloss.Color("#38BDF8")}
 	// ColorIndigo is the indigo end of the progress bar gradient.
