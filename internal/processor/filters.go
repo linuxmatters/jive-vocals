@@ -924,10 +924,6 @@ func (cfg *EffectiveFilterConfig) BuildFilterSpec() string {
 	return strings.Join(filters, ",")
 }
 
-func (cfg *BaseFilterConfig) BuildFilterSpec() string {
-	return deriveEffectiveFilterConfig(cfg).BuildFilterSpec()
-}
-
 // CreateProcessingFilterGraph creates an AVFilterGraph for complete audio processing
 // This is used in Pass 2 to apply the full filter chain.
 func CreateProcessingFilterGraph(

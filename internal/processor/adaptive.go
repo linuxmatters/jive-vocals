@@ -25,7 +25,7 @@ func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) (*Ef
 
 	tuneSpeechGate(effectiveConfig, diagnostics, measurements) // Soft expander gate cleaning inter-speech gaps
 	tuneDeesser(effectiveConfig, measurements)
-	tuneLevellingCompressor(effectiveConfig, diagnostics, measurements, config.logger)
+	tuneLevellingCompressor(effectiveConfig, measurements)
 	// The limiter lives in Pass 4 and is tuned from Pass 3 measurements, not here.
 
 	// Final safety checks

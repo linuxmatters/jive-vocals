@@ -51,7 +51,7 @@ const (
 // defaultLevellingCompressorConfig() and left untouched here. The threshold is
 // anchored to speech-region RMS when a SpeechProfile exists, otherwise it falls
 // back to a peak-relative estimate.
-func tuneLevellingCompressor(config *EffectiveFilterConfig, _ *AdaptiveDiagnostics, measurements *AudioMeasurements, _ debugLogger) {
+func tuneLevellingCompressor(config *EffectiveFilterConfig, measurements *AudioMeasurements) {
 	config.LevellingCompressor.Ratio = levellingCompressorFixedRatio
 	config.LevellingCompressor.Attack = levellingCompressorFixedAttack
 	config.LevellingCompressor.Release = levellingCompressorFixedRelease

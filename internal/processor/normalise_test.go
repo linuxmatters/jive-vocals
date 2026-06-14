@@ -302,7 +302,6 @@ func injectPass4StatsViaRun(t *testing.T, inputPath, body string) loudnormDeps {
 	}
 	deps.createEncoder = func(
 		string,
-		*audio.Metadata,
 		*ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
 		return &loudnormTestEncoder{}, nil
@@ -606,7 +605,6 @@ func TestApplyLoudnormAndMeasureEncoderCreationErrorRemovesTemp(t *testing.T) {
 	deps := defaultLoudnormDeps()
 	deps.createEncoder = func(
 		outputPath string,
-		_ *audio.Metadata,
 		_ *ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
 		tempPath = outputPath
@@ -640,7 +638,6 @@ func TestApplyLoudnormAndMeasureLoopErrorRemovesTemp(t *testing.T) {
 	deps := defaultLoudnormDeps()
 	deps.createEncoder = func(
 		outputPath string,
-		_ *audio.Metadata,
 		_ *ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
 		tempPath = outputPath
@@ -686,7 +683,6 @@ func TestApplyLoudnormAndMeasureFlushErrorRemovesTemp(t *testing.T) {
 	deps := defaultLoudnormDeps()
 	deps.createEncoder = func(
 		outputPath string,
-		_ *audio.Metadata,
 		_ *ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
 		tempPath = outputPath
@@ -734,7 +730,6 @@ func TestApplyLoudnormAndMeasureCloseErrorRemovesTemp(t *testing.T) {
 	deps := defaultLoudnormDeps()
 	deps.createEncoder = func(
 		outputPath string,
-		_ *audio.Metadata,
 		_ *ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
 		tempPath = outputPath
@@ -779,7 +774,6 @@ func TestApplyLoudnormAndMeasureRenameErrorRemovesTemp(t *testing.T) {
 	deps := defaultLoudnormDeps()
 	deps.createEncoder = func(
 		string,
-		*audio.Metadata,
 		*ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
 		return encoder, nil
@@ -953,7 +947,6 @@ func TestApplyNormalisationProgressCadenceGuard(t *testing.T) {
 	}
 	deps.createEncoder = func(
 		string,
-		*audio.Metadata,
 		*ffmpeg.AVFilterContext,
 	) (loudnormOutputEncoder, error) {
 		return &loudnormTestEncoder{}, nil

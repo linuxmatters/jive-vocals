@@ -181,7 +181,7 @@ func runFullbenchFilterSpecCore(tb testing.TB, inputPath, outputPath, filterSpec
 	}
 	defer ffmpeg.AVFilterGraphFree(&filterGraph)
 
-	encoder, err := createOutputEncoder(outputPath, metadata, bufferSinkCtx)
+	encoder, err := createOutputEncoder(outputPath, bufferSinkCtx)
 	if err != nil {
 		tb.Fatalf("failed to create fullbench output encoder: %v", err)
 	}

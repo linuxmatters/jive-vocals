@@ -210,8 +210,18 @@ func pendingRow(label string, labelWidth int) string {
 	return statusRow(glyphPending, cli.ColorMuted, label, labelWidth, valuePending, cli.ColorMuted)
 }
 
+// pendingBox builds a not-ready status box: each label becomes a pendingRow at
+// labelWidth, wrapped by statusBox with ready=false.
+func pendingBox(title string, innerWidth, labelWidth, height int, labels []string) string {
+	rows := make([]string, 0, len(labels))
+	for _, label := range labels {
+		rows = append(rows, pendingRow(label, labelWidth))
+	}
+	return statusBox(title, innerWidth, height, false, rows)
+}
+
 // activeRow renders a lit row (● label value) in the active text colour.
-func activeRow(label string, labelWidth, _ int, value string) string {
+func activeRow(label string, labelWidth int, value string) string {
 	return statusRow(glyphActive, cli.ColorGreen, label, labelWidth, value, cli.ColorText)
 }
 
@@ -226,17 +236,10 @@ func offRow(label string, labelWidth int, value string) string {
 func renderChainBox(s AdaptedSummary, height int) string {
 	w := chainLabelWidth
 	if !s.ChainReady {
-		rows := []string{
-			pendingRow("Downmix", w),
-			pendingRow("Hi-pass", w),
-			pendingRow("Lo-pass", w),
-			pendingRow("Denoise", w),
-			pendingRow("Gate", w),
-			pendingRow("Comp", w),
-			pendingRow("De-esser", w),
-			pendingRow("Limiter", w),
-		}
-		return statusBox("Filter Chain", chainBoxInnerWidth, height, false, rows)
+		return pendingBox("Filter Chain", chainBoxInnerWidth, w, height, []string{
+			"Downmix", "Hi-pass", "Lo-pass", "Denoise",
+			"Gate", "Comp", "De-esser", "Limiter",
+		})
 	}
 
 	mix := "—"
@@ -259,25 +262,25 @@ func renderChainBox(s AdaptedSummary, height int) string {
 
 	deEsser := offRow("De-esser", w, "OFF")
 	if s.DeesserOn {
-		deEsser = activeRow("De-esser", w, 0, fmt.Sprintf("i=%.2f", s.DeesserI))
+		deEsser = activeRow("De-esser", w, fmt.Sprintf("i=%.2f", s.DeesserI))
 	}
 
 	limiter := pendingRow("Limiter", w)
 	if s.LimiterReady {
 		if s.LimiterEnabled {
-			limiter = activeRow("Limiter", w, 0, fmt.Sprintf("%.1f %s", s.LimiterCeiling, unitDBTP))
+			limiter = activeRow("Limiter", w, fmt.Sprintf("%.1f %s", s.LimiterCeiling, unitDBTP))
 		} else {
 			limiter = offRow("Limiter", w, "OFF")
 		}
 	}
 
 	rows := []string{
-		activeRow("Downmix", w, 0, mix),
-		activeRow("Hi-pass", w, 0, formatHz(s.HighPassHz)),
-		activeRow("Lo-pass", w, 0, formatHz(s.LowPassHz)),
-		activeRow("Denoise", w, 0, denoise),
-		activeRow("Gate", w, 0, fmt.Sprintf("%.1f %s", s.GateThreshDB, unitDB)),
-		activeRow("Comp", w, 0, fmt.Sprintf("%.1f %s", s.CompThreshDB, unitDB)),
+		activeRow("Downmix", w, mix),
+		activeRow("Hi-pass", w, formatHz(s.HighPassHz)),
+		activeRow("Lo-pass", w, formatHz(s.LowPassHz)),
+		activeRow("Denoise", w, denoise),
+		activeRow("Gate", w, fmt.Sprintf("%.1f %s", s.GateThreshDB, unitDB)),
+		activeRow("Comp", w, fmt.Sprintf("%.1f %s", s.CompThreshDB, unitDB)),
 		deEsser,
 		limiter,
 	}
@@ -290,22 +293,15 @@ func renderChainBox(s AdaptedSummary, height int) string {
 func renderAnalysisBox(s AdaptedSummary, height int) string {
 	w := analysisLabelWidth
 	if !s.ChainReady {
-		rows := []string{
-			pendingRow("Voice avg", w),
-			pendingRow("Noise floor", w),
-			pendingRow("SNR Gap", w),
-			pendingRow("Dynamics", w),
-			pendingRow("True peak", w),
-			pendingRow("Soft gate", w),
-			pendingRow("Sibilance", w),
-			pendingRow("Loudness", w),
-		}
-		return statusBox("Analysis", analysisBoxInnerWidth, height, false, rows)
+		return pendingBox("Analysis", analysisBoxInnerWidth, w, height, []string{
+			"Voice avg", "Noise floor", "SNR Gap", "Dynamics",
+			"True peak", "Soft gate", "Sibilance", "Loudness",
+		})
 	}
 
 	voiceAvg := offRow("Voice avg", w, valuePending)
 	if s.HasSpeech {
-		voiceAvg = activeRow("Voice avg", w, 0, fmt.Sprintf("%.1f %s", s.VoiceAvgDB, unitDB))
+		voiceAvg = activeRow("Voice avg", w, fmt.Sprintf("%.1f %s", s.VoiceAvgDB, unitDB))
 	}
 
 	separation := offRow("SNR Gap", w, valuePending)
@@ -316,25 +312,25 @@ func renderAnalysisBox(s AdaptedSummary, height int) string {
 
 	sibilance := offRow("Sibilance", w, valuePending)
 	if s.HasSibilance {
-		sibilance = activeRow("Sibilance", w, 0, fmt.Sprintf("%.0f %s", s.SibilanceDB, unitDB))
+		sibilance = activeRow("Sibilance", w, fmt.Sprintf("%.0f %s", s.SibilanceDB, unitDB))
 	}
 
 	gentle := offRow("Soft gate", w, "OFF")
 	if s.GentleMode {
-		gentle = activeRow("Soft gate", w, 0, "ON")
+		gentle = activeRow("Soft gate", w, "ON")
 	}
 
 	// Soft Gate (gate gentle mode) on row 6 and Sibilance on row 7 so Sibilance lines up with the
 	// De-esser at Filter Chain row 7 (its driver). Loudness stays the bottom row.
 	rows := []string{
 		voiceAvg,
-		activeRow("Noise floor", w, 0, fmt.Sprintf("%.0f %s", s.NoiseFloorDB, unitDB)),
+		activeRow("Noise floor", w, fmt.Sprintf("%.0f %s", s.NoiseFloorDB, unitDB)),
 		separation,
-		activeRow("Dynamics", w, 0, fmt.Sprintf("%.1f LU → %.1f:1", s.InputLRA, s.GateRatio)),
-		activeRow("True peak", w, 0, fmt.Sprintf("%.1f %s", s.TruePeakDBTP, unitDBTP)),
+		activeRow("Dynamics", w, fmt.Sprintf("%.1f LU → %.1f:1", s.InputLRA, s.GateRatio)),
+		activeRow("True peak", w, fmt.Sprintf("%.1f %s", s.TruePeakDBTP, unitDBTP)),
 		gentle,
 		sibilance,
-		activeRow("Loudness", w, 0, fmt.Sprintf("%.1f LUFS", s.InputLUFS)),
+		activeRow("Loudness", w, fmt.Sprintf("%.1f LUFS", s.InputLUFS)),
 	}
 	return statusBox("Analysis", analysisBoxInnerWidth, height, true, rows)
 }

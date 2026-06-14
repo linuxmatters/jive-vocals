@@ -7,20 +7,18 @@ import (
 	"math"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
 )
 
 // Encoder wraps the audio encoding and muxing functionality
 type Encoder struct {
-	fmtCtx    *ffmpeg.AVFormatContext
-	encCtx    *ffmpeg.AVCodecContext
-	stream    *ffmpeg.AVStream
-	packet    *ffmpeg.AVPacket
-	streamIdx int
+	fmtCtx *ffmpeg.AVFormatContext
+	encCtx *ffmpeg.AVCodecContext
+	stream *ffmpeg.AVStream
+	packet *ffmpeg.AVPacket
 }
 
 // createOutputEncoder creates an encoder for FLAC output
-func createOutputEncoder(outputPath string, _ *audio.Metadata, bufferSinkCtx *ffmpeg.AVFilterContext) (*Encoder, error) {
+func createOutputEncoder(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContext) (*Encoder, error) {
 	outputPathC := ffmpeg.ToCStr(outputPath)
 	defer outputPathC.Free()
 	fmtNameC := ffmpeg.ToCStr("flac")
@@ -140,11 +138,10 @@ func createOutputEncoder(outputPath string, _ *audio.Metadata, bufferSinkCtx *ff
 	}
 
 	return &Encoder{
-		fmtCtx:    fmtCtx,
-		encCtx:    encCtx,
-		stream:    stream,
-		packet:    packet,
-		streamIdx: 0,
+		fmtCtx: fmtCtx,
+		encCtx: encCtx,
+		stream: stream,
+		packet: packet,
 	}, nil
 }
 
@@ -186,7 +183,7 @@ func (e *Encoder) receivePackets() error {
 			return fmt.Errorf("failed to receive packet: %w", err)
 		}
 
-		e.packet.SetStreamIndex(e.streamIdx)
+		e.packet.SetStreamIndex(0)
 
 		ffmpeg.AVPacketRescaleTs(e.packet, e.encCtx.TimeBase(), e.stream.TimeBase())
 

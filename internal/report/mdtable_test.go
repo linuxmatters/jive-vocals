@@ -142,11 +142,11 @@ func TestFormatMetricLUFS(t *testing.T) {
 	}
 }
 
-// TestFormatMetricSpectral pins that the spectral formatter delegates to
+// TestFormatMetricSpectral pins that the spectral format rule delegates to
 // formatMetric.
 func TestFormatMetricSpectral(t *testing.T) {
-	if got := formatMetricSpectral(0.5, 2); got != "0.50" {
-		t.Errorf("formatMetricSpectral(0.5) = %q, want %q", got, "0.50")
+	if got := formatMetric(0.5, 2); got != "0.50" {
+		t.Errorf("formatMetric(0.5) = %q, want %q", got, "0.50")
 	}
 }
 

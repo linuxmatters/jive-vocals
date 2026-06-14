@@ -142,7 +142,7 @@ func parseLoudnormStatsFile(path string) (*LoudnormStats, error) {
 type loudnormDeps struct {
 	runFilterGraph   func(context.Context, *audio.Reader, *ffmpeg.AVFilterContext, *ffmpeg.AVFilterContext, FrameLoopConfig) error
 	setupFilterGraph func(*ffmpeg.AVCodecContext, string) (*ffmpeg.AVFilterGraph, *ffmpeg.AVFilterContext, *ffmpeg.AVFilterContext, error)
-	createEncoder    func(string, *audio.Metadata, *ffmpeg.AVFilterContext) (loudnormOutputEncoder, error)
+	createEncoder    func(string, *ffmpeg.AVFilterContext) (loudnormOutputEncoder, error)
 	rename           func(oldpath, newpath string) error
 }
 
@@ -150,8 +150,8 @@ func defaultLoudnormDeps() loudnormDeps {
 	return loudnormDeps{
 		runFilterGraph:   runFilterGraph,
 		setupFilterGraph: setupFilterGraph,
-		createEncoder: func(outputPath string, metadata *audio.Metadata, bufferSinkCtx *ffmpeg.AVFilterContext) (loudnormOutputEncoder, error) {
-			return createOutputEncoder(outputPath, metadata, bufferSinkCtx)
+		createEncoder: func(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContext) (loudnormOutputEncoder, error) {
+			return createOutputEncoder(outputPath, bufferSinkCtx)
 		},
 		rename: os.Rename,
 	}
@@ -991,7 +991,7 @@ func executeAndPublishLoudnormApplication(
 	result := &loudnormApplicationExecutionResult{}
 
 	// Create output encoder (same format as input)
-	encoder, err := deps.createEncoder(prep.tempPath, prep.metadata, prep.bufferSinkCtx)
+	encoder, err := deps.createEncoder(prep.tempPath, prep.bufferSinkCtx)
 	if err != nil {
 		result.loudnormStats = captureGraphStats()
 		removeTemp()

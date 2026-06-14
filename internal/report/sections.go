@@ -121,7 +121,7 @@ func formatByRule(value float64, format metricFormat, decimals int) string {
 	case fmtLUFS:
 		return formatMetricLUFS(value, decimals)
 	case fmtSpectral:
-		return formatMetricSpectral(value, decimals)
+		return formatMetric(value, decimals)
 	case fmtSigned:
 		return formatMetricSigned(value, decimals)
 	default:

@@ -201,20 +201,6 @@ func openDebugLog(enabled bool) (*os.File, error) {
 	return logFile, nil
 }
 
-// buildProcessingTimings completes the report.Timings for a processed file by
-// pairing the per-pass durations with the real-time factor (audio duration /
-// total wall-clock from fileStartTime to now). Mirrors the legacy report's RTF
-// maths: total time spans the whole file's processing, the factor is omitted
-// (left zero) when the input duration is unknown.
-func buildProcessingTimings(fileStartTime time.Time, timings report.Timings, result *processor.ProcessingResult) report.Timings {
-	if result.InputMetadata.DurationSecs > 0 {
-		totalTime := time.Since(fileStartTime)
-		audioDuration := time.Duration(result.InputMetadata.DurationSecs * float64(time.Second))
-		timings.RealTimeFactor = float64(audioDuration) / float64(totalTime)
-	}
-	return timings
-}
-
 type analysisOnlyDeps struct {
 	stdout              io.Writer
 	hasTTY              func() bool
@@ -249,13 +235,23 @@ func openAudioMetadata(inputPath string) (*audio.Metadata, error) {
 	return metadata, nil
 }
 
-func (ph *progressHandler) timings(pass2Time time.Duration) report.Timings {
-	return report.Timings{
+// timings assembles the complete report.Timings for a processed file: the four
+// per-pass durations plus the real-time factor (audio duration / total
+// wall-clock from fileStart to now). The factor is omitted (left zero) when the
+// input duration is unknown.
+func (ph *progressHandler) timings(pass2Time time.Duration, fileStart time.Time, result *processor.ProcessingResult) report.Timings {
+	t := report.Timings{
 		Pass1: ph.pass1Time,
 		Pass2: pass2Time,
 		Pass3: ph.pass3Time,
 		Pass4: ph.pass4Time,
 	}
+	if result.InputMetadata.DurationSecs > 0 {
+		totalTime := time.Since(fileStart)
+		audioDuration := time.Duration(result.InputMetadata.DurationSecs * float64(time.Second))
+		t.RealTimeFactor = float64(audioDuration) / float64(totalTime)
+	}
+	return t
 }
 
 // progressHandler relays processor progress updates to the TUI and records
@@ -370,7 +366,9 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 		specCancel()
 	}()
 
-	if deps.hasTTY() {
+	tty := deps.hasTTY()
+
+	if tty {
 		model := ui.NewAnalysisModel(files)
 		p := tea.NewProgram(model)
 
@@ -416,7 +414,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 	// in TTY mode the persisted analysis TUI already shows it, so we skip the
 	// stdout print to avoid doubling up. The .md report is written in both modes.
 	render := analysisRenderScheduler{ctx: specCtx, sem: specSem, wg: &specWG}
-	noTTY := !deps.hasTTY()
+	noTTY := !tty
 	for i := range files {
 		if slots[i].err != nil {
 			if errors.Is(slots[i].err, context.Canceled) {

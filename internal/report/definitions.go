@@ -138,6 +138,9 @@ var Definitions = map[string]Definition{
 		Unit:  "",
 		Gloss: "Fraction of sample pairs that change sign, zero_crossings/N.",
 	},
+	// Catalogued but not yet rendered: no report section emits this key. The
+	// data key is a live JSON struct tag in analyser.go; the gloss is kept ready
+	// for a future renderer.
 	"zero_crossings_count": {
 		Label: "Zero-crossings count",
 		Unit:  "count",
@@ -153,6 +156,10 @@ var Definitions = map[string]Definition{
 		Unit:  "",
 		Gloss: "Magnitude-weighted spectral entropy, -sum(mag*ln(mag+eps))/ln(N); for astats stages, the sample-value distribution entropy.",
 	},
+	// Catalogued but not yet rendered: no report section emits the keys in this
+	// group. noise_floor_count and number_of_samples are live JSON struct tags
+	// in analyser.go; the astats *_difference keys are authored for forward use.
+	// Glosses are kept ready for a future renderer.
 	"noise_floor_count": {
 		Label: "Noise-floor count",
 		Unit:  "count",

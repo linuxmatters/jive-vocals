@@ -3,6 +3,7 @@ package processor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -208,6 +209,10 @@ func ProcessAudio(ctx context.Context, inputPath string, config *BaseFilterConfi
 	lufsValue := lufsFilenameValue(result.OutputLUFS)
 	finalPath := generateLUFSOutputPath(inputPath, lufsValue)
 	if err := renameNoClobber(outputPath, finalPath); err != nil {
+		var existsErr *DestinationExistsError
+		if errors.As(err, &existsErr) {
+			return nil, fmt.Errorf("failed to publish output, destination already exists: %s: %w", existsErr.Path, ErrOutputExists)
+		}
 		return nil, fmt.Errorf("failed to publish output: %w", err)
 	}
 	cleanupTempOutput = false
@@ -289,7 +294,7 @@ func processWithFilters(ctx context.Context, inputPath, outputPath string, confi
 	defer ffmpeg.AVFilterGraphFree(&filterGraph)
 
 	// Create output encoder
-	encoder, err := createOutputEncoder(outputPath, metadata, bufferSinkCtx)
+	encoder, err := createOutputEncoder(outputPath, bufferSinkCtx)
 	if err != nil {
 		return InputMetadata{}, fmt.Errorf("failed to create encoder: %w", err)
 	}
