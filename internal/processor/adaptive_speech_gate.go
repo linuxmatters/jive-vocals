@@ -154,14 +154,11 @@ func tuneSpeechGate(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnost
 	// 1. Threshold: sits above noise/bleed peaks, below quiet speech
 	// Gap is derived from ratio to achieve target reduction
 	config.SpeechGate.Threshold = calculateSpeechGateThreshold(
-		measurements.Noise.Floor,
-		roomTonePeak,
-		roomToneCrest,
+		noiseContext{floor: measurements.Noise.Floor, roomTonePeak: roomTonePeak, roomToneCrest: roomToneCrest},
 		config.SpeechGate.Ratio,
 		lufsGap,
 		measurements.Loudness.InputLRA,
-		speechRMS,
-		speechCrest,
+		speechContext{rms: speechRMS, crest: speechCrest},
 	)
 
 	// Track threshold calculation diagnostics
@@ -278,28 +275,42 @@ func calculateAggression(separation, lra float64) float64 {
 	return max(speechGateAggressionMin, min(baseAggression-lraAdjustment, speechGateAggressionMax))
 }
 
+// noiseContext bundles the noise-floor and room-tone references the threshold
+// maths reads. floor is the full-file noise floor (dBFS); roomTonePeak and
+// roomToneCrest describe the noise profile extracted from the elected room-tone
+// region.
+type noiseContext struct {
+	floor         float64
+	roomTonePeak  float64
+	roomToneCrest float64
+}
+
+// speechContext bundles the elected speech-region references the threshold maths
+// reads. rms is the speech RMS level (dBFS); crest is its crest factor (dB).
+type speechContext struct {
+	rms   float64
+	crest float64
+}
+
 // calculateSpeechGateThresholdLegacy positions the threshold from the noise floor
 // (or room-tone peak for high-crest bleed). It is the low-separation guard:
 // reached only when calculateSpeechGateThreshold finds < 5 dB of speech-to-noise
 // separation (where the aggression maths is unreliable), or when no SpeechProfile
 // is elected. Speech sources reliably elect a profile, so the separation path is
-// the live one. roomTonePeakDB and roomToneCrestDB describe the noise profile
-// extracted from the elected room-tone region.
-func calculateSpeechGateThresholdLegacy(
-	noiseFloorDB, roomTonePeakDB, roomToneCrestDB float64,
-	ratio, lufsGap float64,
-) float64 {
+// the live one. noise.roomTonePeak and noise.roomToneCrest describe the noise
+// profile extracted from the elected room-tone region.
+func calculateSpeechGateThresholdLegacy(noise noiseContext, ratio, lufsGap float64) float64 {
 	var thresholdDB float64
 
-	usePeakReference := roomToneCrestDB > speechGateCrestFactorThreshold &&
-		roomTonePeakDB != 0 &&
+	usePeakReference := noise.roomToneCrest > speechGateCrestFactorThreshold &&
+		noise.roomTonePeak != 0 &&
 		lufsGap < lufsGapExtreme
 
 	if usePeakReference {
-		thresholdDB = roomTonePeakDB + 3.0
+		thresholdDB = noise.roomTonePeak + 3.0
 	} else {
 		minGapDB := speechGateTargetReductionDB / (1.0 - 1.0/ratio)
-		minGapThreshold := noiseFloorDB + minGapDB
+		minGapThreshold := noise.floor + minGapDB
 		thresholdDB = max(minGapThreshold, speechGateTargetThresholdDB)
 	}
 
@@ -322,25 +333,18 @@ func calculateSpeechGateThresholdLegacy(
 //     unreliable, so fall back to the noise-floor-based path
 //   - Peak reference used for high-crest noise (bleed, transients)
 //
-// roomTonePeakDB and roomToneCrestDB describe the noise profile extracted from
-// the elected room-tone region.
-func calculateSpeechGateThreshold(
-	noiseFloorDB, roomTonePeakDB, roomToneCrestDB float64,
-	ratio, lufsGap, lra float64,
-	speechRMS, speechCrest float64,
-) float64 {
+// noise.roomTonePeak and noise.roomToneCrest describe the noise profile extracted
+// from the elected room-tone region.
+func calculateSpeechGateThreshold(noise noiseContext, ratio, lufsGap, lra float64, speech speechContext) float64 {
 	// Primary path: aggression-based positioning (requires SpeechProfile)
-	if speechRMS < 0 && speechCrest > 0 {
-		quietSpeechEstimate := speechRMS - speechCrest
-		dynamicRange := speechCrest // Distance from quiet to RMS
-		separation := quietSpeechEstimate - noiseFloorDB
+	if speech.rms < 0 && speech.crest > 0 {
+		quietSpeechEstimate := speech.rms - speech.crest
+		dynamicRange := speech.crest // Distance from quiet to RMS
+		separation := quietSpeechEstimate - noise.floor
 
 		// Low-separation guard: too tight for reliable aggression maths
 		if separation < 5.0 {
-			return calculateSpeechGateThresholdLegacy(
-				noiseFloorDB, roomTonePeakDB, roomToneCrestDB,
-				ratio, lufsGap,
-			)
+			return calculateSpeechGateThresholdLegacy(noise, ratio, lufsGap)
 		}
 
 		aggression := calculateAggression(separation, lra)
@@ -349,8 +353,8 @@ func calculateSpeechGateThreshold(
 		thresholdDB := quietSpeechEstimate + (dynamicRange * aggression)
 
 		// Safety constraints
-		noiseFloorLimit := noiseFloorDB + speechGateThresholdNoiseMargin
-		speechRMSLimit := speechRMS - speechGateThresholdSpeechMargin
+		noiseFloorLimit := noise.floor + speechGateThresholdNoiseMargin
+		speechRMSLimit := speech.rms - speechGateThresholdSpeechMargin
 
 		if thresholdDB < noiseFloorLimit {
 			thresholdDB = noiseFloorLimit
@@ -365,10 +369,7 @@ func calculateSpeechGateThreshold(
 	}
 
 	// Fallback: legacy noise-floor-based approach (no SpeechProfile)
-	return calculateSpeechGateThresholdLegacy(
-		noiseFloorDB, roomTonePeakDB, roomToneCrestDB,
-		ratio, lufsGap,
-	)
+	return calculateSpeechGateThresholdLegacy(noise, ratio, lufsGap)
 }
 
 // calculateSpeechGateRatio determines ratio based on LRA (loudness range).
