@@ -256,11 +256,7 @@ func calculateFrameLevel(frame *ffmpeg.AVFrame) float64 {
 	levelDB := 20.0 * math.Log10(rms)
 
 	// Clamp to reasonable range for display (meter floor to 0 dB)
-	if levelDB < meterLevelFloorDB {
-		levelDB = meterLevelFloorDB
-	} else if levelDB > 0.0 {
-		levelDB = 0.0
-	}
+	levelDB = max(meterLevelFloorDB, min(0.0, levelDB))
 
 	return levelDB
 }
