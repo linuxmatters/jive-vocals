@@ -356,11 +356,7 @@ func calculateSpeechGateThreshold(noise noiseContext, ratio, lufsGap, lra float6
 		noiseFloorLimit := noise.floor + speechGateThresholdNoiseMargin
 		speechRMSLimit := speech.rms - speechGateThresholdSpeechMargin
 
-		if thresholdDB < noiseFloorLimit {
-			thresholdDB = noiseFloorLimit
-		} else if thresholdDB > speechRMSLimit {
-			thresholdDB = speechRMSLimit
-		}
+		thresholdDB = max(noiseFloorLimit, min(speechRMSLimit, thresholdDB))
 
 		// Additional safety: respect global limits
 		thresholdDB = max(speechGateThresholdMinDB, min(thresholdDB, speechGateThresholdMaxDB))

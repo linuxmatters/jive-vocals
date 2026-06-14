@@ -435,7 +435,7 @@ func lerpClamp(v, inLo, inHi, outLo, outHi float64) float64 {
 		return outLo
 	}
 	t := (v - inLo) / (inHi - inLo)
-	t = math.Max(0, math.Min(1, t))
+	t = max(0, min(1, t))
 	return outLo + t*(outHi-outLo)
 }
 
@@ -642,11 +642,6 @@ func qualityStars(n int) string {
 // clamped to [0,5]. Exported so the analysis-only console path (cmd/jivetalking)
 // renders the same Recording star bar as the TUI without duplicating the glyphs.
 func QualityStars(n int) string {
-	if n < 0 {
-		n = 0
-	}
-	if n > 5 {
-		n = 5
-	}
+	n = max(0, min(5, n))
 	return strings.Repeat("★", n) + strings.Repeat("☆", 5-n)
 }

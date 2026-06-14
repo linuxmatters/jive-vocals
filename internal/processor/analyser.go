@@ -535,11 +535,7 @@ func assignInputNoiseFloor(measurements *AudioMeasurements, acc *metadataAccumul
 		measurements.Noise.FloorSource = "ebur128_estimate"
 	}
 
-	if measurements.Noise.Floor < -90.0 {
-		measurements.Noise.Floor = -90.0
-	} else if measurements.Noise.Floor > -30.0 {
-		measurements.Noise.Floor = -30.0
-	}
+	measurements.Noise.Floor = max(-90.0, min(-30.0, measurements.Noise.Floor))
 }
 
 func assignInputMeasurementSuggestions(measurements *AudioMeasurements) {
@@ -548,12 +544,7 @@ func assignInputMeasurementSuggestions(measurements *AudioMeasurements) {
 
 	if measurements.Dynamics.RMSLevel != 0 && measurements.Noise.Floor != 0 {
 		measurements.Noise.ReductionHeadroom = measurements.Dynamics.RMSLevel - measurements.Noise.Floor
-		if measurements.Noise.ReductionHeadroom < 0 {
-			measurements.Noise.ReductionHeadroom = 0
-		}
-		if measurements.Noise.ReductionHeadroom > 60 {
-			measurements.Noise.ReductionHeadroom = 60
-		}
+		measurements.Noise.ReductionHeadroom = max(0, min(60, measurements.Noise.ReductionHeadroom))
 		return
 	}
 
@@ -746,15 +737,10 @@ func calculateAdaptiveSpeechGateThreshold(noiseFloor, rmsTrough float64) float64
 	// Calculate threshold: noise floor + (gap * percentage)
 	threshold := noiseFloor + (gap * offsetPercent)
 
-	// Safety bounds
-	if threshold < noiseFloor+3.0 {
-		// Always at least 3dB above noise floor
-		threshold = noiseFloor + 3.0
-	}
-	if threshold > -35.0 {
-		// Never gate above -35dBFS (would cut quiet speech)
-		threshold = -35.0
-	}
+	// Safety bounds: always at least 3dB above noise floor,
+	// never gate above -35dBFS (would cut quiet speech). The -35dBFS
+	// ceiling applies last and wins if the bounds invert (high noise floor).
+	threshold = min(-35.0, max(noiseFloor+3.0, threshold))
 
 	return threshold
 }
