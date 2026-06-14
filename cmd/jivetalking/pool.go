@@ -358,7 +358,7 @@ func emitProcessingReport(env poolEnv, inputPath string, result *processor.Proce
 		stem:        outputStem,
 		stages:      processor.ProcessingSpectrogramStages,
 		sidecarMeas: result.Measurements,
-		timings:     buildProcessingTimings(t.fileStart, ph.timings(t.pass2), result),
+		timings:     ph.timings(t.pass2, t.fileStart, result),
 		diagnostics: diagnostics,
 		renderCtx:   env.ctx,
 		renderSem:   render.sem,

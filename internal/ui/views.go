@@ -20,7 +20,7 @@ func renderProcessingView(m Model) string {
 	var b strings.Builder
 
 	// Header (title only)
-	b.WriteString(renderHeader())
+	b.WriteString(cli.RenderTitle())
 	b.WriteString("\n\n")
 
 	// Overall progress box, directly under the title
@@ -31,13 +31,6 @@ func renderProcessingView(m Model) string {
 	b.WriteString(renderFileQueue(m, m.progress))
 
 	return b.String()
-}
-
-// renderHeader renders the application header. The title word is drawn as a
-// per-letter cyan→sky-blue gradient via the shared cli.RenderTitle() helper, so
-// the TUI and the --version banner share one wordmark implementation.
-func renderHeader() string {
-	return cli.RenderTitle()
 }
 
 // renderFileQueue renders the list of files with their status
@@ -507,7 +500,7 @@ func FinalSummary(m Model) string {
 func renderCompletionSummary(m Model) string {
 	var b strings.Builder
 
-	b.WriteString(renderHeader())
+	b.WriteString(cli.RenderTitle())
 	b.WriteString("\n\n")
 
 	b.WriteString(renderOverallProgress(m))
@@ -565,6 +558,20 @@ func doneBoxBeforeAfterRow(before, after float64, unit string, delta float64) st
 	return fmt.Sprintf("%s → %s %s  Δ %s", beforeCol, afterCol, unitCol, deltaCol)
 }
 
+// doneBoxOptionalBeforeAfter returns the value portion of a done-box row that
+// shows a before→after comparison only when a before figure is available. When
+// haveBefore is true it renders the full before→after grammar via
+// doneBoxBeforeAfterRow with a signed Δ; otherwise it shows the output figure
+// alone rather than a misleading "0.0 →". True peak and Dynamics share this
+// guard (haveBefore = file.Summary.ChainReady); Loudness always has a before.
+func doneBoxOptionalBeforeAfter(unit string, before, after float64, haveBefore bool) string {
+	if haveBefore {
+		delta := after - before
+		return doneBoxBeforeAfterRow(before, after, unit, delta)
+	}
+	return fmt.Sprintf("%.1f %s", after, unit)
+}
+
 // renderDoneBox renders a completed file as a filename line above an
 // indigo-bordered box with seven labelled rows: Time, Loudness, True peak,
 // Dynamics, Noise floor, Recording, and Processed. The loudness-family
@@ -617,29 +624,15 @@ func renderDoneBox(file FileProgress) string {
 	// True peak row: input → output true peak (㏈TP), both ebur128 peak=true so the
 	// before→after is honest. The input TP comes from the Pass-1 Summary; show the
 	// output alone if the Summary is empty rather than a misleading "0.0 →".
-	if file.Summary.ChainReady {
-		tpDelta := file.OutputTP - file.Summary.TruePeakDBTP
-		tpValue := doneBoxBeforeAfterRow(file.Summary.TruePeakDBTP, file.OutputTP, unitDBTP, tpDelta)
-		fmt.Fprintf(&content, "%s%s\n",
-			labelStyle.Render("True peak"), valueStyle.Render(tpValue))
-	} else {
-		tpValue := fmt.Sprintf("%.1f %s", file.OutputTP, unitDBTP)
-		fmt.Fprintf(&content, "%s%s\n",
-			labelStyle.Render("True peak"), valueStyle.Render(tpValue))
-	}
+	tpValue := doneBoxOptionalBeforeAfter(unitDBTP, file.Summary.TruePeakDBTP, file.OutputTP, file.Summary.ChainReady)
+	fmt.Fprintf(&content, "%s%s\n",
+		labelStyle.Render("True peak"), valueStyle.Render(tpValue))
 
 	// Dynamics row: input → output loudness range (LU), both ebur128/loudnorm LU, so
 	// the range tightening is honest. Same Summary-empty guard as True peak.
-	if file.Summary.ChainReady {
-		lraDelta := file.OutputLRA - file.Summary.InputLRA
-		lraValue := doneBoxBeforeAfterRow(file.Summary.InputLRA, file.OutputLRA, "LU", lraDelta)
-		fmt.Fprintf(&content, "%s%s\n",
-			labelStyle.Render("Dynamics"), valueStyle.Render(lraValue))
-	} else {
-		lraValue := fmt.Sprintf("%.1f LU", file.OutputLRA)
-		fmt.Fprintf(&content, "%s%s\n",
-			labelStyle.Render("Dynamics"), valueStyle.Render(lraValue))
-	}
+	lraValue := doneBoxOptionalBeforeAfter("LU", file.Summary.InputLRA, file.OutputLRA, file.Summary.ChainReady)
+	fmt.Fprintf(&content, "%s%s\n",
+		labelStyle.Render("Dynamics"), valueStyle.Render(lraValue))
 
 	// Noise row: the output room-tone noise floor in dBFS. A lower (more negative)
 	// floor is cleaner, the same direction the quality stars move, so the number and

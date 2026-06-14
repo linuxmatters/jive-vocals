@@ -126,11 +126,6 @@ func formatMetricLUFS(value float64, decimals int) string {
 	return formatFloat(value, decimals)
 }
 
-// formatMetricSpectral formats a spectral metric, delegating to formatMetric.
-func formatMetricSpectral(value float64, decimals int) string {
-	return formatMetric(value, decimals)
-}
-
 // formatMetricSigned formats a value with an explicit sign for positives (e.g.
 // "+2.5"), and the placeholder for NaN/Inf.
 func formatMetricSigned(value float64, decimals int) string {

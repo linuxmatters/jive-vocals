@@ -29,10 +29,6 @@ var (
 	helpArgStyle = lipgloss.NewStyle().
 			Foreground(ColorCyan).
 			Bold(true)
-
-	helpDefaultStyle = lipgloss.NewStyle().
-				Foreground(ColorMuted).
-				Italic(true)
 )
 
 // StyledHelpPrinter creates a custom help printer with Lipgloss styling
@@ -82,10 +78,6 @@ func StyledHelpPrinter() func(kong.HelpOptions, *kong.Context) error {
 					sb.WriteString("  ")
 					sb.WriteString(flag.help)
 				}
-				if flag.defaultVal != "" {
-					sb.WriteString(" ")
-					sb.WriteString(helpDefaultStyle.Render("(default: " + flag.defaultVal + ")"))
-				}
 				sb.WriteString("\n")
 			}
 		}
@@ -102,9 +94,8 @@ type argument struct {
 }
 
 type flag struct {
-	flags      string
-	help       string
-	defaultVal string
+	flags string
+	help  string
 }
 
 func getArguments(ctx *kong.Context) []argument {
@@ -147,9 +138,8 @@ func getFlags(ctx *kong.Context) []flag {
 		}
 
 		flags = append(flags, flag{
-			flags:      flagStr,
-			help:       f.Help,
-			defaultVal: f.FormatPlaceHolder(),
+			flags: flagStr,
+			help:  f.Help,
 		})
 	}
 

@@ -151,9 +151,7 @@ func TestBuildFilterSpec(t *testing.T) {
 	})
 
 	t.Run("default pass 2 chain omits pass 4 adeclick", func(t *testing.T) {
-		config := DefaultFilterConfig()
-
-		spec := config.BuildFilterSpec()
+		spec := deriveEffectiveFilterConfig(DefaultFilterConfig()).BuildFilterSpec()
 
 		if strings.Contains(spec, "adeclick=") {
 			t.Errorf("BuildFilterSpec() emitted Pass 4 adeclick in Pass 2 chain: %s", spec)

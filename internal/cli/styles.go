@@ -47,20 +47,20 @@ var (
 // Styles
 var (
 	// Error message style
-	ErrorStyle = lipgloss.NewStyle().
+	errorStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(ColorRed)
 
 	// Warning message style
-	WarningStyle = lipgloss.NewStyle().
+	warningStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(ColorOrange)
 
 	// Key-value pair styles
-	KeyStyle = lipgloss.NewStyle().
+	keyStyle = lipgloss.NewStyle().
 			Foreground(ColorMuted)
 
-	ValueStyle = lipgloss.NewStyle().
+	valueStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(ColorText)
 )
@@ -95,16 +95,16 @@ func RenderTitle() string { return renderTitleOnce() }
 // PrintVersion prints version information
 func PrintVersion(version string) {
 	lipgloss.Println(RenderTitle())
-	lipgloss.Printf("%s %s\n", KeyStyle.Render("Version:"), ValueStyle.Render(version))
+	lipgloss.Printf("%s %s\n", keyStyle.Render("Version:"), valueStyle.Render(version))
 	lipgloss.Println()
 }
 
 // PrintError prints an error message
 func PrintError(message string) {
-	lipgloss.Fprintf(os.Stderr, "%s %s\n", ErrorStyle.Render("Error:"), message)
+	lipgloss.Fprintf(os.Stderr, "%s %s\n", errorStyle.Render("Error:"), message)
 }
 
 // PrintWarning prints a warning message
 func PrintWarning(message string) {
-	lipgloss.Fprintf(os.Stderr, "%s %s\n", WarningStyle.Render("Warning:"), message)
+	lipgloss.Fprintf(os.Stderr, "%s %s\n", warningStyle.Render("Warning:"), message)
 }

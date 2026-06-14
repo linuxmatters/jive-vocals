@@ -25,7 +25,7 @@ func renderThrough(profile colorprofile.Profile, styled string) string {
 
 func TestStyledOutputDownsamplesNoTruecolorLeak(t *testing.T) {
 	styled := helpFlagStyle.Render("--debug") +
-		ErrorStyle.Render("Error:")
+		errorStyle.Render("Error:")
 
 	if !strings.Contains(styled, "38;2;") {
 		t.Fatalf("precondition failed: styles did not emit truecolor; got %q", styled)
@@ -52,7 +52,7 @@ func TestStyledOutputDownsamplesNoTruecolorLeak(t *testing.T) {
 }
 
 func TestStyledOutputStripsColorButKeepsTextWhenNoTTY(t *testing.T) {
-	styled := ErrorStyle.Render("Error:")
+	styled := errorStyle.Render("Error:")
 	out := renderThrough(colorprofile.NoTTY, styled)
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("NoTTY profile left escape sequences: %q", out)

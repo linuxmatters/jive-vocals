@@ -10,6 +10,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/linuxmatters/jivetalking/internal/cli"
 	"github.com/linuxmatters/jivetalking/internal/processor"
 )
 
@@ -18,7 +19,7 @@ import (
 // gradient inserts ANSI escapes between letters, so strip them before matching
 // the contiguous title word.
 func TestHeaderHasNoSubtitle(t *testing.T) {
-	header := renderHeader()
+	header := cli.RenderTitle()
 	plain := ansi.Strip(header)
 
 	if !strings.Contains(plain, "Jivetalking") {
@@ -67,7 +68,7 @@ func headerColors(s string) [][3]int {
 // per-letter gradient (more than one distinct foreground across the letters)
 // and never uses the brand red foreground.
 func TestHeaderIsGradient(t *testing.T) {
-	header := renderHeader()
+	header := cli.RenderTitle()
 
 	colors := headerColors(header)
 	if len(colors) < 2 {

@@ -89,26 +89,13 @@ func ComputeQualityScore(result *ProcessingResult) QualityScore {
 // scoreLoudness returns 1.0 within the tight tolerance, falling linearly to 0.0
 // at the loose tolerance.
 func scoreLoudness(outputLUFS, target float64) float64 {
-	dev := math.Abs(outputLUFS - target)
-	if dev <= qualityLoudnessTightTol {
-		return 1.0
-	}
-	if dev >= qualityLoudnessLooseTol {
-		return 0.0
-	}
-	return 1.0 - (dev-qualityLoudnessTightTol)/(qualityLoudnessLooseTol-qualityLoudnessTightTol)
+	return linearScore(math.Abs(outputLUFS-target), qualityLoudnessTightTol, qualityLoudnessLooseTol)
 }
 
 // scoreTruePeak returns 1.0 at or below the safe ceiling, falling linearly to
 // 0.0 as the peak reaches 0 dBTP (clipping).
 func scoreTruePeak(tp float64) float64 {
-	if tp <= qualityTPSafe {
-		return 1.0
-	}
-	if tp >= qualityTPHot {
-		return 0.0
-	}
-	return 1.0 - (tp-qualityTPSafe)/(qualityTPHot-qualityTPSafe)
+	return linearScore(tp, qualityTPSafe, qualityTPHot)
 }
 
 // scoreNoiseCleanliness rates the cleanliness of the *output* room tone, not the
@@ -124,24 +111,24 @@ func scoreNoiseCleanliness(result *ProcessingResult) float64 {
 			return 0.0
 		}
 	}
-	// Digital silence in the final room tone is maximally clean.
-	if math.IsInf(floor, -1) || floor <= qualityNoiseCleanFloor {
+	// Digital silence in the final room tone is maximally clean. This guard must
+	// stay ahead of linearScore, which does not special-case -Inf.
+	if math.IsInf(floor, -1) {
 		return 1.0
 	}
-	if floor >= qualityNoiseDirtyFloor {
-		return 0.0
-	}
-	return (qualityNoiseDirtyFloor - floor) / (qualityNoiseDirtyFloor - qualityNoiseCleanFloor)
+	return linearScore(floor, qualityNoiseCleanFloor, qualityNoiseDirtyFloor)
 }
 
 // outputTruePeak resolves the real Pass 4 output true peak in dBTP. Prefers the
 // normalisation result; falls back to the final output measurements.
 func outputTruePeak(result *ProcessingResult) float64 {
-	if result.NormResult != nil && !result.NormResult.Skipped {
-		return result.NormResult.OutputTP
-	}
-	if result.NormResult != nil && result.NormResult.FinalMeasurements != nil {
-		return result.NormResult.FinalMeasurements.Loudness.OutputTP
+	if result.NormResult != nil {
+		if !result.NormResult.Skipped {
+			return result.NormResult.OutputTP
+		}
+		if result.NormResult.FinalMeasurements != nil {
+			return result.NormResult.FinalMeasurements.Loudness.OutputTP
+		}
 	}
 	if result.FilteredMeasurements != nil {
 		return result.FilteredMeasurements.Loudness.OutputTP
