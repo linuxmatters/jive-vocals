@@ -209,8 +209,7 @@ func ProcessAudio(ctx context.Context, inputPath string, config *BaseFilterConfi
 	lufsValue := lufsFilenameValue(result.OutputLUFS)
 	finalPath := generateLUFSOutputPath(inputPath, lufsValue)
 	if err := renameNoClobber(outputPath, finalPath); err != nil {
-		var existsErr *DestinationExistsError
-		if errors.As(err, &existsErr) {
+		if existsErr, ok := errors.AsType[*DestinationExistsError](err); ok {
 			return nil, fmt.Errorf("failed to publish output, destination already exists: %s: %w", existsErr.Path, ErrOutputExists)
 		}
 		return nil, fmt.Errorf("failed to publish output: %w", err)

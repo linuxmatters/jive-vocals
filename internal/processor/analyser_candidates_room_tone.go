@@ -2,7 +2,6 @@ package processor
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 	"time"
 )
@@ -327,56 +326,4 @@ func segmentLongRoomToneRegion(region RoomToneRegion) []RoomToneRegion {
 	}
 
 	return segments
-}
-
-// extractNoiseProfileFromIntervals creates a NoiseProfile using pre-collected interval data.
-// This avoids re-reading the audio file - all measurements come from Pass 1's interval samples.
-// Returns nil if no intervals fall within the region.
-func extractNoiseProfileFromIntervals(region *RoomToneRegion, intervals []IntervalSample) *NoiseProfile {
-	if region == nil {
-		return nil
-	}
-
-	regionIntervals := getIntervalsInRange(intervals, region.Start, region.Start+region.Duration)
-	if len(regionIntervals) == 0 {
-		return nil
-	}
-
-	var rmsSum, peakMax float64
-	var entropySum, centroidSum, flatnessSum, kurtosisSum float64
-	peakMax = -120.0
-
-	for _, interval := range regionIntervals {
-		rmsSum += interval.RMSLevel
-		if interval.PeakLevel > peakMax {
-			peakMax = interval.PeakLevel
-		}
-		entropySum += interval.Spectral.Entropy
-		centroidSum += interval.Spectral.Centroid
-		flatnessSum += interval.Spectral.Flatness
-		kurtosisSum += interval.Spectral.Kurtosis
-	}
-
-	n := float64(len(regionIntervals))
-	avgRMS := rmsSum / n
-
-	profile := &NoiseProfile{
-		Start:              region.Start,
-		Duration:           region.Duration,
-		MeasuredNoiseFloor: avgRMS,
-		PeakLevel:          peakMax,
-		CrestFactor:        peakMax - avgRMS,
-		Entropy:            entropySum / n,
-		SpectralCentroid:   centroidSum / n,
-		SpectralFlatness:   flatnessSum / n,
-		SpectralKurtosis:   kurtosisSum / n,
-	}
-
-	if region.Duration < idealDurationMin {
-		profile.ExtractionWarning = fmt.Sprintf("using short room tone region (%.1fs) - ideally need >=%ds", region.Duration.Seconds(), int(idealDurationMin.Seconds()))
-	} else if region.Duration > idealDurationMax {
-		profile.ExtractionWarning = fmt.Sprintf("using long room tone region (%.1fs) - ideally <=%ds", region.Duration.Seconds(), int(idealDurationMax.Seconds()))
-	}
-
-	return profile
 }

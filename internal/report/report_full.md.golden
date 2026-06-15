@@ -74,11 +74,11 @@
 | Metric | Definition | Value |
 | --- | --- | --- |
 | Noise floor | Elected noise floor; overwritten by the room-tone RMS when a profile is elected. (dBFS) | -84.58 |
-| Floor source | Origin of the elected floor: astats, rms_estimate, ebur128_estimate, or silence_profile. | silence_profile |
+| Floor source | Origin of the elected floor: astats, rms_estimate, ebur128_estimate, or vad_percentile. | vad_percentile |
 | Pre-scan floor | Noise floor estimated from the per-interval data, feeding room-tone detection. (dBFS) | -83.60 |
 | astats floor | FFmpeg astats noise-floor estimate, the minimum local peak over the sliding window. (dBFS) | - |
 | Room-tone detect level | Adaptive threshold below which an interval is treated as a room-tone candidate. (dBFS) | -82.60 |
-| Voice activated | True when at least 95% of room-tone candidates are digital silence. | no |
+| Voice activated | True when the low-cluster (below-split) interval fraction is high, the sparse-speech signature. | no |
 | Reduction headroom | Gap in dB between the noise floor and quiet speech. (dB) | 40.12 |
 
 ## Regions
