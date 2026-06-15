@@ -47,7 +47,7 @@ func populatedAudioMeasurements() *AudioMeasurements {
 		NoiseFloorCount: 500, BitDepth: 16, NumberOfSamples: 480000,
 	}
 	m.Noise = NoiseMetrics{
-		Floor: -60, FloorSource: "silence_profile", FloorPrescan: -58, FloorAstats: -62,
+		Floor: -60, FloorSource: "vad_percentile", FloorPrescan: -58, FloorAstats: -62,
 		RoomToneDetectLevel: -59, VoiceActivated: false, ReductionHeadroom: 38,
 	}
 

@@ -266,7 +266,7 @@ var Definitions = map[string]Definition{
 	"floor_source": {
 		Label: "Floor source",
 		Unit:  "",
-		Gloss: "Origin of the elected floor: astats, rms_estimate, ebur128_estimate, or silence_profile.",
+		Gloss: "Origin of the elected floor: astats, rms_estimate, ebur128_estimate, or vad_percentile.",
 	},
 	"floor_prescan_dbfs": {
 		Label: "Pre-scan floor",
@@ -286,7 +286,7 @@ var Definitions = map[string]Definition{
 	"voice_activated": {
 		Label: "Voice activated",
 		Unit:  "",
-		Gloss: "True when at least 95% of room-tone candidates are digital silence.",
+		Gloss: "True when the low-cluster (below-split) interval fraction is high, the sparse-speech signature.",
 	},
 	"reduction_headroom_db": {
 		Label: "Reduction headroom",

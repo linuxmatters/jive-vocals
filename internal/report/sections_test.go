@@ -293,7 +293,7 @@ func regionsRecord() *processor.RunRecord {
 	m := &processor.AudioMeasurements{
 		Noise: processor.NoiseMetrics{
 			Floor:               -84.58,
-			FloorSource:         "silence_profile",
+			FloorSource:         "vad_percentile",
 			FloorPrescan:        -83.60,
 			FloorAstats:         math.NaN(),
 			RoomToneDetectLevel: -82.60,
@@ -326,8 +326,8 @@ func TestRenderNoiseFloor(t *testing.T) {
 		"## Noise Floor",
 		"| Metric | Definition | Value |",
 		"Noise floor",
-		"-84.58",          // floor_dbfs
-		"silence_profile", // floor_source string
+		"-84.58",         // floor_dbfs
+		"vad_percentile", // floor_source string
 		"Reduction headroom",
 		"40.12",
 		"no", // voice_activated bool

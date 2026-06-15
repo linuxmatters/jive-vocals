@@ -210,11 +210,11 @@ type DynamicsMetrics struct {
 // the voice-activated flag, and the noise-reduction headroom.
 type NoiseMetrics struct {
 	Floor               float64 `json:"floor_dbfs"`                  // Derived noise floor (dBFS), three-tier; overwritten by room-tone profile if elected
-	FloorSource         string  `json:"floor_source"`                // Source of Floor: "astats" / "rms_estimate" / "ebur128_estimate" / "silence_profile"
+	FloorSource         string  `json:"floor_source"`                // Source of Floor: "astats" / "rms_estimate" / "ebur128_estimate" / "vad_percentile"
 	FloorPrescan        float64 `json:"floor_prescan_dbfs"`          // Noise floor estimated from interval data (dBFS)
 	FloorAstats         float64 `json:"floor_astats_dbfs"`           // FFmpeg astats noise floor estimate (dBFS)
 	RoomToneDetectLevel float64 `json:"room_tone_detect_level_dbfs"` // Adaptive room tone detection threshold (dBFS)
-	VoiceActivated      bool    `json:"voice_activated"`             // True when >= 95% of room tone candidates are digital silence
+	VoiceActivated      bool    `json:"voice_activated"`             // True when the low-cluster (below-split) interval fraction is high (sparse speech)
 	ReductionHeadroom   float64 `json:"reduction_headroom_db"`       // dB gap between noise and quiet speech
 }
 
@@ -346,16 +346,16 @@ func AnalyseAudio(ctx stdcontext.Context, filename string, config *BaseFilterCon
 	}
 
 	intervals := collection.intervals
-	silenceIntervals := collection.silenceIntervals
-	silMedians := collection.silenceMedians
 
 	measurements, err := buildInputMeasurements(filename, collection, config, defaultNoiseFloor)
 	if err != nil {
 		return nil, err
 	}
 
-	noiseSelection := selectNoiseProfile(measurements, intervals, silenceIntervals, silMedians, config.logger)
-	selectSpeechProfile(measurements, intervals, noiseSelection, config.logger)
+	// Unified Pass 1 voice-activity detector: one bimodal split feeds both the
+	// elected SpeechProfile and the NoiseProfile / Noise.Floor. The pre-scan floor
+	// anchors the split clamp; the hop and axis are the single configurable choices.
+	detectVoiceActivity(measurements, intervals, measurements.Noise.FloorPrescan, analysisIntervalHop, axisMomentaryLUFS, config.logger)
 
 	// Measure body/sibilant band RMS over the elected speech region for the
 	// de-esser engagement signal. Region-scoped second decode (no asplit/multi-sink
@@ -599,7 +599,6 @@ func collectAnalysisFrames(ctx stdcontext.Context, filename string, config *Base
 
 	acc := &metadataAccumulators{}
 
-	const intervalDuration = 250 * time.Millisecond
 	var intervals []IntervalSample
 	var silenceIntervals []IntervalSample
 	var intervalAcc intervalAccumulator
@@ -625,7 +624,7 @@ func collectAnalysisFrames(ctx stdcontext.Context, filename string, config *Base
 			inputSamplesProcessed += int64(inputFrame.NbSamples())
 			intervalAcc.addFrameRMSAndPeak(inputFrame)
 
-			if inputFrameTime-intervalStartTime >= intervalDuration {
+			if inputFrameTime-intervalStartTime >= analysisIntervalHop {
 				finalised := intervalAcc.finalize(intervalStartTime)
 				intervals = append(intervals, finalised)
 				if config.Analysis.RoomToneScanDuration > 0 && intervalStartTime < config.Analysis.RoomToneScanDuration {

@@ -3,7 +3,6 @@ package processor
 import (
 	"fmt"
 	"math"
-	"slices"
 	"strings"
 	"time"
 )
@@ -24,9 +23,10 @@ import (
 //   - Duration 8-18s - sufficient data without absorbing content changes
 const (
 	// Duration thresholds
-	minimumSilenceDuration = 8 * time.Second  // Minimum 8s to avoid inter-word gaps
-	idealDurationMin       = 8 * time.Second  // Ideal range lower bound
-	idealDurationMax       = 18 * time.Second // Ideal range upper bound
+	minimumSilenceDuration = 8 * time.Second // Minimum 8s to avoid inter-word gaps
+	// idealDurationMin/idealDurationMax moved to analyser_vad.go alongside
+	// extractNoiseProfileFromIntervals; still read here by calculateDurationScore
+	// until that path is deleted (Phase 8).
 
 	// Long region segmentation: break up long room tone regions to find cleanest subsection
 	// Intentional room tone may be embedded within a longer quiet period (e.g., quiet lead-up + room tone)
@@ -515,31 +515,6 @@ func exceedsRMSDispersion(intervals []IntervalSample) (maxDeviationMADs float64,
 	}
 
 	return maxDeviationMADs, maxDeviationMADs > roomToneDispersionMADs
-}
-
-// medianFloat64 returns the median of the values. It sorts a copy, leaving the input
-// untouched. For even-length input it returns the upper-middle element (matching the
-// existing percentile convention in computeSilenceMedians).
-func medianFloat64(values []float64) float64 {
-	sorted := slices.Clone(values)
-	slices.Sort(sorted)
-	return sorted[len(sorted)/2]
-}
-
-// medianAndMAD returns the median of values and their median absolute deviation about that
-// median. Both are scale-invariant robust statistics: the MAD is the median of |v - median|.
-// Returns (0, 0) for an empty input. Used by the population-relative crest-outlier crosstalk
-// gate (and mirrors the per-interval MAD logic in exceedsRMSDispersion).
-func medianAndMAD(values []float64) (median, mad float64) {
-	if len(values) == 0 {
-		return 0, 0
-	}
-	median = medianFloat64(values)
-	deviations := make([]float64, len(values))
-	for i, v := range values {
-		deviations[i] = math.Abs(v - median)
-	}
-	return median, medianFloat64(deviations)
 }
 
 // calculateSpectralScore combines spectral metrics into a 0-1 score.
