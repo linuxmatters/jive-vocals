@@ -206,8 +206,8 @@ func TestRunRecord_RegionsNestedShape(t *testing.T) {
 
 	// Old flat keys must NOT appear directly under regions.
 	for _, flat := range []string{
-		"room_tone_candidates", "speech_candidates", "noise_profile",
-		"speech_profile", "room_tone_regions", "speech_regions", "interval_samples",
+		"speech_candidates", "noise_profile",
+		"speech_profile", "speech_regions", "interval_samples",
 	} {
 		if _, present := regions[flat]; present {
 			t.Errorf("regions must not emit old flat key %q under nested shape", flat)
@@ -224,14 +224,21 @@ func TestRunRecord_RegionsNestedShape(t *testing.T) {
 	}
 
 	// Full candidate arrays moved to the sidecar (§9.3); the inline record keeps
-	// elected + a candidates_summary + samples.
-	for _, key := range []string{"elected", "candidates_summary", "samples"} {
+	// elected + samples for both kinds, plus a candidates_summary for speech only
+	// (room tone carries no candidate summary).
+	for _, key := range []string{"elected", "samples"} {
 		if _, present := rt[key]; !present {
 			t.Errorf("regions.room_tone missing %q", key)
 		}
 		if _, present := sp[key]; !present {
 			t.Errorf("regions.speech missing %q", key)
 		}
+	}
+	if _, present := sp["candidates_summary"]; !present {
+		t.Error("regions.speech missing \"candidates_summary\"")
+	}
+	if _, present := rt["candidates_summary"]; present {
+		t.Error("regions.room_tone must not emit \"candidates_summary\"")
 	}
 	// The full candidate arrays must NOT be inline.
 	if _, present := rt["candidates"]; present {

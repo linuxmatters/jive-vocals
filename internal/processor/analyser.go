@@ -87,38 +87,6 @@ type RegionSample struct {
 	SamplePeak    float64 `json:"sample_peak_dbfs"` // dBFS, max sample peak across region
 }
 
-// RoomToneCandidateMetrics contains measurements for evaluating room tone region candidates.
-// These metrics are collected before final selection to enable multi-metric scoring.
-// Includes all measurements available from IntervalSample for future filter tuning.
-type RoomToneCandidateMetrics struct {
-	Region RoomToneRegion `json:"region"` // The room tone region being evaluated
-
-	// Shared amplitude/spectral/loudness subset (promoted by anonymous embed).
-	RegionSample
-
-	// Warning flags (populated during scoring)
-	TransientWarning string `json:"transient_warning,omitempty"` // Warning if danger zone signature detected
-
-	// Scoring (computed after measurement)
-	Score float64 `json:"score"` // Composite score for candidate ranking
-
-	// StabilityScore measures the temporal consistency of the room tone region (0-1).
-	// Higher scores indicate more stable measurements across the region, suggesting
-	// intentionally-recorded room tone rather than accidental gaps between speech.
-	// Calculated from RMS variance and average spectral flux across intervals.
-	StabilityScore float64 `json:"stability_score"`
-
-	// Refinement metadata (populated when pre-scoring refinement trims the candidate)
-	OriginalStart    time.Duration `json:"original_start,omitempty"`    // Original candidate start before refinement
-	OriginalDuration time.Duration `json:"original_duration,omitempty"` // Original candidate duration before refinement
-	WasRefined       bool          `json:"was_refined,omitempty"`       // True if region was refined from a longer candidate
-
-	// intervals holds the constituent 250 ms interval samples for this candidate.
-	// Unexported and excluded from the report JSON contract; used by the RMS-dispersion
-	// (MAD) transient gate during scoring to reject regions with spiking sub-intervals.
-	intervals []IntervalSample
-}
-
 // SpeechRegion represents a detected continuous speech period in the audio.
 // Used for extracting representative speech measurements for adaptive tuning.
 type SpeechRegion struct {
@@ -219,24 +187,22 @@ type NoiseMetrics struct {
 }
 
 // RegionMetrics is the input-only regions domain block (8.1). It holds the
-// per-250ms interval samples, the detected room-tone/speech regions and scored
+// per-250ms interval samples, the detected speech regions and scored speech
 // candidates, the extracted noise profile, and the elected speech profile.
 type RegionMetrics struct {
-	RoomToneRegions    []RoomToneRegion           `json:"room_tone_regions,omitempty"`    // Detected room tone regions
-	IntervalSamples    []IntervalSample           `json:"interval_samples,omitempty"`     // Per-interval measurements
-	RoomToneCandidates []RoomToneCandidateMetrics `json:"room_tone_candidates,omitempty"` // All evaluated candidates with scores
-	SpeechRegions      []SpeechRegion             `json:"speech_regions,omitempty"`       // Detected speech regions
-	SpeechCandidates   []SpeechCandidateMetrics   `json:"speech_candidates,omitempty"`    // All evaluated candidates with scores
-	SpeechProfile      *SpeechCandidateMetrics    `json:"speech_profile,omitempty"`       // Elected best speech candidate (pointer into SpeechCandidates)
-	NoiseProfile       *NoiseProfile              `json:"noise_profile,omitempty"`        // Metrics from elected room tone region; nil if extraction failed
+	IntervalSamples  []IntervalSample         `json:"interval_samples,omitempty"`  // Per-interval measurements
+	SpeechRegions    []SpeechRegion           `json:"speech_regions,omitempty"`    // Detected speech regions
+	SpeechCandidates []SpeechCandidateMetrics `json:"speech_candidates,omitempty"` // All evaluated candidates with scores
+	SpeechProfile    *SpeechCandidateMetrics  `json:"speech_profile,omitempty"`    // Elected best speech candidate (pointer into SpeechCandidates)
+	NoiseProfile     *NoiseProfile            `json:"noise_profile,omitempty"`     // Metrics from elected room tone region; nil if extraction failed
 
-	// ElectedRoomToneSample is the embedded RegionSample of the elected room-tone
-	// candidate (the candidate whose region matches NoiseProfile). NoiseProfile is a
-	// slimmer struct without a RegionSample, so the record cannot reach the elected
-	// candidate's bare amplitude/spectral/loudness sample through it. This captures
-	// that already-computed sample at election (no new measurement, no DSP change) so
-	// the run record can wire regions.room_tone.samples.input. json:"-" keeps it out
-	// of the flat RegionMetrics marshalling; only the record assembly reads it.
+	// ElectedRoomToneSample is the RegionSample measured from the elected room-tone
+	// (low-cluster) region. NoiseProfile is a slimmer struct without a RegionSample,
+	// so the record cannot reach the elected region's bare amplitude/spectral/loudness
+	// sample through it. This captures that already-computed sample at election (no
+	// new measurement, no DSP change) so the run record can wire
+	// regions.room_tone.samples.input. json:"-" keeps it out of the flat
+	// RegionMetrics marshalling; only the record assembly reads it.
 	ElectedRoomToneSample *RegionSample `json:"-"`
 }
 

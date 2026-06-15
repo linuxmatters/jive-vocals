@@ -99,13 +99,6 @@
 | Spectral flatness | Geometric over arithmetic mean of the elected region's magnitudes, a 0-1 ratio. | 0.8246 |
 | Spectral kurtosis | Fourth standardised spectral moment of the elected region. | 1.8350 |
 
-**Candidates**
-
-| Metric | Definition | Value |
-| --- | --- | --- |
-| Evaluated count | Number of region candidates evaluated. | 2 |
-| Score | Composite candidate-ranking score of the elected region. | 0.9700 |
-
 **Samples**
 
 | Metric | Definition | Input |

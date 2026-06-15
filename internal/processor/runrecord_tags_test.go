@@ -55,13 +55,9 @@ func populatedAudioMeasurements() *AudioMeasurements {
 		RMSLevel: -20, PeakLevel: -3, CrestFactor: 13, Spectral: spectral,
 		MomentaryLUFS: -19, ShortTermLUFS: -18, TruePeak: -2, SamplePeak: -2.5,
 	}
+	electedRoomTone := sampleBlock
 	m.Regions = RegionMetrics{
-		RoomToneRegions: []RoomToneRegion{{Start: 0, End: 1 * time.Second, Duration: 1 * time.Second}},
-		SpeechRegions:   []SpeechRegion{{Start: 30 * time.Second, End: 40 * time.Second, Duration: 10 * time.Second}},
-		RoomToneCandidates: []RoomToneCandidateMetrics{{
-			Region:       RoomToneRegion{Start: 2 * time.Second, End: 12 * time.Second, Duration: 10 * time.Second},
-			RegionSample: sampleBlock, Score: 5, StabilityScore: 0.9,
-		}},
+		SpeechRegions: []SpeechRegion{{Start: 30 * time.Second, End: 40 * time.Second, Duration: 10 * time.Second}},
 		SpeechCandidates: []SpeechCandidateMetrics{{
 			Region:       SpeechRegion{Start: 30 * time.Second, End: 40 * time.Second, Duration: 10 * time.Second},
 			RegionSample: sampleBlock, VoicingDensity: 0.8,
@@ -74,9 +70,9 @@ func populatedAudioMeasurements() *AudioMeasurements {
 		},
 	}
 	m.Regions.SpeechProfile = &m.Regions.SpeechCandidates[0]
-	// Elected room-tone sample captured at election (FIX 1): the elected candidate's
-	// embedded RegionSample, reachable by the record for regions.room_tone.samples.input.
-	m.Regions.ElectedRoomToneSample = &m.Regions.RoomToneCandidates[0].RegionSample
+	// Elected room-tone sample measured from the elected low-cluster region; backs
+	// regions.room_tone.samples.input on the record.
+	m.Regions.ElectedRoomToneSample = &electedRoomTone
 
 	return m
 }
@@ -111,8 +107,7 @@ func TestAudioMeasurementsJSON_HasCanonicalKeys(t *testing.T) {
 		// spectral suffixes (region/profile spectral blocks)
 		"centroid_hz", "spread_hz", "rolloff_hz",
 		// regions
-		"room_tone_regions", "speech_regions", "room_tone_candidates",
-		"speech_candidates", "speech_profile", "noise_profile",
+		"speech_regions", "speech_candidates", "speech_profile", "noise_profile",
 		// region-sample / candidate fields
 		"crest_factor_db", "speech_band_body_rms_dbfs", "speech_band_sib_rms_dbfs",
 		// noise profile fields

@@ -659,7 +659,7 @@ func detectVoiceActivity(measurements *AudioMeasurements, intervals []IntervalSa
 	if noiseProfile != nil {
 		noiseProfile.MeasuredNoiseFloor = floor
 		measurements.Regions.NoiseProfile = noiseProfile
-		setVADRoomToneCandidate(measurements, noiseRegion, intervals)
+		setVADRoomToneSample(measurements, noiseRegion, intervals)
 	}
 
 	profile, candidates := electSpeechProfile(runs, intervals, noiseProfile, log)
@@ -676,17 +676,32 @@ func detectVoiceActivity(measurements *AudioMeasurements, intervals []IntervalSa
 		split, axis, floor, margin, tol, len(runs), profile != nil, noiseRegion != nil)
 }
 
-// setVADRoomToneCandidate populates RoomToneCandidates with a single real entry,
-// the elected low-cluster region, so the report's room-tone candidates_summary
-// survives and ElectedRoomToneSample (regions.room_tone.samples.input) is set.
-// Its Region matches the NoiseProfile Start/Duration so newRoomToneCandidatesSummary
-// finds it. Measured with the existing candidate-measurement shape (no new maths).
-func setVADRoomToneCandidate(measurements *AudioMeasurements, region *RoomToneRegion, intervals []IntervalSample) {
-	metrics := measureRoomToneCandidateFromIntervals(*region, intervals)
-	if metrics == nil {
+// setVADRoomToneSample measures the elected low-cluster region's RegionSample
+// directly from the interval data and assigns it to ElectedRoomToneSample, which
+// backs regions.room_tone.samples.input and the before/after re-measure wiring.
+// The maths mirrors the per-region accumulation used for the speech candidates
+// (accumulateIntervalMetrics over getIntervalsInRange), so the sample value is
+// identical to the prior candidate-measurement path. If no intervals fall in the
+// region, ElectedRoomToneSample is left nil.
+func setVADRoomToneSample(measurements *AudioMeasurements, region *RoomToneRegion, intervals []IntervalSample) {
+	regionIntervals := getIntervalsInRange(intervals, region.Start, region.Start+region.Duration)
+	if len(regionIntervals) == 0 {
 		return
 	}
-	measurements.Regions.RoomToneRegions = []RoomToneRegion{*region}
-	measurements.Regions.RoomToneCandidates = []RoomToneCandidateMetrics{*metrics}
-	measurements.Regions.ElectedRoomToneSample = &measurements.Regions.RoomToneCandidates[0].RegionSample
+
+	acc := accumulateIntervalMetrics(regionIntervals)
+	n := float64(len(regionIntervals))
+	avgRMS := acc.rmsSum / n
+
+	measurements.Regions.ElectedRoomToneSample = &RegionSample{
+		RMSLevel:    avgRMS,
+		PeakLevel:   acc.peakMax,
+		CrestFactor: acc.peakMax - avgRMS,
+		Spectral:    acc.spectralSum.average(n),
+
+		MomentaryLUFS: acc.momentarySum / n,
+		ShortTermLUFS: acc.shortTermSum / n,
+		TruePeak:      acc.truePeakMax,
+		SamplePeak:    acc.samplePeakMax,
+	}
 }
