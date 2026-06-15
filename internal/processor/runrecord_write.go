@@ -43,23 +43,18 @@ func CandidatesSidecarPath(recordPath string) string {
 }
 
 // candidateSidecarLine is one tagged line in the .candidates.jsonl sidecar: the
-// kind ("room_tone"/"speech") plus the candidate's full metrics. The metrics are
-// embedded by reference so the line carries the candidate's existing JSON shape
-// (region, region-sample, scoring, bands) without copying values.
+// kind ("speech") plus the candidate's full metrics. The metrics are embedded by
+// reference so the line carries the candidate's existing JSON shape (region,
+// region-sample, scoring, bands) without copying values.
 type candidateSidecarLine struct {
-	Kind     string `json:"kind"`
-	RoomTone *RoomToneCandidateMetrics
-	Speech   *SpeechCandidateMetrics
+	Kind   string `json:"kind"`
+	Speech *SpeechCandidateMetrics
 }
 
-// MarshalJSON flattens the kind tag and the active candidate metrics into one
-// object. Exactly one of RoomTone/Speech is non-nil per line.
+// MarshalJSON flattens the kind tag and the candidate metrics into one object.
 func (l candidateSidecarLine) MarshalJSON() ([]byte, error) {
 	var metrics any
-	switch {
-	case l.RoomTone != nil:
-		metrics = l.RoomTone
-	case l.Speech != nil:
+	if l.Speech != nil {
 		metrics = l.Speech
 	}
 	raw, err := json.Marshal(metrics)
@@ -128,28 +123,22 @@ func streamIntervals(w io.Writer, samples []IntervalSample) error {
 	return bw.Flush()
 }
 
-// WriteCandidatesSidecar streams the full room-tone and speech candidate arrays
-// to a .jsonl sidecar, one candidate per line, each tagged with its kind.
-// Room-tone lines come first, then speech, preserving each array's order. Uses a
-// buffered streaming writer (one line at a time). A write failure is non-fatal to
-// the caller. count(lines) == len(roomTone)+len(speech).
-func WriteCandidatesSidecar(roomTone []RoomToneCandidateMetrics, speech []SpeechCandidateMetrics, path string) error {
+// WriteCandidatesSidecar streams the speech candidate array to a .jsonl sidecar,
+// one candidate per line tagged with its kind, preserving the array's order. Uses
+// a buffered streaming writer (one line at a time). A write failure is non-fatal
+// to the caller. count(lines) == len(speech).
+func WriteCandidatesSidecar(speech []SpeechCandidateMetrics, path string) error {
 	return writeSidecarFile("candidates", path, func(w io.Writer) error {
-		return streamCandidates(w, roomTone, speech)
+		return streamCandidates(w, speech)
 	})
 }
 
-// streamCandidates writes the room-tone then speech candidate arrays to w, one
-// tagged JSON object per line, via a buffered streaming encoder. Factored out so
-// the file writer and the unit tests share the same streaming path.
-func streamCandidates(w io.Writer, roomTone []RoomToneCandidateMetrics, speech []SpeechCandidateMetrics) error {
+// streamCandidates writes the speech candidate array to w, one tagged JSON object
+// per line, via a buffered streaming encoder. Factored out so the file writer and
+// the unit tests share the same streaming path.
+func streamCandidates(w io.Writer, speech []SpeechCandidateMetrics) error {
 	bw := bufio.NewWriter(w)
 	enc := json.NewEncoder(bw)
-	for i := range roomTone {
-		if err := enc.Encode(candidateSidecarLine{Kind: "room_tone", RoomTone: &roomTone[i]}); err != nil {
-			return err
-		}
-	}
 	for i := range speech {
 		if err := enc.Encode(candidateSidecarLine{Kind: "speech", Speech: &speech[i]}); err != nil {
 			return err
@@ -166,16 +155,14 @@ func streamCandidates(w io.Writer, roomTone []RoomToneCandidateMetrics, speech [
 // stays consistent.
 func WriteRunRecordSidecars(measurements *AudioMeasurements, recordPath string) error {
 	var samples []IntervalSample
-	var roomTone []RoomToneCandidateMetrics
 	var speech []SpeechCandidateMetrics
 	if measurements != nil {
 		samples = measurements.Regions.IntervalSamples
-		roomTone = measurements.Regions.RoomToneCandidates
 		speech = measurements.Regions.SpeechCandidates
 	}
 
 	if err := WriteIntervalsSidecar(samples, IntervalsSidecarPath(recordPath)); err != nil {
 		return err
 	}
-	return WriteCandidatesSidecar(roomTone, speech, CandidatesSidecarPath(recordPath))
+	return WriteCandidatesSidecar(speech, CandidatesSidecarPath(recordPath))
 }

@@ -90,24 +90,31 @@ func TestNewIntervalSummary_BelowThresholdDropsDistribution(t *testing.T) {
 }
 
 // TestRunRecord_CandidatesSummaryInlineArraysAbsent asserts the candidate split:
-// each kind carries a candidates_summary (count + elected score) and never the
-// full candidate array inline.
+// speech carries a candidates_summary (count + elected score), room tone carries
+// none, and neither kind inlines the full candidate array.
 func TestRunRecord_CandidatesSummaryInlineArraysAbsent(t *testing.T) {
 	rec := NewRunRecord(populatedProcessingResult())
 	tree, raw := marshalRecordTree(t, rec)
 
 	regions := tree["regions"].(map[string]any)
+
+	// Speech carries a candidates_summary with an evaluated_count.
+	speech := regions["speech"].(map[string]any)
+	cs, ok := speech["candidates_summary"].(map[string]any)
+	if !ok {
+		t.Error("regions.speech missing candidates_summary")
+	} else if _, present := cs["evaluated_count"]; !present {
+		t.Error("regions.speech.candidates_summary missing evaluated_count")
+	}
+
+	// Room tone carries no candidates_summary.
+	if _, present := regions["room_tone"].(map[string]any)["candidates_summary"]; present {
+		t.Error("regions.room_tone must not carry a candidates_summary")
+	}
+
+	// Neither kind inlines the full candidate array.
 	for _, kind := range []string{"room_tone", "speech"} {
-		block := regions[kind].(map[string]any)
-		cs, ok := block["candidates_summary"].(map[string]any)
-		if !ok {
-			t.Errorf("regions.%s missing candidates_summary", kind)
-			continue
-		}
-		if _, present := cs["evaluated_count"]; !present {
-			t.Errorf("regions.%s.candidates_summary missing evaluated_count", kind)
-		}
-		if _, present := block["candidates"]; present {
+		if _, present := regions[kind].(map[string]any)["candidates"]; present {
 			t.Errorf("regions.%s must not inline full candidates array", kind)
 		}
 	}
@@ -118,7 +125,7 @@ func TestRunRecord_CandidatesSummaryInlineArraysAbsent(t *testing.T) {
 		t.Error("speech candidates_summary missing elected_score")
 	}
 
-	if bytes.Contains(raw, []byte("room_tone_candidates")) || bytes.Contains(raw, []byte("speech_candidates")) {
+	if bytes.Contains(raw, []byte("speech_candidates")) {
 		t.Error("record must not inline the full candidate arrays")
 	}
 }
@@ -148,22 +155,21 @@ func TestWriteIntervalsSidecar_OneLinePerSample(t *testing.T) {
 	}
 }
 
-// TestWriteCandidatesSidecar_TaggedLines asserts the candidates sidecar emits
-// room-tone then speech lines, each tagged with kind, total N+M lines.
+// TestWriteCandidatesSidecar_TaggedLines asserts the candidates sidecar emits one
+// speech line per candidate, each tagged with kind, total M lines.
 func TestWriteCandidatesSidecar_TaggedLines(t *testing.T) {
-	rt := []RoomToneCandidateMetrics{{Score: 1}, {Score: 2}, {Score: 3}}
 	sp := []SpeechCandidateMetrics{{Score: 9}, {Score: 8}}
 
 	var buf bytes.Buffer
-	if err := streamCandidates(&buf, rt, sp); err != nil {
+	if err := streamCandidates(&buf, sp); err != nil {
 		t.Fatalf("write candidates: %v", err)
 	}
 
 	lines := nonEmptyLines(buf.String())
-	if len(lines) != len(rt)+len(sp) {
-		t.Fatalf("line count = %d, want %d", len(lines), len(rt)+len(sp))
+	if len(lines) != len(sp) {
+		t.Fatalf("line count = %d, want %d", len(lines), len(sp))
 	}
-	wantKinds := []string{"room_tone", "room_tone", "room_tone", "speech", "speech"}
+	wantKinds := []string{"speech", "speech"}
 	for i, line := range lines {
 		var obj map[string]any
 		if err := json.Unmarshal([]byte(line), &obj); err != nil {

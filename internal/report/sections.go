@@ -432,14 +432,14 @@ func renderNoiseFloor(rec *processor.RunRecord) string {
 // =============================================================================
 
 // renderRegions renders the room-tone and speech region blocks. For each kind it
-// emits (a) the elected profile metrics, (b) a candidate summary (evaluated count
-// + elected score ONLY - the full ranked array lives in the .candidates.jsonl
-// sidecar, never inline), and (c) the per-stage Input/Filtered/Final region
-// samples (absent stages omitted exactly like the loudness/dynamics tables).
+// emits (a) the elected profile metrics, (b) for speech, a candidate summary
+// (evaluated count + elected score ONLY - the full ranked array lives in the
+// .candidates.jsonl sidecar, never inline; room tone carries no candidate
+// summary), and (c) the per-stage Input/Filtered/Final region samples (absent
+// stages omitted exactly like the loudness/dynamics tables).
 //
 // Record field paths (the densest record area):
 //   - rec.Regions.RoomTone.Elected.Profile()  -> *processor.NoiseProfile
-//   - rec.Regions.RoomTone.CandidatesSummary   -> *processor.CandidatesSummary
 //   - rec.Regions.RoomTone.Samples.{Input,Filtered,Final} -> *processor.RegionSample
 //   - rec.Regions.Speech.Elected.Profile()     -> *processor.SpeechCandidateMetrics
 //   - rec.Regions.Speech.CandidatesSummary     -> *processor.CandidatesSummary
@@ -460,7 +460,6 @@ func renderRegions(rec *processor.RunRecord) string {
 
 	b.WriteString("### Room Tone\n\n")
 	b.WriteString(renderRoomToneElected(rec.Regions.RoomTone.ElectedProfile()))
-	b.WriteString(renderCandidatesSummary(rec.Regions.RoomTone.CandidatesSummary))
 	b.WriteString(renderRegionSamples(rec.Regions.RoomTone.Samples))
 
 	b.WriteString("### Speech\n\n")

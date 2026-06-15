@@ -298,15 +298,14 @@ func newPass1Record(m *AudioMeasurements) *RunRecord {
 //   - speech: SpeechProfile embeds RegionSample (it is *SpeechCandidateMetrics),
 //     so the input sample is &SpeechProfile.RegionSample.
 //   - room-tone: the elected profile is a NoiseProfile, a slimmer struct with no
-//     RegionSample. The elected room-tone candidate's RegionSample is captured at
+//     RegionSample. The elected room-tone region's RegionSample is captured at
 //     election onto RegionMetrics.ElectedRoomToneSample (analyser.go), so the input
 //     sample is that pointer when present, nil (omitempty) otherwise. The filtered
 //     and final room-tone samples still wire from OutputMeasurements.RoomToneSample.
+//     Room tone carries no candidates_summary; only speech does.
 func newRegionsBlock(r *RegionMetrics) *RegionsBlock {
 	block := &RegionsBlock{
-		RoomTone: RoomToneRegionRecord{
-			CandidatesSummary: newRoomToneCandidatesSummary(r),
-		},
+		RoomTone: RoomToneRegionRecord{},
 		Speech: SpeechRegionRecord{
 			CandidatesSummary: newSpeechCandidatesSummary(r),
 		},
@@ -331,28 +330,6 @@ func newRegionsBlock(r *RegionMetrics) *RegionsBlock {
 	block.RoomTone.Samples.Input = r.ElectedRoomToneSample
 
 	return block
-}
-
-// newRoomToneCandidatesSummary builds the inline room-tone candidate summary: the
-// evaluated count and the elected candidate's score. The elected room-tone
-// candidate is the one whose region matches the elected NoiseProfile; the full
-// scored array goes to the sidecar. Returns nil when no candidates were evaluated.
-func newRoomToneCandidatesSummary(r *RegionMetrics) *CandidatesSummary {
-	if len(r.RoomToneCandidates) == 0 {
-		return nil
-	}
-	s := &CandidatesSummary{EvaluatedCount: len(r.RoomToneCandidates)}
-	if r.NoiseProfile != nil {
-		for i := range r.RoomToneCandidates {
-			c := &r.RoomToneCandidates[i]
-			if c.Region.Start == r.NoiseProfile.Start && c.Region.Duration == r.NoiseProfile.Duration {
-				score := c.Score
-				s.ElectedScore = &score
-				break
-			}
-		}
-	}
-	return s
 }
 
 // newSpeechCandidatesSummary builds the inline speech candidate summary: the

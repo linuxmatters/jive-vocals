@@ -301,21 +301,17 @@ func regionsRecord() *processor.RunRecord {
 			ReductionHeadroom:   40.12,
 		},
 		Regions: processor.RegionMetrics{
-			NoiseProfile:  &noise,
-			SpeechProfile: &speech,
-			RoomToneCandidates: []processor.RoomToneCandidateMetrics{
-				{Region: processor.RoomToneRegion{Start: 7 * time.Second, Duration: 10 * time.Second}, Score: 0.97},
-				{Region: processor.RoomToneRegion{Start: 30 * time.Second, Duration: 10 * time.Second}, Score: 0.5},
-			},
+			NoiseProfile:     &noise,
+			SpeechProfile:    &speech,
 			SpeechCandidates: []processor.SpeechCandidateMetrics{speech, {Score: 0.4}},
 			IntervalSamples:  intervals,
 		},
 		Duration: 2856.9,
 	}
-	// Point the elected room-tone candidate so the candidate summary finds its score
-	// and the elected-sample input gets wired (NoiseProfile carries no RegionSample).
-	m.Regions.RoomToneCandidates[0].RegionSample = processor.RegionSample{RMSLevel: -84.58, PeakLevel: -71.22}
-	m.Regions.ElectedRoomToneSample = &m.Regions.RoomToneCandidates[0].RegionSample
+	// Wire the elected room-tone sample directly (NoiseProfile carries no
+	// RegionSample); it backs regions.room_tone.samples.input.
+	electedRoomTone := processor.RegionSample{RMSLevel: -84.58, PeakLevel: -71.22}
+	m.Regions.ElectedRoomToneSample = &electedRoomTone
 
 	return processor.NewAnalysisRunRecord("LMP-83-mark.flac", m)
 }
@@ -382,20 +378,20 @@ func TestRenderRegionsElected(t *testing.T) {
 	}
 }
 
-func TestRenderRegionsCandidateCountOnly(t *testing.T) {
+func TestRenderSpeechCandidateCountOnly(t *testing.T) {
 	got := renderRegions(regionsRecord())
 	if !strings.Contains(got, "**Candidates**") {
 		t.Fatalf("candidates summary heading missing\n%s", got)
 	}
 	if !strings.Contains(got, "Evaluated count") || !strings.Contains(got, "| 2 |") {
-		t.Errorf("room-tone candidate COUNT (2) must render\n%s", got)
+		t.Errorf("speech candidate COUNT (2) must render\n%s", got)
 	}
-	if !strings.Contains(got, "0.9700") {
-		t.Errorf("elected room-tone score must render\n%s", got)
+	if !strings.Contains(got, "0.6500") {
+		t.Errorf("elected speech score must render\n%s", got)
 	}
-	// NO ranked candidate list: a second candidate's score (0.5000) must not appear
+	// NO ranked candidate list: the second candidate's score (0.4000) must not appear
 	// as a candidate row, and no per-candidate gloss tokens leak in.
-	for _, banned := range []string{"0.5000", "Candidate 1", "Candidate 2", "Rank"} {
+	for _, banned := range []string{"0.4000", "Candidate 1", "Candidate 2", "Rank"} {
 		if strings.Contains(got, banned) {
 			t.Errorf("ranked candidate list must NOT appear, found %q\n%s", banned, got)
 		}
