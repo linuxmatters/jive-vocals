@@ -120,9 +120,10 @@ downmix → rumble_highpass → bandlimit_lowpass → noise_reduction → speech
 
 Jivetalking employs speech profile extraction for adaptive tuning:
 
-- **Room tone detection:** Uses 250ms interval sampling with spectral analysis; digital silence (below -115 dBFS) rejected as unsuitable room tone
-- **Voice-activated detection:** Recordings where >= 95% of room tone candidates are digital silence (Riverside, Zencastr) are flagged; speech interruption tolerance widens from 2s to 10s for accurate speech region extraction
-- **Speech region detection:** Finds representative speech segments (30s+ duration)
+- **Voice-activity detection:** One level histogram with an Otsu speech/silence split, a percentile noise floor, hysteresis, adaptive gap bridging, and a spectral veto (vocal-band centroid, structured-spectrum entropy) over 250ms intervals; floored intervals (below -115 dBFS digital silence) are excluded from the histogram
+- **Room tone detection:** The longest unbroken run of below-split intervals, trimmed inward to its cleanest window, profiles the noise floor
+- **Voice-activated detection:** Recordings where the fraction of intervals pinned at the digital-silence floor is >= 20% (Riverside, Zencastr) are flagged as platform-gated capture; the speech run-bridging gap tolerance is derived per file (2s to 10s)
+- **Speech region detection:** Scores speech runs SNR-primary with a saturating duration-adequacy term and a consistency tie-break, then elects the highest-scoring run (not the longest); a run must last at least 10s to qualify
 - **Golden sub-region refinement:** Identifies cleanest sub-windows for noise/speech profiling
 - **Speech metrics:** RMS level, crest factor, spectral centroid, kurtosis, flux for each profile
 
@@ -142,7 +143,7 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 | **Processing Paradigm** | "Leveling": medium-term variation correction | Full pipeline: denoise → gate → compress → de-ess → normalise |
 | **Look-ahead Capability** | Yes, infinite look-ahead via multiple passes | Yes, infinite look-ahead via Pass 1 analysis |
 | **Target Loudness Standard** | -18 dB RMS (custom RMS calculation) | -16 LUFS |
-| **Silence Detection** | Fixed: 50ms subsegments > -44 dB | Adaptive: spectral analysis + room tone scoring |
+| **Silence Detection** | Fixed: 50ms subsegments > -44 dB | Adaptive: voice-activity detector (Otsu level split + spectral veto) |
 | **Noise Reduction** | None | `anlmdn` (Non-Local Means, source-rate denoising at `r=0.0020`, `m=3`) + `afftdn` (FFT spectral denoise, fixed `nr=12`) |
 | **Dynamics Processing** | Implicit in leveling algorithm | RMS levelling compressor (fixed params, speech-RMS-relative threshold) + transparent limiter |
 | **Gating/Expansion** | None | Soft expander (2:1-4:1 ratio) |

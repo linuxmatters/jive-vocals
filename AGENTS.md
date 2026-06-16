@@ -31,8 +31,12 @@ internal/
 ├── processor/
 │   ├── adaptive.go         # AdaptConfig() - derives effective filter settings + diagnostics from Pass 1 measurements
 │   ├── advice.go           # GainAdvice() - input-gain advice from input true peak (Clipping/Hot/Quiet/Fine vs -6 dBTP); GainAdviceResult.Message()
-│   ├── analyser.go         # AnalyseAudio() - Pass 1: ebur128 + astats + aspectralstats; room-tone/speech detection
-│   ├── analyser_candidates.go  # Room-tone candidate scoring and election
+│   ├── analyser.go         # AnalyseAudio() - Pass 1: ebur128 + astats + aspectralstats; calls detectVoiceActivity()
+│   ├── analyser_vad.go         # detectVoiceActivity() - unified voice-activity detector (histogram + Otsu split + percentile floor, hysteresis runs, adaptive gap-tolerance, spectral veto); elects SpeechProfile + NoiseProfile, sets Noise.VoiceActivated
+│   ├── analyser_candidates_shared.go  # Shared sliding-window refinement (refineToSubregion), interval accumulation, scoreSpeechIntervalWindow, levelVariance
+│   ├── analyser_candidates_speech.go  # Speech-candidate scoring (scoreSpeechCandidateGrounded - SNR-primary + saturating duration adequacy + consistency tie-break) and election (findBestSpeechRegion, highest-score)
+│   ├── analyser_noise_seed.go  # Pre-scan noise-floor seed estimators (Noise.FloorPrescan, anchors the VAD split clamp) + golden-window bounds
+│   ├── analyser_bands.go       # Region-scoped sibilant/body band RMS for de-esser intensity
 │   ├── analyser_metrics.go     # IntervalSample, SpectralMetrics, per-250ms metric accumulation
 │   ├── analyser_output.go      # MeasureOutputRegions() - before/after region comparison
 │   ├── encoder.go          # Output file encoder wrapper
@@ -72,7 +76,7 @@ With `--diagnostics`, each worker attaches the deterministic before/after PNG pa
 
 **Four-pass architecture:**
 
-1. **Pass 1 (Analysis):** Measures LUFS, true peak, LRA, noise floor, spectral characteristics; detects room-tone/speech regions via 250ms interval sampling
+1. **Pass 1 (Analysis):** Measures LUFS, true peak, LRA, noise floor, spectral characteristics; a unified voice-activity detector (`detectVoiceActivity` in `analyser_vad.go`) splits the per-250ms interval level histogram with Otsu's method, elects the `SpeechProfile` (hysteresis-built runs, adaptive gap-tolerance, spectral veto) and the `NoiseProfile` (longest below-split run) from that one split, and sets the noise floor from a low percentile of the level set
 2. **Pass 2 (Processing):** Applies adaptive filter chain tuned to measurements; output measured for before/after comparison
 3. **Pass 3 (Measuring):** Optionally prepends `volume` (pre-gain) + `alimiter` (levelling limiter) when limiting is active, then runs loudnorm in measurement mode (JSON written to a per-call `stats_file`, read back after graph free) to get input stats for linear mode; measures the post-limiter signal so `measured_I`/`measured_TP` are accurate
 4. **Pass 4 (Normalising):** Applies `volume` (pre-gain, when ceiling clamped) + `alimiter` (levelling limiter) + `loudnorm` (linear mode) + `aresample` (source rate) + `adeclick` + `alimiter` (final-stage brickwall); pre-gain raises very quiet recordings so the alimiter can use a viable ceiling; the prefix `alimiter` creates headroom so loudnorm achieves full linear gain to reach -16 LUFS; ceiling is derived as `targetTP − gainRequired`; loudnorm targets its own per-file internal TP (`loudnormInternalTargetTP` = projected post-gain peak + `linearSafetyMargin` + `measurementCushionDB`, with the emitted `TP=` clamped to FFmpeg's `[-9, 0]` range), while the final-stage brickwall `alimiter` (pinned to `targetTP − brickwallTruePeakHeadroomDB`) owns true-peak delivery; output lands at the canonical -16 LUFS / -1 dBTP. `linearSafetyMargin = 0.1` (numeric Go-vs-FFmpeg agreement) and `measurementCushionDB = 0.2` (Go-vs-FFmpeg measurement disagreement) are the only static loudnorm-internal margins; the per-file derivation makes the linear-mode cap in `calculateLinearModeTarget` inert by construction, so every file reaches full -16 LUFS in linear mode

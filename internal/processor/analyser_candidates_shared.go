@@ -236,7 +236,7 @@ func scoreSpeechIntervalWindow(intervals []IntervalSample) float64 {
 	flatnessScore := max(0.0, min(1.0-avgFlatness, 1.0))
 
 	// Centroid score: peak at voice centre, decay toward edges
-	// Voice range: speechCentroidMin (200 Hz) to speechCentroidMax (4500 Hz)
+	// Voice range: speechCentroidMin (200 Hz) to speechCentroidMax (6000 Hz)
 	centroidScore := 0.0
 	if avgCentroid >= speechCentroidMin && avgCentroid <= speechCentroidMax {
 		// Calculate distance from ideal centre (~2000 Hz)

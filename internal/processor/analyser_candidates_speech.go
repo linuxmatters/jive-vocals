@@ -201,8 +201,8 @@ type findBestSpeechRegionResult struct {
 }
 
 // findBestSpeechRegion selects the best speech region for measurements.
-// Strategy: prefer longest duration that meets quality threshold.
-// Unlike room-tone candidate selection (where earlier is better), speech benefits from longer samples.
+// Strategy: elect the highest-scoring candidate (SNR-primary, with a
+// saturating duration-adequacy term and a consistency tie-break).
 // For long candidates (>60s), refines to the best 60s sub-region to avoid
 // contaminating spectral metrics with pauses.
 // The noiseProfile parameter enables SNR margin checking to penalise candidates

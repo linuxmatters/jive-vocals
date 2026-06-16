@@ -64,7 +64,7 @@ Pass `--analysis-only` to run only Pass 1 analysis. It writes a Markdown analysi
 The analysis report covers:
 
 - **Loudness & dynamics**: integrated LUFS, true peak, loudness range, crest factor
-- **Room tone & speech detection**: candidate regions scored and elected for noise profiling and speech-aware metrics; voice-activated recording detected automatically (Riverside, Zencastr)
+- **Room tone & speech detection**: a single voice-activity detector splits speech from silence; the best-scoring speech region is elected for speech-aware metrics and the longest quiet stretch profiles the noise floor; voice-activated recording detected automatically from the digital-silence fraction (Riverside, Zencastr)
 - **Derived measurements**: noise floor, gate baseline, noise-to-speech headroom
 - **Filter adaptation**: the exact parameters jivetalking would apply, including highpass frequency, gate threshold, NR settings, de-esser intensity, and levelling-compressor configuration
 - **Spectral summary**: full spectral characterisation with objective metric definitions
@@ -109,11 +109,11 @@ The stars and the gain advice are console-only: the Markdown report stays empiri
 `--diagnostics` writes extra artefacts beside the report for sweeps and before/after comparison. It changes no DSP, so the processed audio is byte-identical with the flag on or off; it only adds FFmpeg passes to render the extras. The flag emits:
 
 - **Before/after spectrogram PNGs**, named `<name>-LUFS-NN-processed.spectrogram-<kind>-<stage>.png`. `<kind>` is `whole`, `roomtone`, or `speech`; `<stage>` is `before` or `after`. Each before/after pair shares identical dimensions and scales for an honest side-by-side. Analysis-only emits `input` spectrograms (no "after"). The Markdown report links them in a `## Spectrograms` section.
-- **Interval sidecars** `<name>.intervals.jsonl` and `<name>.candidates.jsonl`, the raw 250 ms interval samples and scored room-tone candidates. The report's inline summaries cover the common case, so these are only needed for deep analysis.
+- **Interval sidecars** `<name>.intervals.jsonl` and `<name>.candidates.jsonl`, the raw 250 ms interval samples and the scored speech candidates. The report's inline summaries cover the common case, so these are only needed for deep analysis.
 
 ## Limiting the room-tone scan
 
-Long recordings can spend disproportionate time scoring room-tone candidates across the whole file. `--room-tone-scan-duration` caps that scan to the first `DURATION` of input, trading coverage for speed. Loudness, true peak, LRA, spectral statistics, and speech detection still see the whole file; only room-tone candidate collection is constrained, so fewer candidates reach voice-activated detection when the cap is engaged. The flag accepts Go duration syntax (`30s`, `1m`, `2m30s`); the default `0s` scans the whole file. Works with `--analysis-only` as well.
+Long recordings can spend disproportionate time scanning the quiet intervals that seed the noise-floor estimate across the whole file. `--room-tone-scan-duration` caps that scan to the first `DURATION` of input, trading coverage for speed. Loudness, true peak, LRA, spectral statistics, and speech detection still see the whole file; only the intervals that seed the noise-floor estimate are constrained when the cap is engaged. The flag accepts Go duration syntax (`30s`, `1m`, `2m30s`); the default `0s` scans the whole file. Works with `--analysis-only` as well.
 
 ```bash
 # Cap room-tone scanning to the first 30 seconds

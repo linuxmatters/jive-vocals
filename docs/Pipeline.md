@@ -13,8 +13,9 @@ the result, and sets the loudness last.
 
 1. **Analyse (Pass 1).** Read the whole file and measure it: loudness (LUFS),
    true peak, loudness range (LRA), noise floor, and spectral shape. Detect the
-   quiet gaps (room tone) and the spoken passages (speech) by sampling the file
-   in 250 ms intervals. Nothing is changed; this pass only listens.
+   quiet gaps (room tone) and the spoken passages (speech) with a single
+   voice-activity detector that samples the file in 250 ms intervals. Nothing is
+   changed; this pass only listens.
    - **Adapt.** Between Pass 1 and Pass 2, those measurements become per-file
      filter settings. A cleaner recording gets a deeper gate; a quiet recording
      gets the same levelling as a loud one; sibilant material gets more
@@ -44,7 +45,7 @@ flowchart TD
 
     subgraph P1 [Pass 1: Analyse]
         A1[Measure loudness, true peak, LRA] --> A2[Measure noise floor, spectral shape]
-        A2 --> A3[Detect room-tone and speech regions]
+        A2 --> A3[Voice-activity detector:<br/>split speech from silence]
     end
 
     P1 --> P2A[Pass 1.5: Adapt<br/>derive per-file settings]
@@ -226,6 +227,56 @@ measurements.
 **Why last:** Format conversion is the final housekeeping step, after every
 filter and measurement has run at the source rate. Doing it last keeps the whole
 chain working at full fidelity and only converts once, on the way out.
+
+## How Pass 1 finds speech and room tone
+
+The adaptive filters need to know two things about each recording: where the
+person is speaking, and what the quiet background sounds like. A single
+voice-activity detector answers both from the 250 ms interval measurements.
+
+**One level split divides speech from silence.** The detector builds a histogram
+of how loud each interval is, then finds the level that best separates the loud
+group from the quiet group (Otsu's method, the same threshold trick used in image
+processing). Intervals at or above that split are candidate speech; intervals
+below it are background. The split is clamped so it can never sit in the noise or
+reject all the speech.
+
+**A spectral check vetoes false speech.** A loud interval only counts as speech
+if it also looks like a voice: its spectral centre of gravity sits in the vocal
+band (roughly 200 Hz to 6 kHz) and its spectrum is structured rather than
+noise-like. This rejects loud non-voice sounds, a music bed or a door slam, that
+clear the level split but are not speech.
+
+**Speech runs are built with hysteresis and gap bridging.** Short pauses between
+words should not chop one spoken passage into many. The detector enters a speech
+run only on a clearly loud interval, then stays in it across brief quiet gaps,
+bridging gaps up to a tolerance derived from the file's own typical gap length. A
+loud interval that fails the spectral check (a second speaker, a music sting)
+ends the run rather than being bridged over. A run must last at least 10 seconds
+to become a region.
+
+**The elected speech region is the best one, not the longest.** Each speech run
+is scored, and the highest score wins. The score is led by signal-to-noise margin
+(how far the speech sits above the noise, so the spectral measurements describe
+voice and not floor), with a saturating duration term: a run earns full duration
+credit once it is long enough (around 30 seconds), so a longer run does **not**
+beat a shorter adequate one on length alone. A consistency tie-break, favouring
+the steadiest run, only orders runs that are level on the first two terms. This
+protects sparse, voice-gated recordings: a short but clean passage can win over a
+long but noisier one.
+
+**Room tone is the longest quiet stretch.** Every interval below the split is
+background; the longest unbroken run of them is the steadiest sample of the room,
+trimmed inward to its cleanest window. That sample sets the noise floor (taken as
+a low percentile of the interval levels) and the noise profile the gate adapts
+against.
+
+**Voice-activated capture is detected from the silence.** Some platforms
+(Riverside, Zencastr, and similar) gate the microphone, muting the channel to
+true digital silence between utterances. The detector spots this by the fraction
+of intervals pinned at the digital-silence floor: when that fraction is high
+(20% or more), the recording is flagged as voice-activated. This is a property of
+the silence, not of the speech.
 
 ## Adaptive tuning in plain audio terms
 
