@@ -757,6 +757,7 @@ func renderFilters(rec *processor.RunRecord) string {
 		{"afftdn noise reduction (dB)", formatMetric(f.NoiseReduction.AfftdnNoiseReduction, 0)},
 		{"afftdn noise floor (dB)", afftdnNoiseFloorCell(f.NoiseReduction.AfftdnNoiseFloor)},
 		{"afftdn noise type", stringCell(f.NoiseReduction.AfftdnNoiseType)},
+		{"afftdn band noise", stringCell(f.NoiseReduction.AfftdnBandNoise)},
 		{"afftdn track noise", boolCell(f.NoiseReduction.AfftdnTrackNoise)},
 	}))
 	b.WriteString("\n")
@@ -827,6 +828,7 @@ func renderFilterDiagnostics(d *processor.AdaptiveDiagnostics) string {
 		{"Gate depth (dB)", formatMetric(d.SpeechGateDepthDB, 2)},
 		{"afftdn enabled", boolCell(d.AfftdnEnabled)},
 		{"afftdn noise floor (dB)", afftdnNoiseFloorCell(d.AfftdnNoiseFloorDB)},
+		{"afftdn noise type", stringCell(d.AfftdnNoiseType)},
 		{"afftdn disable reason", stringCell(d.AfftdnDisableReason)},
 	}))
 	return b.String()

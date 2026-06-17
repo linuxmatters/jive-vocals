@@ -190,6 +190,15 @@ type NoiseReductionConfig struct {
 	// the measured Noise.Floor (clamped to afftdn's [-80, -20] range) and turns
 	// track_noise off so afftdn holds the static measured floor.
 	AfftdnNoiseFloor float64 `json:"afftdn_noise_floor_db"`
+	// AfftdnNoiseType selects afftdn's noise model: "w" (white, the default) or
+	// "custom" (a measured spectral shape). On the custom path AfftdnBandNoise
+	// carries the per-band relative shape; nf still carries the absolute level and
+	// nr the depth, so all three stack.
+	// AfftdnBandNoise is the afftdn custom-profile band shape: up to 15 dB values,
+	// "|"-separated, one per fixed band, relative to the band mean (white = all
+	// zeros). Emitted as bn= only when AfftdnNoiseType is "custom" and the string is
+	// non-empty. Empty on the white path.
+	AfftdnBandNoise string `json:"afftdn_band_noise,omitempty"`
 }
 
 type SpeechGateConfig struct {
@@ -303,6 +312,9 @@ type AdaptiveDiagnostics struct {
 	// AfftdnDisableReason names why afftdn was dropped (e.g. "voice_activated"),
 	// empty when the stage stays enabled.
 	AfftdnDisableReason string `json:"afftdn_disable_reason"`
+	// AfftdnNoiseType records the elected afftdn noise model: "w" (white) or
+	// "custom" (measured room-tone spectral shape). Empty when afftdn is disabled.
+	AfftdnNoiseType string `json:"afftdn_noise_type"`
 }
 
 // ProcessingFilterContext holds pass execution state outside caller-owned defaults.
@@ -820,11 +832,24 @@ func (cfg *NoiseReductionConfig) buildAfftdnFilter() string {
 	if cfg.AfftdnTrackNoise {
 		tn = 1
 	}
-	spec := fmt.Sprintf("afftdn=nr=%g:nt=%s:tn=%d",
-		cfg.AfftdnNoiseReduction,
-		cfg.AfftdnNoiseType,
-		tn,
-	)
+	// On the custom path emit nt=custom:bn=<shape>; bn carries the spectral shape
+	// while nf (below) still carries the absolute level and nr the depth. The
+	// white path keeps the bare nt=w. sanitizeNoiseReductionConfig reverts a
+	// "custom" type with no shape to "w", so bn is always present here when custom.
+	var spec string
+	if cfg.AfftdnNoiseType == "custom" && cfg.AfftdnBandNoise != "" {
+		spec = fmt.Sprintf("afftdn=nr=%g:nt=custom:bn=%s:tn=%d",
+			cfg.AfftdnNoiseReduction,
+			cfg.AfftdnBandNoise,
+			tn,
+		)
+	} else {
+		spec = fmt.Sprintf("afftdn=nr=%g:nt=%s:tn=%d",
+			cfg.AfftdnNoiseReduction,
+			cfg.AfftdnNoiseType,
+			tn,
+		)
+	}
 	// Emit nf only when set (a real floor is negative); zero means unset.
 	if cfg.AfftdnNoiseFloor < 0 {
 		spec += fmt.Sprintf(":nf=%g", cfg.AfftdnNoiseFloor)

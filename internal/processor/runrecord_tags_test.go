@@ -211,7 +211,7 @@ func TestEffectiveFilterConfigJSON_HasCanonicalKeys(t *testing.T) {
 	cfg := EffectiveFilterConfig{
 		RumbleHighPass:      RumbleHighPassConfig{Enabled: true, Frequency: 80, Poles: 2, Width: 0.707, Mix: 1.0, Transform: "tdii"},
 		BandlimitLowPass:    BandlimitLowPassConfig{Enabled: true, Frequency: 20500, Poles: 2, Width: 0.707, Mix: 1.0, Transform: "tdii"},
-		NoiseReduction:      NoiseReductionConfig{Enabled: true, Strength: 0.002, PatchSec: 0.02, ResearchSec: 0.06, Smooth: 11, AfftdnEnabled: true, AfftdnNoiseReduction: 12, AfftdnNoiseType: "w", AfftdnTrackNoise: true},
+		NoiseReduction:      NoiseReductionConfig{Enabled: true, Strength: 0.002, PatchSec: 0.02, ResearchSec: 0.06, Smooth: 11, AfftdnEnabled: true, AfftdnNoiseReduction: 12, AfftdnNoiseType: "custom", AfftdnBandNoise: "0.0|1.0", AfftdnTrackNoise: true},
 		SpeechGate:          SpeechGateConfig{Enabled: true, Threshold: 0.01, Ratio: 2.0, Attack: 10, Release: 250, Range: 0.05, Knee: 3.0, Makeup: 1.0, Detection: "rms"},
 		LevellingCompressor: LevellingCompressorConfig{Enabled: true, Threshold: -18, Ratio: 3.0, Attack: 10, Release: 200, Makeup: 0, Knee: 4.0, Mix: 1.0},
 		Deesser:             DeesserConfig{Enabled: true, Intensity: 0.6, Amount: 0.5, Frequency: 0.8},
@@ -234,7 +234,7 @@ func TestEffectiveFilterConfigJSON_HasCanonicalKeys(t *testing.T) {
 		"frequency_hz", "poles_count", "width", "mix", "transform",
 		// noise_reduction
 		"strength", "patch_s", "research_s", "smooth",
-		"afftdn_noise_reduction_db", "afftdn_noise_type", "afftdn_track_noise",
+		"afftdn_noise_reduction_db", "afftdn_noise_type", "afftdn_track_noise", "afftdn_band_noise",
 		// deesser
 		"intensity", "amount", "frequency",
 	} {

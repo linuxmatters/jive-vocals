@@ -3,6 +3,7 @@ package processor
 import (
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -1719,6 +1720,210 @@ func TestTuneNoiseReduction(t *testing.T) {
 		}
 		if config.NoiseReduction.AfftdnNoiseFloor != 0 {
 			t.Errorf("AfftdnNoiseFloor should stay unset, got %.2f", config.NoiseReduction.AfftdnNoiseFloor)
+		}
+	})
+
+	t.Run("qualifying measurements elect the custom profile", func(t *testing.T) {
+		config := &EffectiveFilterConfig{NoiseReduction: defaultNoiseReductionConfig()}
+		diag := &AdaptiveDiagnostics{}
+		measurements := &AudioMeasurements{
+			Noise: NoiseMetrics{Floor: -58.0},
+			Regions: RegionMetrics{
+				GateSeparationDB: 15.0,
+				NoiseProfile: &NoiseProfile{
+					SpectralFlatness: 0.6,
+					BandsMeasured:    true,
+					// Mean is -60; shapes are values minus mean: -1, 0, +1.
+					BandNoise: []float64{-61.0, -60.0, -59.0},
+				},
+			},
+		}
+
+		tuneNoiseReduction(config, diag, measurements)
+
+		if config.NoiseReduction.AfftdnNoiseType != "custom" {
+			t.Errorf("AfftdnNoiseType = %q, want custom", config.NoiseReduction.AfftdnNoiseType)
+		}
+		if config.NoiseReduction.AfftdnBandNoise != "-1.0|0.0|1.0" {
+			t.Errorf("AfftdnBandNoise = %q, want -1.0|0.0|1.0", config.NoiseReduction.AfftdnBandNoise)
+		}
+		if config.NoiseReduction.AfftdnNoiseFloor != -58.0 {
+			t.Errorf("custom profile must keep the measured nf, got %.2f", config.NoiseReduction.AfftdnNoiseFloor)
+		}
+		if config.NoiseReduction.AfftdnTrackNoise {
+			t.Error("custom profile must keep track_noise off")
+		}
+		if diag.AfftdnNoiseType != "custom" {
+			t.Errorf("diagnostics AfftdnNoiseType = %q, want custom", diag.AfftdnNoiseType)
+		}
+	})
+
+	t.Run("trailing non-finite band stays custom with a well-formed bn", func(t *testing.T) {
+		// The top band (above the band-limit) comes back non-finite. The profile is
+		// still measured (the guard counts finite bands), and bn must elect the
+		// custom path with the non-finite band flattened to 0.0, never a NaN token.
+		config := &EffectiveFilterConfig{NoiseReduction: defaultNoiseReductionConfig()}
+		diag := &AdaptiveDiagnostics{}
+		measurements := &AudioMeasurements{
+			Noise: NoiseMetrics{Floor: -58.0},
+			Regions: RegionMetrics{
+				GateSeparationDB: 15.0,
+				NoiseProfile: &NoiseProfile{
+					SpectralFlatness: 0.6,
+					BandsMeasured:    true,
+					// Mean over the finite bands is -60; the trailing NaN flattens to 0.0.
+					BandNoise: []float64{-61.0, -60.0, -59.0, math.NaN()},
+				},
+			},
+		}
+
+		tuneNoiseReduction(config, diag, measurements)
+
+		if config.NoiseReduction.AfftdnNoiseType != "custom" {
+			t.Errorf("AfftdnNoiseType = %q, want custom", config.NoiseReduction.AfftdnNoiseType)
+		}
+		if config.NoiseReduction.AfftdnBandNoise != "-1.0|0.0|1.0|0.0" {
+			t.Errorf("AfftdnBandNoise = %q, want -1.0|0.0|1.0|0.0", config.NoiseReduction.AfftdnBandNoise)
+		}
+		if strings.Contains(config.NoiseReduction.AfftdnBandNoise, "NaN") ||
+			strings.Contains(config.NoiseReduction.AfftdnBandNoise, "Inf") {
+			t.Errorf("AfftdnBandNoise = %q, must not contain a NaN or Inf token", config.NoiseReduction.AfftdnBandNoise)
+		}
+	})
+
+	t.Run("all non-finite bands fall back to the white path", func(t *testing.T) {
+		// A broad measurement failure (every band non-finite) yields an empty bn, so
+		// tuneNoiseReduction keeps the white profile rather than emitting nt=custom.
+		config := &EffectiveFilterConfig{NoiseReduction: defaultNoiseReductionConfig()}
+		diag := &AdaptiveDiagnostics{}
+		measurements := &AudioMeasurements{
+			Noise: NoiseMetrics{Floor: -58.0},
+			Regions: RegionMetrics{
+				GateSeparationDB: 15.0,
+				NoiseProfile: &NoiseProfile{
+					SpectralFlatness: 0.6,
+					BandsMeasured:    true,
+					BandNoise:        []float64{math.NaN(), math.Inf(-1), math.Inf(1)},
+				},
+			},
+		}
+
+		tuneNoiseReduction(config, diag, measurements)
+
+		if config.NoiseReduction.AfftdnNoiseType != "w" {
+			t.Errorf("AfftdnNoiseType = %q, want w", config.NoiseReduction.AfftdnNoiseType)
+		}
+		if config.NoiseReduction.AfftdnBandNoise != "" {
+			t.Errorf("AfftdnBandNoise = %q, want empty", config.NoiseReduction.AfftdnBandNoise)
+		}
+	})
+
+	t.Run("non-qualifying measurements keep the white path", func(t *testing.T) {
+		// Each case fails exactly one gate; all else qualifies.
+		base := func() *AudioMeasurements {
+			return &AudioMeasurements{
+				Noise: NoiseMetrics{Floor: -58.0},
+				Regions: RegionMetrics{
+					GateSeparationDB: 15.0,
+					NoiseProfile: &NoiseProfile{
+						SpectralFlatness: 0.6,
+						BandsMeasured:    true,
+						BandNoise:        []float64{-61.0, -60.0, -59.0},
+					},
+				},
+			}
+		}
+
+		cases := map[string]func(*AudioMeasurements){
+			"bands unmeasured":   func(m *AudioMeasurements) { m.Regions.NoiseProfile.BandsMeasured = false },
+			"separation too low": func(m *AudioMeasurements) { m.Regions.GateSeparationDB = 11.0 },
+			"too tonal":          func(m *AudioMeasurements) { m.Regions.NoiseProfile.SpectralFlatness = 0.40 },
+			"no noise profile":   func(m *AudioMeasurements) { m.Regions.NoiseProfile = nil },
+		}
+
+		for name, mutate := range cases {
+			t.Run(name, func(t *testing.T) {
+				config := &EffectiveFilterConfig{NoiseReduction: defaultNoiseReductionConfig()}
+				diag := &AdaptiveDiagnostics{}
+				m := base()
+				mutate(m)
+
+				tuneNoiseReduction(config, diag, m)
+
+				if config.NoiseReduction.AfftdnNoiseType != "w" {
+					t.Errorf("AfftdnNoiseType = %q, want w", config.NoiseReduction.AfftdnNoiseType)
+				}
+				if config.NoiseReduction.AfftdnBandNoise != "" {
+					t.Errorf("AfftdnBandNoise = %q, want empty", config.NoiseReduction.AfftdnBandNoise)
+				}
+			})
+		}
+	})
+}
+
+// TestBuildAfftdnBandNoise covers the bn mean-subtraction and clip maths.
+func TestBuildAfftdnBandNoise(t *testing.T) {
+	t.Run("empty input yields empty string", func(t *testing.T) {
+		if got := buildAfftdnBandNoise(nil); got != "" {
+			t.Errorf("buildAfftdnBandNoise(nil) = %q, want empty", got)
+		}
+	})
+
+	t.Run("subtracts the mean and formats one decimal", func(t *testing.T) {
+		// Mean of {-50, -40, -30} is -40; shapes are -10, 0, +10.
+		got := buildAfftdnBandNoise([]float64{-50.0, -40.0, -30.0})
+		if got != "-10.0|0.0|10.0" {
+			t.Errorf("buildAfftdnBandNoise = %q, want -10.0|0.0|10.0", got)
+		}
+	})
+
+	t.Run("clips shapes to afftdn [-24, +24] range", func(t *testing.T) {
+		// Mean of {-100, 0} is -50; raw shapes are -50 and +50, clipped to ±24.
+		got := buildAfftdnBandNoise([]float64{-100.0, 0.0})
+		if got != "-24.0|24.0" {
+			t.Errorf("buildAfftdnBandNoise = %q, want -24.0|24.0", got)
+		}
+	})
+
+	t.Run("trailing NaN: mean over finite bands, NaN emitted as 0.0", func(t *testing.T) {
+		// Mean is taken over the finite bands {-50, -40, -30} = -40; shapes are
+		// -10, 0, +10. The trailing NaN (e.g. the top band above the band-limit)
+		// must emit 0.0, never a NaN token.
+		got := buildAfftdnBandNoise([]float64{-50.0, -40.0, -30.0, math.NaN()})
+		if got != "-10.0|0.0|10.0|0.0" {
+			t.Errorf("buildAfftdnBandNoise = %q, want -10.0|0.0|10.0|0.0", got)
+		}
+		if strings.Contains(got, "NaN") || strings.Contains(got, "Inf") {
+			t.Errorf("buildAfftdnBandNoise = %q, must not contain a NaN or Inf token", got)
+		}
+	})
+
+	t.Run("interior Inf band excluded from mean, emitted as 0.0", func(t *testing.T) {
+		// -Inf is excluded from the mean (mean of {-50, -30} = -40); shapes are
+		// -10, 0.0 (for the -Inf band), +10.
+		got := buildAfftdnBandNoise([]float64{-50.0, math.Inf(-1), -30.0})
+		if got != "-10.0|0.0|10.0" {
+			t.Errorf("buildAfftdnBandNoise = %q, want -10.0|0.0|10.0", got)
+		}
+		if strings.Contains(got, "Inf") {
+			t.Errorf("buildAfftdnBandNoise = %q, must not contain an Inf token", got)
+		}
+	})
+
+	t.Run("finite but silent band is a real measurement", func(t *testing.T) {
+		// A very low but finite floor (-120) is a legitimate measurement, included
+		// in the mean. Mean of {-120, -40, -40} = -66.67; shapes clip the -120 band
+		// to -24 and lift the -40 bands by +26.67, clipped to +24.
+		got := buildAfftdnBandNoise([]float64{-120.0, -40.0, -40.0})
+		if got != "-24.0|24.0|24.0" {
+			t.Errorf("buildAfftdnBandNoise = %q, want -24.0|24.0|24.0", got)
+		}
+	})
+
+	t.Run("all non-finite yields empty string for white fallback", func(t *testing.T) {
+		got := buildAfftdnBandNoise([]float64{math.NaN(), math.Inf(1), math.Inf(-1)})
+		if got != "" {
+			t.Errorf("buildAfftdnBandNoise = %q, want empty (white fallback)", got)
 		}
 	})
 }

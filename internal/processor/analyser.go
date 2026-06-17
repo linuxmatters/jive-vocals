@@ -59,6 +59,14 @@ type NoiseProfile struct {
 	SpectralFlatness float64 `json:"spectral_flatness,omitempty"`    // 0-1, noise-like vs tonal (higher = more noise-like)
 	SpectralKurtosis float64 `json:"spectral_kurtosis,omitempty"`    // Peakiness (high = peaked harmonics like speech)
 
+	// Room-tone band noise: per-band RMS (dBFS) over the elected room-tone region,
+	// one value per afftdn fixed band (see afftdnBandCentresHz). Feeds the measured
+	// custom afftdn noise profile (bn) in tuneNoiseReduction. BandNoise is the raw
+	// per-band RMS; BandsMeasured mirrors the SpeechProfile convention and is true
+	// only when every band measured successfully.
+	BandNoise     []float64 `json:"band_noise_dbfs,omitempty"`     // Per-band RMS (dBFS) across the afftdn fixed bands
+	BandsMeasured bool      `json:"band_noise_measured,omitempty"` // True only when all afftdn bands measured successfully
+
 	// Golden sub-region refinement info (populated when a long candidate is refined)
 	OriginalStart    time.Duration `json:"original_start,omitempty"`    // Original candidate start before refinement (time.Duration ns)
 	OriginalDuration time.Duration `json:"original_duration,omitempty"` // Original candidate duration before refinement (time.Duration ns)
@@ -326,6 +334,11 @@ func AnalyseAudio(ctx stdcontext.Context, filename string, config *BaseFilterCon
 	// de-esser engagement signal. Region-scoped second decode (no asplit/multi-sink
 	// support in the analysis graph); non-fatal on failure.
 	measureSpeechBands(ctx, filename, measurements, config.logger)
+
+	// Measure the 15-band room-tone spectrum for the measured custom afftdn noise
+	// profile (nt=custom:bn=...). Region-scoped, non-fatal on failure (the
+	// white-noise afftdn path stands in when bands are unavailable).
+	measureNoiseBands(ctx, filename, measurements, config.logger)
 
 	assignInputMeasurementSuggestions(measurements)
 

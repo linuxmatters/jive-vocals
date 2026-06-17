@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -1540,10 +1541,12 @@ func speechRegionsEqual(a, b []SpeechRegion) bool {
 }
 
 // noiseProfilesEqual returns true when two NoiseProfile pointers refer to
-// equivalent values (or are both nil).
+// equivalent values (or are both nil). NoiseProfile carries a BandNoise slice, so
+// it is no longer comparable with ==; compare the scalar fields, then the slice
+// element-wise.
 func noiseProfilesEqual(a, b *NoiseProfile) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return *a == *b
+	return reflect.DeepEqual(*a, *b)
 }

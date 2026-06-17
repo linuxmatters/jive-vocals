@@ -102,8 +102,8 @@ downmix → rumble_highpass → bandlimit_lowpass → noise_reduction → speech
 |--------|---------------------|-------|
 | **Rumble high-pass** | Fixed 80Hz / 12dB/oct | None (fixed) |
 | **Band-limit low-pass** | Fixed 20.5kHz / 12dB/oct band-limit | None (unconditional, all content) |
-| **Noise reduction** | None (fixed) | Not adaptive: `anlmdn` runs at the source sample rate with `r=0.0020` and `m=3`, followed by `afftdn` FFT spectral denoise with a fixed `nr=12` (capped to avoid warble on the noisiest voice) |
-| **Speech gate** | Threshold, ratio, attack, release, range, knee | LRA, noise floor, quiet speech estimate, spectral flux, entropy |
+| **Noise reduction** | `afftdn` enable + noise floor `nf` + noise type `nt` | `anlmdn` is fixed (`r=0.0020`, `m=3`, source rate) with a fixed `nr=12` on `afftdn` (capped to avoid warble). `afftdn` adapts three ways: it is dropped on voice-activated captures (anlmdn-only); otherwise its `nf` is pinned to the measured noise floor (re-clamped to afftdn's [-80, -20] dB) with `track_noise` off; and on a trustworthy room-tone sample (gate separation >= 12 dB and room-tone spectral flatness >= 0.45) it emits a measured per-file noise profile (`nt=custom:bn=<15-band shape>`, the room tone's level across 15 frequency bands) instead of the flat white model (`nt=w`) |
+| **Speech gate** | Threshold, ratio, depth (range) | Threshold voiced-anchored (voiced p10 minus 6 dB); ratio from LRA; depth fixed 14 dB, reduced to 8 dB on a narrow gap (separation < 12 dB). Attack, release, knee, detection all fixed |
 | **Levelling compressor** | Threshold only | Speech-RMS-relative (`SpeechProfile.RMSLevel + 9 dB`); all other params fixed (ratio 3.0, attack 10 ms, release 200 ms, knee 4.0, mix 1.0) |
 | **De-esser** | Intensity `i` (0.0-0.85) | Speech-region sibilant-band excess (6-9 kHz vs 1-3 kHz body); `f`/`m` fixed |
 
@@ -120,8 +120,8 @@ downmix → rumble_highpass → bandlimit_lowpass → noise_reduction → speech
 
 Jivetalking employs speech profile extraction for adaptive tuning:
 
-- **Voice-activity detection:** One level histogram with an Otsu speech/silence split, a percentile noise floor, hysteresis, adaptive gap bridging, and a spectral veto (vocal-band centroid, structured-spectrum entropy) over 250ms intervals; floored intervals (below -115 dBFS digital silence) are excluded from the histogram
-- **Room tone detection:** The longest unbroken run of below-split intervals, trimmed inward to its cleanest window, profiles the noise floor
+- **Voice-activity detection:** One level histogram with an Otsu speech/silence split, a percentile noise floor, hysteresis, adaptive gap bridging, and a spectral veto (vocal-band centroid, structured-spectrum entropy) over 250ms intervals; the split, floor, and pre-scan seed all sit on the K-weighted momentary-LUFS axis (one scale), and floored intervals (at or below -115 dBFS digital silence) are excluded from the histogram
+- **Room tone detection:** The longest unbroken run of below-split intervals, trimmed inward to its cleanest window, profiles the noise floor; the floor is a low percentile of the momentary-LUFS level set, not a plain dBFS RMS reading
 - **Voice-activated detection:** Recordings where the fraction of intervals pinned at the digital-silence floor is >= 20% (Riverside, Zencastr) are flagged as platform-gated capture; the speech run-bridging gap tolerance is derived per file (2s to 10s)
 - **Speech region detection:** Scores speech runs SNR-primary with a saturating duration-adequacy term and a consistency tie-break, then elects the highest-scoring run (not the longest); a run must last at least 10s to qualify
 - **Golden sub-region refinement:** Identifies cleanest sub-windows for noise/speech profiling
@@ -144,13 +144,13 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 | **Look-ahead Capability** | Yes, infinite look-ahead via multiple passes | Yes, infinite look-ahead via Pass 1 analysis |
 | **Target Loudness Standard** | -18 dB RMS (custom RMS calculation) | -16 LUFS |
 | **Silence Detection** | Fixed: 50ms subsegments > -44 dB | Adaptive: voice-activity detector (Otsu level split + spectral veto) |
-| **Noise Reduction** | None | `anlmdn` (Non-Local Means, source-rate denoising at `r=0.0020`, `m=3`) + `afftdn` (FFT spectral denoise, fixed `nr=12`) |
+| **Noise Reduction** | None | `anlmdn` (Non-Local Means, source-rate denoising at `r=0.0020`, `m=3`, fixed) + `afftdn` (FFT spectral denoise, fixed `nr=12`; adaptively dropped on voice-activated captures, else `nf` pinned to the measured noise floor, and on a trustworthy room-tone sample given a measured per-file noise profile rather than the flat white model) |
 | **Dynamics Processing** | Implicit in leveling algorithm | RMS levelling compressor (fixed params, speech-RMS-relative threshold) + transparent limiter |
-| **Gating/Expansion** | None | Soft expander (2:1-4:1 ratio) |
+| **Gating/Expansion** | None | Soft expander (1.5:1 to 2:1 ratio, voiced-anchored threshold) |
 | **Highpass Filtering** | None | Fixed 80Hz 12dB/oct highpass |
 | **Lowpass Filtering** | None | Fixed 20.5kHz 12dB/oct band-limit |
 | **De-essing** | None | Adaptive intensity 0.0-0.85 from speech-region sibilant-band excess (6-9 kHz vs 1-3 kHz) |
-| **Content Type Detection** | None | Speech vs Music vs Mixed classification |
+| **Content Type Detection** | None | Voice-activity detection only (speech vs silence/noise via Otsu level split + spectral veto); no music/mixed classification |
 | **Adaptive Parameters** | Minimal (one-size-fits-all) | Extensive per-filter tuning based on 20+ metrics |
 | **Parameter Control** | None, fully automatic | None, fully automatic (but tunable via source) |
 | **Output Formats** | WAV, AIFF | Any FFmpeg-supported format (default: FLAC → FLAC) |
@@ -221,8 +221,8 @@ Jivetalking employs speech profile extraction for adaptive tuning:
 
 ### Capabilities Jivetalking Has That Levelator Lacked
 
-1. **Noise Reduction:** Non-Local Means denoising (`anlmdn`) always active, running at the source sample rate with a small research radius (`r=0.0020`) and a tight LUT decay (`m=3`) for sharp rejection of distant patches, followed by `afftdn` FFT spectral denoise (fixed `nr=12`) for residual under-speech suppression
-2. **Gating:** Soft expander for inter-speech cleanup
+1. **Noise Reduction:** Non-Local Means denoising (`anlmdn`) always active, running at the source sample rate with a small research radius (`r=0.0020`) and a tight LUT decay (`m=3`) for sharp rejection of distant patches, followed by `afftdn` FFT spectral denoise (fixed `nr=12`) for residual under-speech suppression; `afftdn` is dropped on voice-activated captures (anlmdn-only), otherwise has its noise floor `nf` pinned to the measured floor with `track_noise` off, and on a trustworthy room-tone sample (clear speech/noise gap and a noise-like room tone) subtracts a measured per-file noise profile (the room tone's level across 15 frequency bands) rather than a flat white assumption
+2. **Gating:** Soft expander (1.5:1 to 2:1, voiced-anchored threshold) for inter-speech cleanup
 3. **True Peak Limiting:** Prevents inter-sample peaks
 4. **De-essing:** Automatic sibilance control
 5. **Spectral Analysis:** 15+ spectral metrics for adaptive tuning
@@ -419,5 +419,5 @@ Levelator created its own RMS standard because no spoken-word standard existed. 
 
 ---
 
-*Report compiled: February 2026 (noise-removal section updated May 2026)*
-*Jivetalking version analyzed: Development branch (AGENTS.md dated prior to February 2026)*
+*Report compiled: February 2026 (noise-removal section updated May 2026; speech-gate redesign, VAD momentary-LUFS axis fix, adaptive afftdn, and measured per-file afftdn noise profile updated June 2026)*
+*Jivetalking version analyzed: Development branch (AGENTS.md with voiced-anchored speech gate, unified VAD on the momentary-LUFS axis, and adaptive afftdn with a measured per-file noise profile)*
