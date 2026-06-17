@@ -375,9 +375,11 @@ sets the threshold to the **measured speech RMS plus 9 dB**.
 Anchoring to the speech level means the compressor engages on the upper part of
 the speaking voice at a consistent depth (around 2.5-4.4 dB of gain reduction)
 **regardless of how loud or quiet the recording was captured**. A whispered
-remote take and a hot studio take both get the same gentle levelling. When no
-speech region is detected, it falls back to a peak-relative estimate (peak minus
-20 dB). Everything else about the compressor is fixed.
+remote take and a hot studio take both get the same gentle levelling. As a guard,
+if a clean but quiet speech window is picked, the speech RMS is floored at the
+whole-file level so the threshold is not dragged too low. When no speech region is
+detected, it falls back to a peak-relative estimate (peak minus 20 dB). Everything
+else about the compressor is fixed.
 
 ### The de-esser engages on measured sibilance
 
