@@ -10,7 +10,32 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/linuxmatters/jivetalking/internal/cli"
+	"github.com/linuxmatters/jivetalking/internal/processor"
 )
+
+// TestSpeedFraction verifies the badge fraction un-scales Pass 1's capped progress
+// and passes other passes through unchanged.
+func TestSpeedFraction(t *testing.T) {
+	tests := []struct {
+		name     string
+		pass     processor.PassNumber
+		progress float64
+		want     float64
+	}{
+		{"pass 1 mid un-scales", processor.PassAnalysis, 0.475, 0.5},
+		{"pass 1 at cap reaches 1.0", processor.PassAnalysis, processor.BandPhaseProgressStart, 1.0},
+		{"pass 1 above cap clamps to 1.0", processor.PassAnalysis, 0.97, 1.0},
+		{"pass 2 passes through", processor.PassProcessing, 0.5, 0.5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := speedFraction(tc.pass, tc.progress)
+			if math.Abs(got-tc.want) > 1e-9 {
+				t.Fatalf("speedFraction(%v, %v) = %v, want %v", tc.pass, tc.progress, got, tc.want)
+			}
+		})
+	}
+}
 
 // perFrameMeterRamp is the oracle: the exact per-frame ramp-build logic that
 // renderAudioLevelMeter ran before the ramp was cached. The cached meterRamp()

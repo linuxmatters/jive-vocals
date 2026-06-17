@@ -162,11 +162,12 @@ func renderTimeline(file FileProgress) string {
 	timeline := filledStyle.Render(strings.Repeat("▰", filled)) +
 		emptyStyle.Render(strings.Repeat("▱", timelineWidth-filled))
 
-	// Realtime speed badge: (progress × duration) / elapsed. Guard against
-	// start-up garbage and missing duration.
+	// Realtime speed badge: (speedFraction * duration) / elapsed. The fraction
+	// un-scales Pass 1's capped bar progress to true decode throughput. Guards
+	// reject start-up garbage and a missing duration.
 	badge := "⚡ —×"
 	if file.Duration > 0 && file.Progress > 0.02 && elapsedSecs > 0.3 {
-		rt := (file.Progress * file.Duration) / elapsedSecs
+		rt := (speedFraction(file.CurrentPass, file.Progress) * file.Duration) / elapsedSecs
 		badge = fmt.Sprintf("⚡ %.1f×", rt)
 	}
 
@@ -177,6 +178,18 @@ func renderTimeline(file FileProgress) string {
 		rightClock,
 		muted.Render("·"),
 		muted.Render(badge))
+}
+
+// speedFraction returns the audio fraction the realtime-speed badge should use
+// for a given pass. Pass 1 caps its bar progress at processor.BandPhaseProgressStart
+// to reserve headroom for the band phase, so the raw progress under-reports decode
+// throughput; un-scale it (clamped to 1.0 for the brief band span where decode is
+// already done). Other passes report a true fraction already, so pass it through.
+func speedFraction(pass processor.PassNumber, progress float64) float64 {
+	if pass != processor.PassAnalysis {
+		return progress
+	}
+	return min(1.0, progress/processor.BandPhaseProgressStart)
 }
 
 // superscriptValue converts a numeric peak value to Unicode superscript so the
