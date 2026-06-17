@@ -51,39 +51,39 @@ func afftdnBandEdgesHz(index int) (lowHz, highHz float64) {
 }
 
 // measureNoiseBands measures the per-band RMS (dBFS) over the elected room-tone
-// region and writes them onto the NoiseProfile. It mirrors measureSpeechBands:
-// the input file is opened once and the reader is seeked between band
-// measurements, band-limiting the downmixed region before astats. It is a no-op
-// when no NoiseProfile was elected or the region is empty. Failures are
-// non-fatal: BandNoise stays nil and BandsMeasured stays false, so
-// tuneNoiseReduction keeps the white-noise afftdn path.
-func measureNoiseBands(ctx context.Context, filename string, measurements *AudioMeasurements, log debugLogger) {
+// region and writes them onto the NoiseProfile. It is a no-op when no
+// NoiseProfile was elected or the region is empty. Failures are non-fatal:
+// BandNoise stays nil and BandsMeasured stays false, so tuneNoiseReduction keeps
+// the white-noise afftdn path.
+//
+// The 15 bands run as bounded goroutines (runBandMeasurements): each opens its
+// own audio.Reader and runs an independent filter graph, band-limiting the
+// downmixed region before astats, and writes only its own bands[i] slot. The
+// per-band graph and astats math are unchanged, so the measured RMS values are
+// bit-identical to the former serial path. report (when non-nil) advances the
+// post-loop progress span.
+func measureNoiseBands(ctx context.Context, filename string, measurements *AudioMeasurements, report bandProgressReporter, log debugLogger) {
 	if measurements == nil || measurements.Regions.NoiseProfile == nil {
+		drainBandProgress(report, len(afftdnBandCentresHz))
 		return
 	}
 
 	profile := measurements.Regions.NoiseProfile
 	if profile.Duration <= 0 {
+		drainBandProgress(report, len(afftdnBandCentresHz))
 		return
 	}
-
-	reader, _, err := audio.OpenAudioFile(filename)
-	if err != nil {
-		log.Logf("Warning: failed to open file for noise band measurement: %v", err)
-		return
-	}
-	defer reader.Close()
 
 	bands := make([]float64, len(afftdnBandCentresHz))
-	finite := 0
+	measured := make([]bool, len(afftdnBandCentresHz))
 
-	for i := range afftdnBandCentresHz {
-		if i > 0 {
-			if err := reader.SeekTo(0); err != nil {
-				log.Logf("Warning: failed to seek for noise band %d measurement: %v", i, err)
-				return
-			}
+	runBandMeasurements(ctx, len(afftdnBandCentresHz), report, func(i int) {
+		reader, _, err := audio.OpenAudioFile(filename)
+		if err != nil {
+			log.Logf("Warning: failed to open file for noise band %d measurement: %v", i, err)
+			return
 		}
+		defer reader.Close()
 
 		lowHz, highHz := afftdnBandEdgesHz(i)
 		rms, ok, err := measureSpeechBandRMS(ctx, reader, profile.Start, profile.Duration, lowHz, highHz)
@@ -92,12 +92,17 @@ func measureNoiseBands(ctx context.Context, filename string, measurements *Audio
 			return
 		}
 		bands[i] = rms
+		measured[i] = ok
+	})
+
+	finite := 0
+	for i := range bands {
 		// A band with astats RMS reported counts as measured when its value is
 		// finite. A legitimately silent band (very low RMS, e.g. -120 dBFS floor)
 		// is finite and counts; only NaN/Inf is excluded. The top band (centre
 		// 24000 Hz) sits above the 20.5 kHz band-limit and at or above Nyquist for
 		// 48 kHz audio, so it reports a non-finite RMS as a matter of course.
-		if ok && isFinite(rms) {
+		if measured[i] && isFinite(bands[i]) {
 			finite++
 		}
 	}

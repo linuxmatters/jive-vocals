@@ -328,17 +328,29 @@ func AnalyseAudio(ctx stdcontext.Context, filename string, config *BaseFilterCon
 	// Unified Pass 1 voice-activity detector: one bimodal split feeds both the
 	// elected SpeechProfile and the NoiseProfile / Noise.Floor. The pre-scan floor
 	// anchors the split clamp; the hop and axis are the single configurable choices.
+	// It must finish before either band function runs: it elects the speech and
+	// room-tone regions both measure.
 	detectVoiceActivity(measurements, intervals, measurements.Noise.FloorPrescan, analysisIntervalHop, axisMomentaryLUFS, config.logger)
 
+	// Post-loop band phase: the main decode loop is capped at BandPhaseProgressStart
+	// (0.85); the two band functions drive 0.85..1.0 by reporting each completed
+	// band decode through one shared tracker (atomic counter, monotonic, clamped to
+	// 1.0). The total is the combined speech + noise band budget, so a band function
+	// that early-returns still drains its share via drainBandProgress and the phase
+	// reaches 1.0. The functions run sequentially (speech then noise) but each fans
+	// its own bands across cores under the shared semaphore.
+	bandTotal := len(speechBandPlan) + len(afftdnBandCentresHz)
+	tracker := newBandProgressTracker(progressCallback, measurements.Duration, bandTotal)
+
 	// Measure body/sibilant band RMS over the elected speech region for the
-	// de-esser engagement signal. Region-scoped second decode (no asplit/multi-sink
+	// de-esser engagement signal. Region-scoped decode (no asplit/multi-sink
 	// support in the analysis graph); non-fatal on failure.
-	measureSpeechBands(ctx, filename, measurements, config.logger)
+	measureSpeechBands(ctx, filename, measurements, tracker.report, config.logger)
 
 	// Measure the 15-band room-tone spectrum for the measured custom afftdn noise
 	// profile (nt=custom:bn=...). Region-scoped, non-fatal on failure (the
 	// white-noise afftdn path stands in when bands are unavailable).
-	measureNoiseBands(ctx, filename, measurements, config.logger)
+	measureNoiseBands(ctx, filename, measurements, tracker.report, config.logger)
 
 	assignInputMeasurementSuggestions(measurements)
 
@@ -536,9 +548,13 @@ func collectAnalysisFrames(ctx stdcontext.Context, filename string, config *Base
 			}
 
 			if frameCount%updateInterval == 0 && progressCallback != nil && estimatedTotalFrames > 0 {
-				progress := float64(frameCount) / estimatedTotalFrames
-				if progress > 1.0 {
-					progress = 1.0
+				// Cap the main-decode-loop progress at BandPhaseProgressStart;
+				// the post-loop band phase drives the remaining span to 1.0. Scale
+				// the frame ratio by the cap, still clamped, so the bar advances
+				// smoothly into the band phase instead of hitting 1.0 then freezing.
+				progress := (float64(frameCount) / estimatedTotalFrames) * BandPhaseProgressStart
+				if progress > BandPhaseProgressStart {
+					progress = BandPhaseProgressStart
 				}
 				progressCallback(ProgressUpdate{
 					Pass:     context.Pass,

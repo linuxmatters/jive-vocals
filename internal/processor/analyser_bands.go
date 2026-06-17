@@ -85,47 +85,64 @@ func measureSpeechBandRMS(ctx context.Context, reader *audio.Reader, start, dura
 	return rmsLevel, rmsLevelFound, nil
 }
 
+// speechBandPlan names the two speech-region bands measured in parallel. The
+// fixed two-element order keeps the fan-out result-slot writes deterministic.
+var speechBandPlan = [2]struct {
+	lowHz, highHz float64
+}{
+	{bandBodyLowHz, bandBodyHighHz},
+	{bandSibLowHz, bandSibHighHz},
+}
+
 // measureSpeechBands measures body-band and sibilant-band RMS over the elected
 // speech region and writes them onto the SpeechProfile. It is a no-op when no
 // SpeechProfile was elected. Failures are non-fatal: the band fields stay at
 // their zero value and the de-esser falls back to OFF (see adaptive_deesser.go).
-// The input file is opened once and the reader is seeked between the two
-// band measurements, mirroring MeasureOutputRegions' single-open pattern.
-func measureSpeechBands(ctx context.Context, filename string, measurements *AudioMeasurements, log debugLogger) {
+//
+// The two bands run as bounded goroutines (runBandMeasurements): each opens its
+// own audio.Reader and runs an independent filter graph, so they share no mutable
+// state and write only their own result slot. The per-band graph and astats math
+// are unchanged, so the measured RMS values are bit-identical to the former serial
+// path. report (when non-nil) advances the post-loop progress span.
+func measureSpeechBands(ctx context.Context, filename string, measurements *AudioMeasurements, report bandProgressReporter, log debugLogger) {
 	if measurements == nil || measurements.Regions.SpeechProfile == nil {
+		drainBandProgress(report, len(speechBandPlan))
 		return
 	}
 
 	region := measurements.Regions.SpeechProfile.Region
 	if region.Duration <= 0 {
+		drainBandProgress(report, len(speechBandPlan))
 		return
 	}
 
-	reader, _, err := audio.OpenAudioFile(filename)
-	if err != nil {
-		log.Logf("Warning: failed to open file for speech band measurement: %v", err)
-		return
+	var results [len(speechBandPlan)]struct {
+		rms float64
+		ok  bool
 	}
-	defer reader.Close()
 
-	body, bodyOK, err := measureSpeechBandRMS(ctx, reader, region.Start, region.Duration, bandBodyLowHz, bandBodyHighHz)
-	if err != nil {
-		log.Logf("Warning: body-band RMS measurement failed: %v", err)
-		return
-	}
+	runBandMeasurements(ctx, len(speechBandPlan), report, func(i int) {
+		reader, _, err := audio.OpenAudioFile(filename)
+		if err != nil {
+			log.Logf("Warning: failed to open file for speech band %d measurement: %v", i, err)
+			return
+		}
+		defer reader.Close()
+
+		band := speechBandPlan[i]
+		rms, ok, err := measureSpeechBandRMS(ctx, reader, region.Start, region.Duration, band.lowHz, band.highHz)
+		if err != nil {
+			log.Logf("Warning: speech band %d RMS measurement failed: %v", i, err)
+			return
+		}
+		results[i].rms = rms
+		results[i].ok = ok
+	})
+
+	body, bodyOK := results[0].rms, results[0].ok
+	sib, sibOK := results[1].rms, results[1].ok
 	if bodyOK {
 		measurements.Regions.SpeechProfile.BodyBandRMS = body
-	}
-
-	if err := reader.SeekTo(0); err != nil {
-		log.Logf("Warning: failed to seek for sibilant-band measurement: %v", err)
-		return
-	}
-
-	sib, sibOK, err := measureSpeechBandRMS(ctx, reader, region.Start, region.Duration, bandSibLowHz, bandSibHighHz)
-	if err != nil {
-		log.Logf("Warning: sibilant-band RMS measurement failed: %v", err)
-		return
 	}
 	if sibOK {
 		measurements.Regions.SpeechProfile.SibBandRMS = sib
@@ -138,4 +155,16 @@ func measureSpeechBands(ctx context.Context, filename string, measurements *Audi
 
 	log.Logf("Speech band RMS: body=%.1f dBFS (found=%v), sib=%.1f dBFS (found=%v), excess=%.1f dB, measured=%v",
 		body, bodyOK, sib, sibOK, sib-body, measurements.Regions.SpeechProfile.BandsMeasured)
+}
+
+// drainBandProgress fires report n times so an early-return band function still
+// advances the post-loop progress span by its full band budget; otherwise the
+// phase would never reach 1.0 from the band side. No-op when report is nil.
+func drainBandProgress(report bandProgressReporter, n int) {
+	if report == nil {
+		return
+	}
+	for range n {
+		report()
+	}
 }
