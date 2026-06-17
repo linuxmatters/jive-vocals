@@ -303,7 +303,7 @@ Sibilance reduction. Intensity is adapted from the speech-region sibilant-band e
 | Gate depth (dB) | 14.00 |
 | afftdn enabled | yes |
 | afftdn noise floor (dB) | -47.56 |
-| afftdn noise type | - |
+| afftdn noise type | w |
 | afftdn disable reason | - |
 
 ## Peak Limiter

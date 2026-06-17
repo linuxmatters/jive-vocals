@@ -40,6 +40,7 @@ func processingRecord() *processor.RunRecord {
 		SpeechGateDepthDB:             14,
 		AfftdnEnabled:                 true,
 		AfftdnNoiseFloorDB:            -47.56,
+		AfftdnNoiseType:               "w",
 	}
 
 	norm := &processor.NormalisationResult{
