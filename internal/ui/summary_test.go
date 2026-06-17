@@ -23,7 +23,8 @@ func TestNewAdaptedSummaryFromConfig(t *testing.T) {
 	cfg.Deesser.Intensity = 0
 
 	m := &processor.AudioMeasurements{}
-	m.Noise.Floor = -68
+	m.Noise.Floor = -85 // internal momentary-LUFS floor; must NOT drive the display
+	m.Regions.ElectedRoomToneSample = &processor.RegionSample{RMSLevel: -68}
 	m.Loudness.InputLRA = 8.2
 	m.Loudness.InputTP = -3.2
 	m.Loudness.InputI = -24.3
@@ -62,6 +63,10 @@ func TestNewAdaptedSummaryFromConfig(t *testing.T) {
 	if !s.HasSpeech || s.VoiceAvgDB != -20.9 {
 		t.Errorf("voice avg mapping wrong: hasSpeech=%v avg=%v", s.HasSpeech, s.VoiceAvgDB)
 	}
+	// Displayed floor is the room-tone RMS (-68), not the momentary-LUFS floor (-85).
+	if s.NoiseFloorDB != -68 {
+		t.Errorf("noise floor = %v, want -68 (input room-tone RMS, not momentary-LUFS)", s.NoiseFloorDB)
+	}
 	if s.SeparationDB != -20.9-(-68) {
 		t.Errorf("separation = %v, want %v", s.SeparationDB, -20.9-(-68.0))
 	}
@@ -87,7 +92,8 @@ func TestNewAdaptedSummaryNoSpeech(t *testing.T) {
 	cfg := &processor.EffectiveFilterConfig{}
 	cfg.Resample.SampleRate = 48000
 	m := &processor.AudioMeasurements{}
-	m.Noise.Floor = -60
+	m.Noise.Floor = -85 // internal floor; must not appear in the box
+	m.Regions.ElectedRoomToneSample = &processor.RegionSample{RMSLevel: -60}
 
 	s := NewAdaptedSummary(cfg, nil, m)
 
@@ -97,8 +103,83 @@ func TestNewAdaptedSummaryNoSpeech(t *testing.T) {
 	if s.HasSpeech || s.HasSibilance {
 		t.Errorf("no SpeechProfile should leave speech rows unavailable")
 	}
+	// Floor is the elected room-tone RMS (-60), the astats-RMS axis.
 	if s.NoiseFloorDB != -60 {
-		t.Errorf("noise floor should still map: %v", s.NoiseFloorDB)
+		t.Errorf("noise floor should map to room-tone RMS: %v, want -60", s.NoiseFloorDB)
+	}
+}
+
+// TestLiveBoxFloorMatchesDoneBoxFloor locks the bug-fix invariant: the live
+// Analysis box "Noise floor" (summary NoiseFloorDB) equals the done-box "before"
+// (processor.InputNoiseFloor) for the same measurements, on the astats RMS axis,
+// never the internal momentary-LUFS floor. Both surfaces read the one resolver,
+// so when an elected sample exists they agree on its value, and when it is
+// absent they both report no floor (neither leaks the momentary-LUFS field).
+func TestLiveBoxFloorMatchesDoneBoxFloor(t *testing.T) {
+	cases := []struct {
+		name      string
+		m         *processor.AudioMeasurements
+		wantFloor bool
+	}{
+		{
+			name: "elected room-tone sample",
+			m: func() *processor.AudioMeasurements {
+				m := &processor.AudioMeasurements{}
+				m.Noise.Floor = -85 // internal; must be ignored by both surfaces
+				m.Regions.ElectedRoomToneSample = &processor.RegionSample{RMSLevel: -73}
+				m.Regions.NoiseProfile = &processor.NoiseProfile{MeasuredNoiseFloor: -73}
+				return m
+			}(),
+			wantFloor: true,
+		},
+		{
+			name: "no elected sample, momentary-LUFS field present",
+			m: func() *processor.AudioMeasurements {
+				m := &processor.AudioMeasurements{}
+				m.Noise.Floor = -85
+				// Only the momentary-LUFS field is set; neither surface may use it.
+				m.Regions.NoiseProfile = &processor.NoiseProfile{MeasuredNoiseFloor: -70}
+				return m
+			}(),
+			wantFloor: false,
+		},
+	}
+
+	cfg := &processor.EffectiveFilterConfig{}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			live := NewAdaptedSummary(cfg, nil, tc.m)
+			done, ok := processor.InputNoiseFloor(&processor.ProcessingResult{Measurements: tc.m})
+			if ok != tc.wantFloor {
+				t.Fatalf("done-box InputNoiseFloor: ok = %v, want %v", ok, tc.wantFloor)
+			}
+			if ok && live.NoiseFloorDB != done {
+				t.Errorf("live-box floor %v != done-box floor %v (must be identical)", live.NoiseFloorDB, done)
+			}
+			if live.NoiseFloorDB == tc.m.Noise.Floor {
+				t.Errorf("live-box floor used the internal momentary-LUFS floor %v", tc.m.Noise.Floor)
+			}
+		})
+	}
+}
+
+// TestSeparationDBSameAxis confirms SNR Gap is VoiceAvgDB - NoiseFloorDB on one
+// axis (both astats RMS), so the SNR Gap number and its bar agree and there is no
+// momentary-LUFS mix.
+func TestSeparationDBSameAxis(t *testing.T) {
+	m := &processor.AudioMeasurements{}
+	m.Noise.Floor = -85 // internal; must not enter the separation maths
+	m.Regions.ElectedRoomToneSample = &processor.RegionSample{RMSLevel: -70}
+	m.Regions.SpeechProfile = &processor.SpeechCandidateMetrics{}
+	m.Regions.SpeechProfile.RMSLevel = -22
+
+	s := NewAdaptedSummary(&processor.EffectiveFilterConfig{}, nil, m)
+
+	if s.SeparationDB != s.VoiceAvgDB-s.NoiseFloorDB {
+		t.Errorf("SeparationDB = %v, want VoiceAvgDB - NoiseFloorDB = %v", s.SeparationDB, s.VoiceAvgDB-s.NoiseFloorDB)
+	}
+	if s.SeparationDB != -22-(-70) {
+		t.Errorf("SeparationDB = %v, want %v (same-axis RMS)", s.SeparationDB, -22-(-70.0))
 	}
 }
 
