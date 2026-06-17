@@ -186,6 +186,7 @@ func orderIndependenceBrightSpeechMeasurements() *AudioMeasurements {
 		Dynamics: DynamicsMetrics{
 			DynamicRange:      32.0,
 			PeakLevel:         -6.0,
+			RMSLevel:          -30.0, // full-file RMS below speech RMS, so the threshold floor stays inert
 			ZeroCrossingsRate: 0.05,
 		},
 		Loudness: InputLoudnessMetrics{
@@ -1395,7 +1396,7 @@ func TestSanitizeConfig(t *testing.T) {
 func TestTuneLevellingCompressorThresholdSpeechRMSAnchor(t *testing.T) {
 	config := newTestConfig()
 	measurements := &AudioMeasurements{
-		Dynamics: DynamicsMetrics{PeakLevel: -6.0},
+		Dynamics: DynamicsMetrics{PeakLevel: -6.0, RMSLevel: -32.0}, // full-file RMS below speech RMS, floor inert
 		Regions:  RegionMetrics{SpeechProfile: &SpeechCandidateMetrics{RegionSample: RegionSample{RMSLevel: -24.0}}},
 	}
 
@@ -1411,7 +1412,8 @@ func TestTuneLevellingCompressorThresholdSpeechRMSClampedHigh(t *testing.T) {
 	config := newTestConfig()
 	// Loud speech: RMS -10 + 9 = -1, above the -6 ceiling -> clamps to -6.
 	measurements := &AudioMeasurements{
-		Regions: RegionMetrics{SpeechProfile: &SpeechCandidateMetrics{RegionSample: RegionSample{RMSLevel: -10.0}}},
+		Dynamics: DynamicsMetrics{RMSLevel: -20.0}, // full-file RMS below speech RMS, floor inert
+		Regions:  RegionMetrics{SpeechProfile: &SpeechCandidateMetrics{RegionSample: RegionSample{RMSLevel: -10.0}}},
 	}
 
 	tuneLevellingCompressorThreshold(config, measurements)
@@ -1424,8 +1426,10 @@ func TestTuneLevellingCompressorThresholdSpeechRMSClampedHigh(t *testing.T) {
 func TestTuneLevellingCompressorThresholdSpeechRMSClampedLow(t *testing.T) {
 	config := newTestConfig()
 	// Very quiet speech: RMS -60 + 9 = -51, below the -45 floor -> clamps to -45.
+	// NaN full-file RMS keeps the floor out so this tests the low clamp alone.
 	measurements := &AudioMeasurements{
-		Regions: RegionMetrics{SpeechProfile: &SpeechCandidateMetrics{RegionSample: RegionSample{RMSLevel: -60.0}}},
+		Dynamics: DynamicsMetrics{RMSLevel: math.NaN()},
+		Regions:  RegionMetrics{SpeechProfile: &SpeechCandidateMetrics{RegionSample: RegionSample{RMSLevel: -60.0}}},
 	}
 
 	tuneLevellingCompressorThreshold(config, measurements)
@@ -1472,6 +1476,67 @@ func TestTuneLevellingCompressorThresholdFallsBackForInvalidPeak(t *testing.T) {
 
 	if math.Abs(config.LevellingCompressor.Threshold-defaultLevellingCompressorThreshold) > 0.001 {
 		t.Errorf("LevellingCompressor.Threshold = %.3f, want %.3f", config.LevellingCompressor.Threshold, defaultLevellingCompressorThreshold)
+	}
+}
+
+func TestTuneLevellingCompressorThresholdFullFileRMSFloor(t *testing.T) {
+	tests := []struct {
+		name        string
+		speechRMS   float64
+		fullFileRMS float64
+		want        float64
+	}{
+		{
+			// Speech RMS above full-file RMS: the floor is inert, threshold tracks speech.
+			name:        "speech above full-file (floor inert)",
+			speechRMS:   -24.0,
+			fullFileRMS: -40.0,
+			want:        -24.0 + levellingCompressorThresholdSpeechOffsetDB, // -15.0
+		},
+		{
+			// Anomalously quiet speech election: floored at the full-file RMS.
+			name:        "speech below full-file (floor engaged)",
+			speechRMS:   -50.0,
+			fullFileRMS: -40.0,
+			want:        -40.0 + levellingCompressorThresholdSpeechOffsetDB, // -31.0
+		},
+		{
+			// NaN full-file RMS: guard falls back to the raw speech RMS.
+			name:        "NaN full-file RMS falls back to speech",
+			speechRMS:   -24.0,
+			fullFileRMS: math.NaN(),
+			want:        -24.0 + levellingCompressorThresholdSpeechOffsetDB, // -15.0
+		},
+		{
+			// +Inf full-file RMS: guard falls back to the raw speech RMS.
+			name:        "Inf full-file RMS falls back to speech",
+			speechRMS:   -24.0,
+			fullFileRMS: math.Inf(1),
+			want:        -24.0 + levellingCompressorThresholdSpeechOffsetDB, // -15.0
+		},
+		{
+			// Floor raises speech above the -6 ceiling: clamp applies after flooring.
+			name:        "floor then clamp ceiling",
+			speechRMS:   -50.0,
+			fullFileRMS: -8.0, // -8 + 9 = 1, above -6 -> clamps to -6
+			want:        levellingCompressorThresholdMax,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := newTestConfig()
+			measurements := &AudioMeasurements{
+				Dynamics: DynamicsMetrics{RMSLevel: tt.fullFileRMS},
+				Regions:  RegionMetrics{SpeechProfile: &SpeechCandidateMetrics{RegionSample: RegionSample{RMSLevel: tt.speechRMS}}},
+			}
+
+			tuneLevellingCompressorThreshold(config, measurements)
+
+			if math.Abs(config.LevellingCompressor.Threshold-tt.want) > 0.001 {
+				t.Errorf("LevellingCompressor.Threshold = %.3f, want %.3f", config.LevellingCompressor.Threshold, tt.want)
+			}
+		})
 	}
 }
 

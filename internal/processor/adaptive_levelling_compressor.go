@@ -63,7 +63,9 @@ func tuneLevellingCompressor(config *EffectiveFilterConfig, measurements *AudioM
 
 // tuneLevellingCompressorThreshold sets the compressor threshold.
 //
-// With a SpeechProfile, threshold = speech RMS + offset, so the compressor
+// With a SpeechProfile, threshold = speech RMS + offset, where the speech RMS is
+// first floored at the full-file overall RMS (raises only) so an anomalously
+// quiet speech election cannot drag the threshold too low. The compressor then
 // engages on programme material at a consistent depth regardless of the file's
 // peak/silence distribution. Without one (full-file metrics unreliable), it
 // falls back to the legacy peak-relative estimate (peak - 20 dB). Both paths are
@@ -72,7 +74,15 @@ func tuneLevellingCompressorThreshold(config *EffectiveFilterConfig, measurement
 	var threshold float64
 
 	if measurements.Regions.SpeechProfile != nil {
-		threshold = measurements.Regions.SpeechProfile.RMSLevel + levellingCompressorThresholdSpeechOffsetDB
+		effectiveSpeechRMS := measurements.Regions.SpeechProfile.RMSLevel
+		// A representative speech region cannot be quieter than the silence-diluted
+		// full-file RMS; if the election is anomalously quiet (a clean but quiet
+		// window), floor it at the whole-file level so the threshold is not dragged
+		// too low. Same dBFS axis as the threshold; raises only, never lowers.
+		if !math.IsNaN(measurements.Dynamics.RMSLevel) && !math.IsInf(measurements.Dynamics.RMSLevel, 0) {
+			effectiveSpeechRMS = max(effectiveSpeechRMS, measurements.Dynamics.RMSLevel)
+		}
+		threshold = effectiveSpeechRMS + levellingCompressorThresholdSpeechOffsetDB
 	} else {
 		if math.IsNaN(measurements.Dynamics.PeakLevel) || math.IsInf(measurements.Dynamics.PeakLevel, 0) {
 			config.LevellingCompressor.Threshold = defaultLevellingCompressorThreshold
