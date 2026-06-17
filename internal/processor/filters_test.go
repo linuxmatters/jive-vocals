@@ -826,6 +826,60 @@ func TestBuildNoiseReductionFilter(t *testing.T) {
 		}
 	})
 
+	t.Run("afftdn custom profile emits nt=custom:bn with nf kept and tn=0", func(t *testing.T) {
+		nr := defaultNoiseReductionConfig()
+		nr.AfftdnNoiseType = "custom"
+		nr.AfftdnBandNoise = "0.0|3.5|-2.0"
+		nr.AfftdnNoiseFloor = -58.0
+		nr.AfftdnTrackNoise = false
+
+		spec := nr.buildAfftdnFilter()
+
+		if spec != "afftdn=nr=12:nt=custom:bn=0.0|3.5|-2.0:tn=0:nf=-58" {
+			t.Errorf("custom profile spec = %q, want afftdn=nr=12:nt=custom:bn=0.0|3.5|-2.0:tn=0:nf=-58", spec)
+		}
+		if !strings.Contains(spec, "nt=custom") {
+			t.Errorf("custom profile must emit nt=custom, got: %s", spec)
+		}
+		if !strings.Contains(spec, "bn=0.0|3.5|-2.0") {
+			t.Errorf("custom profile must emit the bn shape, got: %s", spec)
+		}
+		if !strings.Contains(spec, "nf=-58") {
+			t.Errorf("custom profile must keep nf, got: %s", spec)
+		}
+		if !strings.Contains(spec, "tn=0") {
+			t.Errorf("custom profile must emit tn=0, got: %s", spec)
+		}
+	})
+
+	t.Run("afftdn custom with empty bn emits no bn clause", func(t *testing.T) {
+		// The builder only emits bn= when both nt=custom and a non-empty shape are
+		// present. sanitizeNoiseReductionConfig reverts a "custom" type with no shape
+		// to "w" upstream, so this malformed combination never reaches the builder in
+		// production; the guard here proves the builder never emits a bare bn=.
+		nr := defaultNoiseReductionConfig()
+		nr.AfftdnNoiseType = "custom"
+		nr.AfftdnBandNoise = "" // no shape
+
+		spec := nr.buildAfftdnFilter()
+
+		if strings.Contains(spec, "bn=") {
+			t.Errorf("empty bn must not emit a bn= clause, got: %s", spec)
+		}
+	})
+
+	t.Run("sanitize reverts custom-with-no-bn to white", func(t *testing.T) {
+		nr := defaultNoiseReductionConfig()
+		nr.AfftdnNoiseType = "custom"
+		nr.AfftdnBandNoise = "" // malformed: custom type, no shape
+
+		sanitizeNoiseReductionConfig(&nr)
+
+		if nr.AfftdnNoiseType != "w" {
+			t.Errorf("sanitize must revert custom-with-no-bn to w, got: %q", nr.AfftdnNoiseType)
+		}
+	})
+
 	t.Run("afftdn disabled drops to empty (anlmdn-only via chain)", func(t *testing.T) {
 		nr := defaultNoiseReductionConfig()
 		nr.AfftdnEnabled = false

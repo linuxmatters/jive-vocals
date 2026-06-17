@@ -9,3 +9,8 @@ func sanitizeFloat(val, defaultVal float64) float64 {
 	}
 	return val
 }
+
+// isFinite reports whether v is neither NaN nor +/-Inf.
+func isFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}

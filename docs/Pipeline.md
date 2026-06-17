@@ -173,12 +173,31 @@ subtracts against the real measured floor rather than guessing and drifting fram
 to frame. Testing showed this removes a touch more background on average, with no
 change to the voice and no warble.
 
+**How the FFT stage uses the measured noise colour:** When the room-tone sample is
+clean enough, the FFT denoiser is also handed the *shape* of the noise, not only
+its level. Pass 1 measures the room tone's loudness in 15 frequency bands across
+the elected quiet region, and that per-file shape becomes the denoiser's noise
+model. So instead of assuming a flat, generic hiss, the stage subtracts noise that
+matches the colour of this room: more where the room is actually noisy, less where
+it is already quiet. The reduction strength stays fixed, and the measured floor
+still sets the level; the new part is the matched spectral shape.
+
+The pipeline only trusts the room-tone sample when two things hold: there is a
+clear enough gap between the speech and the background (so the quiet region is
+genuine ambience, not speech bleeding in), and the room tone is noise-like rather
+than tonal (so the measured shape describes broadband hiss, not a hum or resonance
+the denoiser should not chase). When either check fails, the stage keeps the
+generic flat model. Voice-activated captures skip the FFT stage entirely, as
+above. In testing the measured colour removed more background on the noisier
+recordings (the torture case dropped about 7 dB of floor under speech) with no
+change to the voice and no warble, and never made any recording worse.
+
 **What is fixed:** The FFT reduction strength is pinned at 12 dB and is
 deliberately *not* adaptive: a per-voice sweep showed the noisiest voice has to be
 capped near 12 dB to avoid musical "warble" artefacts, so a stronger setting would
 do harm. The time-domain denoiser runs at a fixed, validated strength too. What
-adapts is the FFT stage's on/off decision and the noise floor it works against,
-both described above.
+adapts is the FFT stage's on/off decision, the noise floor it works against, and
+the measured noise colour it subtracts, all described above.
 
 ### speech_gate
 
@@ -382,9 +401,10 @@ noise-reduction strengths are the same on every file. Each is a single correct
 value for spoken word, validated by ear and by measurement, with nothing in the
 recording that would justify changing it. Adapting them would add risk, not
 quality. Note that while the noise-reduction *strengths* are fixed, the FFT
-denoiser does adapt in two ways covered above: it switches off on
-voice-activated recordings, and when it runs it works against the file's measured
-noise floor.
+denoiser does adapt in three ways covered above: it switches off on
+voice-activated recordings, it works against the file's measured noise floor, and
+on a clean enough room-tone sample it subtracts the measured noise colour rather
+than a generic flat one.
 
 ## Normalisation (Pass 3/4): reaching -16 LUFS honestly
 

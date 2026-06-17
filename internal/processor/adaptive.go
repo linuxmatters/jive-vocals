@@ -3,6 +3,8 @@ package processor
 
 import (
 	"math"
+	"strconv"
+	"strings"
 )
 
 // AdaptConfig tunes all filter parameters based on Pass 1 measurements.
@@ -44,6 +46,85 @@ const (
 	afftdnNoiseFloorMaxDB = -20.0
 )
 
+// Measured custom afftdn profile gates. The custom spectral shape (nt=custom:bn)
+// is used only when the room-tone band measurement is trustworthy: a clear
+// speech/noise gap so the elected room tone is genuine ambience, and a flat
+// (noise-like) room-tone spectrum so the measured shape describes broadband
+// noise rather than tonal bleed. Both thresholds are corpus-derived starting
+// points, to be confirmed by the A/B sweep.
+const (
+	// afftdnCustomMinSeparationDB is the minimum gate separation (voiced p10 minus
+	// noise p95) for the custom profile. Below it the room tone may be contaminated
+	// by speech, so the measured shape is untrustworthy.
+	afftdnCustomMinSeparationDB = 12.0
+	// afftdnCustomMinFlatness is the minimum room-tone spectral flatness for the
+	// custom profile. Below it the room tone is tonal (hum, resonance) rather than
+	// broadband, so a measured shape risks over-fitting tonal peaks.
+	afftdnCustomMinFlatness = 0.45
+)
+
+// afftdnBandShapeClipDB bounds each emitted bn value; afftdn clips bn to
+// [-24, +24] dB internally, so the builder matches that range.
+const afftdnBandShapeClipDB = 24.0
+
+// buildAfftdnBandNoise turns a per-band RMS vector into the afftdn bn string: each
+// band is expressed RELATIVE to the band mean (white noise = all zeros), clipped
+// to afftdn's [-24, +24] dB range, formatted "%.1f" and joined by "|". Returns
+// the empty string for an empty input so the caller falls back to the white path.
+//
+// The top band (centre 24000 Hz) sits above the 20.5 kHz band-limit and at or
+// above Nyquist for 48 kHz audio, so it has no measurable noise and comes back
+// non-finite (NaN/Inf). Such bands must not poison the mean or emit a NaN/Inf
+// token (afftdn would reject it). The mean is taken over finite bands only, and a
+// non-finite band is emitted as 0.0 (flat, the white reference for a band with no
+// measurable noise). If no band is finite there is no shape to emit, so return
+// empty and let the caller fall back to the white path.
+func buildAfftdnBandNoise(bands []float64) string {
+	if len(bands) == 0 {
+		return ""
+	}
+
+	var sum float64
+	var finite int
+	for _, v := range bands {
+		if isFinite(v) {
+			sum += v
+			finite++
+		}
+	}
+	if finite == 0 {
+		return ""
+	}
+	mean := sum / float64(finite)
+
+	parts := make([]string, len(bands))
+	for i, v := range bands {
+		if !isFinite(v) {
+			parts[i] = strconv.FormatFloat(0.0, 'f', 1, 64)
+			continue
+		}
+		shape := v - mean
+		shape = max(-afftdnBandShapeClipDB, min(afftdnBandShapeClipDB, shape))
+		parts[i] = strconv.FormatFloat(shape, 'f', 1, 64)
+	}
+	return strings.Join(parts, "|")
+}
+
+// useCustomAfftdnProfile reports whether the measured room-tone spectrum is
+// trustworthy enough to drive afftdn's custom noise model: a NoiseProfile with
+// all bands measured, a wide enough speech/noise gap, and a flat enough (noise-
+// like) room-tone spectrum.
+func useCustomAfftdnProfile(measurements *AudioMeasurements) bool {
+	profile := measurements.Regions.NoiseProfile
+	if profile == nil || !profile.BandsMeasured {
+		return false
+	}
+	if measurements.Regions.GateSeparationDB < afftdnCustomMinSeparationDB {
+		return false
+	}
+	return profile.SpectralFlatness >= afftdnCustomMinFlatness
+}
+
 // tuneNoiseReduction adapts the afftdn FFT denoise tail to Pass 1 measurements.
 // Two behaviours: drop afftdn on voice-activated captures (the gated capture floor
 // is already 0 dB silence, so spectral denoise has nothing useful to do and only
@@ -74,6 +155,19 @@ func tuneNoiseReduction(config *EffectiveFilterConfig, diagnostics *AdaptiveDiag
 	config.NoiseReduction.AfftdnNoiseFloor = floor
 	config.NoiseReduction.AfftdnTrackNoise = false
 	diagnostics.AfftdnNoiseFloorDB = floor
+
+	// Measured custom noise profile: when the room-tone band spectrum is
+	// trustworthy, emit the measured spectral shape (nt=custom:bn) instead of
+	// white. nf (the absolute level, set above) and nr (the depth) still stack on
+	// top; bn carries only the shape. Otherwise the white path stands.
+	config.NoiseReduction.AfftdnNoiseType = "w"
+	if useCustomAfftdnProfile(measurements) {
+		if bn := buildAfftdnBandNoise(measurements.Regions.NoiseProfile.BandNoise); bn != "" {
+			config.NoiseReduction.AfftdnNoiseType = "custom"
+			config.NoiseReduction.AfftdnBandNoise = bn
+		}
+	}
+	diagnostics.AfftdnNoiseType = config.NoiseReduction.AfftdnNoiseType
 }
 
 // sanitizeConfig ensures no NaN or Inf values remain after adaptive tuning.
@@ -102,6 +196,11 @@ func sanitizeNoiseReductionConfig(config *NoiseReductionConfig) {
 	// AfftdnNoiseFloor must never carry NaN/Inf into the afftdn format string.
 	// The default is the unset zero value, which omits nf=.
 	config.AfftdnNoiseFloor = sanitizeFloat(config.AfftdnNoiseFloor, defaults.AfftdnNoiseFloor)
+	// A "custom" noise type with no band shape would emit nt=custom with no bn,
+	// which afftdn rejects; revert to white so the builder stays well-formed.
+	if config.AfftdnNoiseType == "custom" && config.AfftdnBandNoise == "" {
+		config.AfftdnNoiseType = "w"
+	}
 }
 
 func sanitizeSpeechGateConfig(config *SpeechGateConfig) {
