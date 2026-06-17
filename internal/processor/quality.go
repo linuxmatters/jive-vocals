@@ -164,28 +164,51 @@ func OutputNoiseFloor(result *ProcessingResult) (float64, bool) {
 // InputNoiseFloor resolves the input room-tone RMS floor (dBFS) for display,
 // the before half of the done-box before->after pair whose after half is
 // FinalNoiseFloor. Both ends are RegionSample.RMSLevel on the same astats RMS
-// dBFS axis, so the pair is honestly comparable. It prefers the elected
-// room-tone RegionSample (ElectedRoomToneSample), measured by the same interval
-// accumulation that MeasureOutputRegions uses for the output, and falls back to
-// the elected NoiseProfile floor (inputRoomToneRMS) when that sample is absent.
-// The bool is false when neither is available.
+// dBFS axis, so the pair is honestly comparable. It delegates to
+// InputRoomToneFloorDB, which reads only the elected room-tone RegionSample
+// (ElectedRoomToneSample, measured by the same interval accumulation that
+// MeasureOutputRegions uses for the output). The bool is false when no elected
+// sample exists.
 func InputNoiseFloor(result *ProcessingResult) (float64, bool) {
 	if result == nil {
 		return 0, false
 	}
-	if m := result.Measurements; m != nil && m.Regions.ElectedRoomToneSample != nil {
-		return m.Regions.ElectedRoomToneSample.RMSLevel, true
-	}
-	return inputRoomToneRMS(result)
+	return InputRoomToneFloorDB(result.Measurements)
 }
 
-// inputRoomToneRMS resolves the elected input room-tone RMS level (dBFS).
-func inputRoomToneRMS(result *ProcessingResult) (float64, bool) {
-	m := result.Measurements
-	if m == nil || m.Regions.NoiseProfile == nil {
+// InputRoomToneFloorDB resolves the canonical input room-tone RMS floor (dBFS)
+// for display, the single source of truth shared by the done-box "before"
+// (via InputNoiseFloor) and the live Analysis box (summary.go). Both surfaces
+// must show the same number for the same file, so both read this one resolver.
+//
+// It returns the unweighted astats RMS dBFS floor from the elected room-tone
+// RegionSample (ElectedRoomToneSample.RMSLevel), the same axis and measurement
+// method as the output room-tone re-measure, so the before/after pair is
+// honestly comparable. It must NOT return NoiseProfile.MeasuredNoiseFloor: that
+// field is on the K-weighted momentary-LUFS axis (the VAD split / afftdn seed
+// floor, overwritten in detectVoiceActivity), a different axis from the
+// displayed astats RMS. See the "Measurement axes" section in AGENTS.md.
+//
+// A real astats RMS dBFS floor is finite and negative; a 0.0 or non-finite
+// RMSLevel means unmeasured, so the bool is false and the UI shows its
+// single-value / n/a path rather than a bogus number. The bool is also false
+// when no ElectedRoomToneSample exists.
+func InputRoomToneFloorDB(m *AudioMeasurements) (float64, bool) {
+	if m == nil || m.Regions.ElectedRoomToneSample == nil {
 		return 0, false
 	}
-	return m.Regions.NoiseProfile.MeasuredNoiseFloor, true
+	floor := m.Regions.ElectedRoomToneSample.RMSLevel
+	if floor == 0 || math.IsNaN(floor) || math.IsInf(floor, 0) {
+		return 0, false
+	}
+	return floor, true
+}
+
+// inputRoomToneRMS resolves the elected input room-tone RMS floor (dBFS) from a
+// ProcessingResult, delegating to InputRoomToneFloorDB so the quality scorer's
+// input-floor fallback shares the one display resolver.
+func inputRoomToneRMS(result *ProcessingResult) (float64, bool) {
+	return InputRoomToneFloorDB(result.Measurements)
 }
 
 // finalRoomToneRMS resolves the Pass 4 room-tone RMS level (dBFS).

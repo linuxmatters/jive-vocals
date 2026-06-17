@@ -1,6 +1,9 @@
 package processor
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 // resultWith builds a minimal ProcessingResult exercising the quality scorer's
 // three inputs: output loudness, output true peak, and the output room-tone
@@ -136,24 +139,37 @@ func TestInputNoiseFloorPrefersElectedSample(t *testing.T) {
 	}
 }
 
-// TestInputNoiseFloorFallsBackToProfile locks the fallback: with no elected
-// room-tone sample, InputNoiseFloor returns the NoiseProfile floor.
-func TestInputNoiseFloorFallsBackToProfile(t *testing.T) {
+// TestInputNoiseFloorNoMomentaryLeakage locks the axis contract: with no elected
+// room-tone sample, InputNoiseFloor returns ok = false. It must NOT fall back to
+// NoiseProfile.MeasuredNoiseFloor, which is on the K-weighted momentary-LUFS
+// axis, not the displayed astats RMS dBFS axis.
+func TestInputNoiseFloorNoMomentaryLeakage(t *testing.T) {
 	result := &ProcessingResult{
 		Measurements: &AudioMeasurements{
 			Regions: RegionMetrics{NoiseProfile: &NoiseProfile{MeasuredNoiseFloor: -64.0}},
 		},
 	}
-	floor, ok := InputNoiseFloor(result)
-	if !ok {
-		t.Fatal("InputNoiseFloor: ok = false, want true")
-	}
-	if floor != -64.0 {
-		t.Errorf("InputNoiseFloor = %.1f, want -64.0 (profile fallback)", floor)
+	if floor, ok := InputNoiseFloor(result); ok {
+		t.Errorf("InputNoiseFloor = %.1f, ok = true; want ok = false (no momentary-LUFS fallback)", floor)
 	}
 }
 
-// TestInputNoiseFloorAbsent confirms ok = false when neither source exists.
+// TestInputNoiseFloorUnmeasuredSample confirms a 0.0 or non-finite RMSLevel is
+// treated as unmeasured (ok = false), not a real -0 dBFS floor.
+func TestInputNoiseFloorUnmeasuredSample(t *testing.T) {
+	for _, rms := range []float64{0, math.NaN(), math.Inf(-1), math.Inf(1)} {
+		result := &ProcessingResult{
+			Measurements: &AudioMeasurements{
+				Regions: RegionMetrics{ElectedRoomToneSample: &RegionSample{RMSLevel: rms}},
+			},
+		}
+		if floor, ok := InputNoiseFloor(result); ok {
+			t.Errorf("InputNoiseFloor with RMSLevel %v: floor = %v, ok = true; want ok = false", rms, floor)
+		}
+	}
+}
+
+// TestInputNoiseFloorAbsent confirms ok = false when no elected sample exists.
 func TestInputNoiseFloorAbsent(t *testing.T) {
 	if _, ok := InputNoiseFloor(&ProcessingResult{}); ok {
 		t.Error("InputNoiseFloor with no measurements: ok = true, want false")

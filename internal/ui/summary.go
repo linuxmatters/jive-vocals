@@ -37,8 +37,8 @@ type AdaptedSummary struct {
 	// Analysis rows.
 	HasSpeech    bool    // a SpeechProfile was elected (Voice avg available)
 	VoiceAvgDB   float64 // SpeechProfile RMS (dBFS)
-	NoiseFloorDB float64 // noise floor (dBFS)
-	SeparationDB float64 // voice / noise separation (dB)
+	NoiseFloorDB float64 // input room-tone RMS floor (astats dBFS); matches the done-box "before"
+	SeparationDB float64 // voice / noise separation (dB) = VoiceAvgDB - NoiseFloorDB, same axis
 	InputLRA     float64 // input loudness range (LU)
 	GateRatio    float64 // Speech gate ratio (x:1)
 	TruePeakDBTP float64 // input true peak (dBTP)
@@ -73,8 +73,12 @@ func NewAdaptedSummary(cfg *processor.EffectiveFilterConfig, diag *processor.Ada
 	s.DeesserI = cfg.Deesser.Intensity
 	s.DeesserOn = cfg.Deesser.Intensity > 0
 
-	// Analysis.
-	s.NoiseFloorDB = m.Noise.Floor
+	// Analysis. Noise floor is the input room-tone RMS (astats dBFS), the same
+	// canonical value the done-box "before" shows (processor.InputRoomToneFloorDB),
+	// NOT the K-weighted momentary-LUFS VAD floor (m.Noise.Floor); the latter stays
+	// internal (VAD split, Recording score, afftdn seed). Sourcing both surfaces
+	// from one resolver guarantees live-box == done-box for a given file.
+	s.NoiseFloorDB, _ = processor.InputRoomToneFloorDB(m)
 	s.InputLRA = m.Loudness.InputLRA
 	s.GateRatio = cfg.SpeechGate.Ratio
 	s.TruePeakDBTP = m.Loudness.InputTP
@@ -83,7 +87,9 @@ func NewAdaptedSummary(cfg *processor.EffectiveFilterConfig, diag *processor.Ada
 	if sp := m.Regions.SpeechProfile; sp != nil {
 		s.HasSpeech = true
 		s.VoiceAvgDB = sp.RMSLevel
-		s.SeparationDB = sp.RMSLevel - m.Noise.Floor
+		// SNR Gap on one axis: speech RMS minus the input room-tone RMS floor, so
+		// the number and the separation bar agree and there is no axis mix.
+		s.SeparationDB = s.VoiceAvgDB - s.NoiseFloorDB
 		if sp.BandsMeasured {
 			s.HasSibilance = true
 			// Recompute the same band excess the de-esser uses, so box and report
