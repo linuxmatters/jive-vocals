@@ -73,7 +73,7 @@
 
 | Metric | Definition | Value |
 | --- | --- | --- |
-| Noise floor | Elected noise floor; overwritten by the room-tone RMS when a profile is elected. (dBFS) | -84.58 |
+| Noise floor | Input VAD noise floor on the K-weighted momentary-LUFS axis (the afftdn seed); a low percentile of the per-interval level set. A different axis and quantity from the room-tone RMS floor (measured_floor_dbfs). (dBFS) | -84.58 |
 | Floor source | Origin of the elected floor: astats, rms_estimate, ebur128_estimate, or vad_percentile. | vad_percentile |
 | Pre-scan floor | Noise floor estimated from the per-interval data, feeding room-tone detection. (dBFS) | -83.60 |
 | astats floor | FFmpeg astats noise-floor estimate, the minimum local peak over the sliding window. (dBFS) | - |
@@ -91,7 +91,7 @@
 | --- | --- | --- |
 | Start | Start time of the elected region from the input origin. (s) | 7.00 |
 | Duration | Length of the elected region. (s) | 10.00 |
-| Measured floor | RMS level of the elected room-tone region. (dBFS) | -84.58 |
+| Measured floor | Input room-tone RMS (dBFS), the RMS level of the elected room-tone region on the astats RMS axis. A different axis and quantity from the VAD noise floor (floor_dbfs). (dBFS) | -84.58 |
 | Peak level | Largest absolute sample, 20*log10(max(\|min\|,\|max\|)). (dBFS) | -71.22 |
 | Crest factor | Region-scoped time-domain peak-to-RMS ratio (peak/RMS), stored converted linear to dB. (dB) | 13.36 |
 | Entropy | Magnitude-weighted spectral entropy, -sum(mag*ln(mag+eps))/ln(N); for astats stages, the sample-value distribution entropy. | 0.0011 |

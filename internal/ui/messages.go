@@ -30,8 +30,14 @@ type FileCompleteMsg struct {
 	OutputLUFS float64
 	// FinalNoiseFloor is the output room-tone noise floor in dBFS (lower = cleaner),
 	// the same quantity the quality score rewards, so the done box's Noise row and
-	// the star count move together.
-	FinalNoiseFloor float64
+	// the star count move together. InputNoiseFloor is the input room-tone floor on
+	// the same astats RMS dBFS axis, so the done box can show an input->output pair.
+	// The Have* flags gate each end of that pair; an absent end falls back to the
+	// single available value rather than a misleading 0.
+	FinalNoiseFloor     float64
+	InputNoiseFloor     float64
+	HaveFinalNoiseFloor bool
+	HaveInputNoiseFloor bool
 	// OutputTP is the post-normalisation true peak (dBTP), measured by ebur128 on
 	// the final output (NormResult.OutputTP). Paired with Summary.TruePeakDBTP it
 	// drives the done-box True peak before→after row.

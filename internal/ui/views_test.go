@@ -197,3 +197,59 @@ func renderMeterWithRamp(currentLevel float64, ramp []color.Color) string {
 	flush()
 	return sb.String()
 }
+
+// TestDoneBoxNoiseFloorRow verifies the room-tone floor row. It checks the
+// input→output pair when both ends exist, the single value when one end is
+// missing, the "< -96" clamp on each end (finite deep floors and -Inf), and the
+// "n/a" placeholder when neither end exists.
+func TestDoneBoxNoiseFloorRow(t *testing.T) {
+	cases := []struct {
+		name       string
+		input      float64
+		output     float64
+		haveInput  bool
+		haveOutput bool
+		contains   []string
+		exact      string
+	}{
+		{
+			name: "both ends pair", input: -64, output: -82,
+			haveInput: true, haveOutput: true,
+			contains: []string{"-64", "→", "-82", "㏈"},
+		},
+		{
+			name: "output only", output: -82,
+			haveOutput: true, exact: "-82 ㏈",
+		},
+		{
+			name: "input only", input: -64,
+			haveInput: true, exact: "-64 ㏈",
+		},
+		{
+			name: "clamp finite deep floor both ends", input: -97, output: -120,
+			haveInput: true, haveOutput: true,
+			contains: []string{"< -96", "→"},
+		},
+		{
+			name: "clamp negative infinity output", input: -70, output: math.Inf(-1),
+			haveInput: true, haveOutput: true,
+			contains: []string{"-70", "→", "< -96"},
+		},
+		{
+			name: "neither end", exact: "n/a",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doneBoxNoiseFloorRow(tc.input, tc.output, tc.haveInput, tc.haveOutput)
+			if tc.exact != "" && strings.TrimSpace(got) != tc.exact {
+				t.Errorf("doneBoxNoiseFloorRow = %q, want %q", got, tc.exact)
+			}
+			for _, want := range tc.contains {
+				if !strings.Contains(got, want) {
+					t.Errorf("doneBoxNoiseFloorRow = %q, want to contain %q", got, want)
+				}
+			}
+		})
+	}
+}

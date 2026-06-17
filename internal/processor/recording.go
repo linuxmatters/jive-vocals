@@ -16,6 +16,12 @@ import "math"
 // absolute-bottom so the low bands populate honestly on bad captures the corpus
 // lacks. Each constant cites whether its anchor is corpus-derived or an absolute
 // red line. Like ComputeQualityScore it never returns a constant.
+//
+// The cleanliness axis was re-anchored onto the K-weighted momentary-LUFS axis
+// after the VAD noise-seed axis unify: the SNR numerator moved from
+// SpeechProfile.RMSLevel to SpeechProfile.MomentaryLUFS (same axis as the noise
+// floor) and recordingSNRZero moved 12 -> 16. The resulting 55-stem spread is
+// 12x5* / 14x4* / 18x3* / 11x2* / 0x1*.
 const (
 	recordingWeightCleanliness = 0.50 // SNR + noise floor
 	recordingWeightHeadroom    = 0.30 // input true peak (the real discriminator)
@@ -24,12 +30,15 @@ const (
 
 // Cleanliness thresholds.
 const (
-	// SNR gap (SpeechRMS - NoiseFloor, dB). full=45 corpus-top; zero=12 absolute
-	// (broadcast-unacceptable SNR).
+	// SNR gap (SpeechMomentaryLUFS - NoiseFloor, dB). full=45 corpus-top (max
+	// measured SNR ~46.7); zero=16 absolute red line below every real capture
+	// (corpus SNR min ~20.4), so only worse-than-corpus captures score 0.
+	// Numerator is SpeechProfile.MomentaryLUFS so the gap shares the
+	// momentary-LUFS axis the noise floor uses.
 	recordingSNRFull = 45.0
-	recordingSNRZero = 12.0
-	// Noise floor (dBFS). full=-75 corpus/existing-rubric clean anchor; zero=-45
-	// absolute (audibly hissy).
+	recordingSNRZero = 16.0
+	// Noise floor (K-weighted momentary-LUFS). full=-75 corpus/existing-rubric
+	// clean anchor; zero=-45 absolute (audibly hissy).
 	recordingFloorFull = -75.0
 	recordingFloorZero = -45.0
 	// Blend of SNR and floor when a SpeechProfile is elected.
@@ -108,7 +117,7 @@ func recordingCleanliness(m *AudioMeasurements) float64 {
 	if speech == nil {
 		return floorScore
 	}
-	snrGap := speech.RMSLevel - m.Regions.NoiseProfile.floorOrZero()
+	snrGap := speech.MomentaryLUFS - m.Regions.NoiseProfile.floorOrZero()
 	snrScore := linearScore(snrGap, recordingSNRFull, recordingSNRZero)
 	return recordingSNRWeight*snrScore + recordingFloorWeight*floorScore
 }

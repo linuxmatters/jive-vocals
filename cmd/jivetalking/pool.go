@@ -382,7 +382,11 @@ func emitProcessingReport(env poolEnv, inputPath string, result *processor.Proce
 		},
 	})
 
-	finalNoiseFloor, _ := processor.FinalNoiseFloor(result)
+	// Before->after room-tone floor pair for the done box, both on the astats RMS
+	// dBFS axis. OutputNoiseFloor is the genuine Pass 4 output sample (no input
+	// fallback) so an absent end shows the input figure alone, never input->input.
+	finalNoiseFloor, haveFinalNoiseFloor := processor.OutputNoiseFloor(result)
+	inputNoiseFloor, haveInputNoiseFloor := processor.InputNoiseFloor(result)
 
 	// Surface the final-output true peak and loudness range from NormResult for
 	// the done-box before→after rows. Read-only: both are measured by ebur128 on
@@ -410,15 +414,18 @@ func emitProcessingReport(env poolEnv, inputPath string, result *processor.Proce
 
 	wlog("[POOL] Sending FileCompleteMsg for file %d", i)
 	env.p.Send(ui.FileCompleteMsg{
-		FileIndex:        i,
-		InputLUFS:        result.InputLUFS,
-		OutputLUFS:       result.OutputLUFS,
-		FinalNoiseFloor:  finalNoiseFloor,
-		OutputTP:         outputTP,
-		OutputLRA:        outputLRA,
-		OutputPath:       result.OutputPath,
-		Quality:          processor.ComputeQualityScore(result),
-		RecordingQuality: processor.ComputeRecordingScore(result.Measurements),
-		ProcessingTime:   time.Since(t.fileStart),
+		FileIndex:           i,
+		InputLUFS:           result.InputLUFS,
+		OutputLUFS:          result.OutputLUFS,
+		FinalNoiseFloor:     finalNoiseFloor,
+		InputNoiseFloor:     inputNoiseFloor,
+		HaveFinalNoiseFloor: haveFinalNoiseFloor,
+		HaveInputNoiseFloor: haveInputNoiseFloor,
+		OutputTP:            outputTP,
+		OutputLRA:           outputLRA,
+		OutputPath:          result.OutputPath,
+		Quality:             processor.ComputeQualityScore(result),
+		RecordingQuality:    processor.ComputeRecordingScore(result.Measurements),
+		ProcessingTime:      time.Since(t.fileStart),
 	})
 }
