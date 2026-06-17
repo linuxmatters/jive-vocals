@@ -133,12 +133,14 @@ func TestFinalSummaryReturnsCompletionContent(t *testing.T) {
 	updated, _ := m.Update(ProgressMsg{FileIndex: 0, Pass: processor.PassProcessing, Progress: 0.5, Level: -12})
 	m = updated.(Model)
 	updated, _ = m.Update(FileCompleteMsg{
-		FileIndex: 0, OutputPath: "a-out.wav", InputLUFS: -30.9, OutputLUFS: -15.9, FinalNoiseFloor: -80.0,
+		FileIndex: 0, OutputPath: "a-out.wav", InputLUFS: -30.9, OutputLUFS: -15.9,
+		FinalNoiseFloor: -80.0, HaveFinalNoiseFloor: true,
 		Quality: processor.QualityScore{Stars: 4, Label: "Great"},
 	})
 	m = updated.(Model)
 	updated, _ = m.Update(FileCompleteMsg{
-		FileIndex: 1, OutputPath: "b-out.wav", InputLUFS: -20.0, OutputLUFS: -16.0, FinalNoiseFloor: -65.0,
+		FileIndex: 1, OutputPath: "b-out.wav", InputLUFS: -20.0, OutputLUFS: -16.0,
+		FinalNoiseFloor: -65.0, HaveFinalNoiseFloor: true,
 		Quality: processor.QualityScore{Stars: 5, Label: "Excellent"},
 	})
 	m = updated.(Model)
@@ -173,13 +175,14 @@ func TestFinalSummaryReturnsCompletionContent(t *testing.T) {
 // the processed (output) filename, never the input name nor a "→".
 func TestDoneBoxRendersIndigoLabelledRows(t *testing.T) {
 	file := FileProgress{
-		InputPath:       "LMP-81-mark.flac",
-		OutputPath:      "LMP-81-mark-LUFS-16-processed.flac",
-		Status:          StatusComplete,
-		InputLUFS:       -30.9,
-		OutputLUFS:      -15.9,
-		FinalNoiseFloor: -80.0,
-		Quality:         processor.QualityScore{Stars: 4, Label: "Excellent"},
+		InputPath:           "LMP-81-mark.flac",
+		OutputPath:          "LMP-81-mark-LUFS-16-processed.flac",
+		Status:              StatusComplete,
+		InputLUFS:           -30.9,
+		OutputLUFS:          -15.9,
+		FinalNoiseFloor:     -80.0,
+		HaveFinalNoiseFloor: true,
+		Quality:             processor.QualityScore{Stars: 4, Label: "Excellent"},
 	}
 
 	raw := renderDoneBox(file)
@@ -252,20 +255,22 @@ func TestDoneBoxRendersIndigoLabelledRows(t *testing.T) {
 // number sat next to fewer stars.
 func TestDoneBoxNoiseAndStarsMoveTogether(t *testing.T) {
 	clean := FileProgress{
-		InputPath:       "clean.flac",
-		OutputPath:      "clean-out.flac",
-		Status:          StatusComplete,
-		OutputLUFS:      -16.0,
-		FinalNoiseFloor: -80.0,
-		Quality:         processor.QualityScore{Stars: 5, Label: "Excellent"},
+		InputPath:           "clean.flac",
+		OutputPath:          "clean-out.flac",
+		Status:              StatusComplete,
+		OutputLUFS:          -16.0,
+		FinalNoiseFloor:     -80.0,
+		HaveFinalNoiseFloor: true,
+		Quality:             processor.QualityScore{Stars: 5, Label: "Excellent"},
 	}
 	noisy := FileProgress{
-		InputPath:       "noisy.flac",
-		OutputPath:      "noisy-out.flac",
-		Status:          StatusComplete,
-		OutputLUFS:      -16.0,
-		FinalNoiseFloor: -55.0,
-		Quality:         processor.QualityScore{Stars: 4, Label: "Great"},
+		InputPath:           "noisy.flac",
+		OutputPath:          "noisy-out.flac",
+		Status:              StatusComplete,
+		OutputLUFS:          -16.0,
+		FinalNoiseFloor:     -55.0,
+		HaveFinalNoiseFloor: true,
+		Quality:             processor.QualityScore{Stars: 4, Label: "Great"},
 	}
 
 	cleanPlain := ansi.Strip(renderDoneBox(clean))
@@ -345,10 +350,11 @@ func TestDoneBoxNoiseFloorClamp(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			file := FileProgress{
-				OutputPath:      "x-out.flac",
-				Status:          StatusComplete,
-				FinalNoiseFloor: tc.floor,
-				Quality:         processor.QualityScore{Stars: 4, Label: "Great"},
+				OutputPath:          "x-out.flac",
+				Status:              StatusComplete,
+				FinalNoiseFloor:     tc.floor,
+				HaveFinalNoiseFloor: true,
+				Quality:             processor.QualityScore{Stars: 4, Label: "Great"},
 			}
 			plain := ansi.Strip(renderDoneBox(file))
 			if !strings.Contains(plain, tc.want) {
@@ -411,20 +417,21 @@ func TestDoneBoxDynamicsRow(t *testing.T) {
 
 // TestDoneBoxRowOrder locks the row order: Time, Loudness, True peak, Dynamics,
 // Noise floor, Recording, Processed. The loudness-family before→after rows group
-// first, then the output-only floor, then the source-capture (Recording) and
-// output-quality (Processed) star rows, Recording directly above Processed.
+// first, then the input→output room-tone floor, then the source-capture
+// (Recording) and output-quality (Processed) star rows, Recording above Processed.
 func TestDoneBoxRowOrder(t *testing.T) {
 	file := FileProgress{
-		OutputPath:       "order-out.flac",
-		Status:           StatusComplete,
-		InputLUFS:        -30.9,
-		OutputLUFS:       -15.9,
-		OutputTP:         -2.0,
-		OutputLRA:        8.0,
-		FinalNoiseFloor:  -80.0,
-		Summary:          AdaptedSummary{ChainReady: true, TruePeakDBTP: -0.1, InputLRA: 12.3},
-		Quality:          processor.QualityScore{Stars: 4, Label: "Great"},
-		RecordingQuality: processor.QualityScore{Stars: 3, Label: "Good"},
+		OutputPath:          "order-out.flac",
+		Status:              StatusComplete,
+		InputLUFS:           -30.9,
+		OutputLUFS:          -15.9,
+		OutputTP:            -2.0,
+		OutputLRA:           8.0,
+		FinalNoiseFloor:     -80.0,
+		HaveFinalNoiseFloor: true,
+		Summary:             AdaptedSummary{ChainReady: true, TruePeakDBTP: -0.1, InputLRA: 12.3},
+		Quality:             processor.QualityScore{Stars: 4, Label: "Great"},
+		RecordingQuality:    processor.QualityScore{Stars: 3, Label: "Good"},
 	}
 	plain := ansi.Strip(renderDoneBox(file))
 
@@ -504,38 +511,79 @@ func TestDoneBoxColumnsAlign(t *testing.T) {
 	}
 }
 
-// TestDoneBoxNoiseFloorOutputOnly confirms the Noise floor row stays output-only:
-// no before→after arrow and no "reduced" delta. The input and output floors are
-// measured by different methods, so a reduction number would be dishonest.
-func TestDoneBoxNoiseFloorOutputOnly(t *testing.T) {
-	file := FileProgress{
-		OutputPath:      "nf-out.flac",
-		Status:          StatusComplete,
-		FinalNoiseFloor: -80.0,
-		Summary:         AdaptedSummary{ChainReady: true, TruePeakDBTP: -0.1, InputLRA: 12.3},
-		Quality:         processor.QualityScore{Stars: 4, Label: "Great"},
-	}
+// noiseFloorRowOf isolates the Noise floor row from the rendered done box so its
+// content is asserted without catching the arrows of the rows above it.
+func noiseFloorRowOf(t *testing.T, file FileProgress) string {
+	t.Helper()
 	plain := ansi.Strip(renderDoneBox(file))
-
-	// Isolate the Noise floor row from the Dynamics/True peak arrows above it.
-	var noiseLine string
 	for line := range strings.SplitSeq(plain, "\n") {
 		if strings.Contains(line, "Noise floor") {
-			noiseLine = line
-			break
+			return line
 		}
 	}
-	if noiseLine == "" {
-		t.Fatalf("done box missing Noise floor row:\n%s", plain)
+	t.Fatalf("done box missing Noise floor row:\n%s", plain)
+	return ""
+}
+
+// TestDoneBoxNoiseFloorBeforeAfter confirms the Noise floor row renders the
+// input→output room-tone pair when both ends exist, on one axis, with no signed
+// Δ (the floors are already a before/after story; a delta over the "< -96"
+// sentinel would mislead).
+func TestDoneBoxNoiseFloorBeforeAfter(t *testing.T) {
+	file := FileProgress{
+		OutputPath:          "nf-out.flac",
+		Status:              StatusComplete,
+		InputNoiseFloor:     -64.0,
+		FinalNoiseFloor:     -82.0,
+		HaveInputNoiseFloor: true,
+		HaveFinalNoiseFloor: true,
+		Summary:             AdaptedSummary{ChainReady: true, TruePeakDBTP: -0.1, InputLRA: 12.3},
+		Quality:             processor.QualityScore{Stars: 4, Label: "Great"},
 	}
-	if strings.Contains(noiseLine, "→") {
-		t.Errorf("Noise floor row must not show a before→after arrow:\n%s", noiseLine)
+	noiseLine := noiseFloorRowOf(t, file)
+
+	if !strings.Contains(noiseLine, "→") {
+		t.Errorf("Noise floor row must show the input→output arrow:\n%s", noiseLine)
+	}
+	if !strings.Contains(noiseLine, "-64") || !strings.Contains(noiseLine, "-82") {
+		t.Errorf("Noise floor row missing the input→output values:\n%s", noiseLine)
 	}
 	if strings.Contains(noiseLine, "Δ") || strings.Contains(noiseLine, "reduced") {
 		t.Errorf("Noise floor row must not show a reduction delta:\n%s", noiseLine)
 	}
-	if !strings.Contains(noiseLine, "-80 ㏈") {
-		t.Errorf("Noise floor row missing the output floor value:\n%s", noiseLine)
+}
+
+// TestDoneBoxNoiseFloorSingleEnd confirms the Noise floor row falls back to a
+// single value (no broken arrow) when only one end is available.
+func TestDoneBoxNoiseFloorSingleEnd(t *testing.T) {
+	outputOnly := FileProgress{
+		OutputPath:          "nf-out.flac",
+		Status:              StatusComplete,
+		FinalNoiseFloor:     -80.0,
+		HaveFinalNoiseFloor: true,
+		Quality:             processor.QualityScore{Stars: 4, Label: "Great"},
+	}
+	line := noiseFloorRowOf(t, outputOnly)
+	if strings.Contains(line, "→") {
+		t.Errorf("output-only Noise floor row must not show an arrow:\n%s", line)
+	}
+	if !strings.Contains(line, "-80 ㏈") {
+		t.Errorf("output-only Noise floor row missing the output value:\n%s", line)
+	}
+
+	inputOnly := FileProgress{
+		OutputPath:          "nf-out.flac",
+		Status:              StatusComplete,
+		InputNoiseFloor:     -64.0,
+		HaveInputNoiseFloor: true,
+		Quality:             processor.QualityScore{Stars: 4, Label: "Great"},
+	}
+	line = noiseFloorRowOf(t, inputOnly)
+	if strings.Contains(line, "→") {
+		t.Errorf("input-only Noise floor row must not show an arrow:\n%s", line)
+	}
+	if !strings.Contains(line, "-64 ㏈") {
+		t.Errorf("input-only Noise floor row missing the input value:\n%s", line)
 	}
 }
 

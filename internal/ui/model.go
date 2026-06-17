@@ -152,7 +152,12 @@ type FileProgress struct {
 	OutputLUFS float64
 	// FinalNoiseFloor is the output room-tone noise floor in dBFS (lower = cleaner),
 	// shown in the done box and aligned with the quality score's noise component.
-	FinalNoiseFloor float64
+	// InputNoiseFloor is the input room-tone floor on the same astats RMS dBFS axis;
+	// the done box shows the input->output pair. The Have* flags gate each end.
+	FinalNoiseFloor     float64
+	InputNoiseFloor     float64
+	HaveFinalNoiseFloor bool
+	HaveInputNoiseFloor bool
 	// OutputTP / OutputLRA are the post-normalisation true peak (dBTP) and loudness
 	// range (LU), surfaced from NormResult at the pool send site. Paired with
 	// Summary.TruePeakDBTP / Summary.InputLRA they drive the done-box True peak and
@@ -323,6 +328,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Files[msg.FileIndex].InputLUFS = msg.InputLUFS
 			m.Files[msg.FileIndex].OutputLUFS = msg.OutputLUFS
 			m.Files[msg.FileIndex].FinalNoiseFloor = msg.FinalNoiseFloor
+			m.Files[msg.FileIndex].InputNoiseFloor = msg.InputNoiseFloor
+			m.Files[msg.FileIndex].HaveFinalNoiseFloor = msg.HaveFinalNoiseFloor
+			m.Files[msg.FileIndex].HaveInputNoiseFloor = msg.HaveInputNoiseFloor
 			m.Files[msg.FileIndex].OutputTP = msg.OutputTP
 			m.Files[msg.FileIndex].OutputLRA = msg.OutputLRA
 			m.Files[msg.FileIndex].OutputPath = msg.OutputPath

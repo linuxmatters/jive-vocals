@@ -149,6 +149,36 @@ func FinalNoiseFloor(result *ProcessingResult) (float64, bool) {
 	return inputRoomToneRMS(result)
 }
 
+// OutputNoiseFloor resolves the genuine Pass 4 output room-tone RMS floor (dBFS),
+// the after half of the done-box before->after pair. Unlike FinalNoiseFloor it
+// does NOT fall back to the input floor: the bool is false when no Pass 4
+// room-tone sample exists, so the done box can show the input figure alone
+// rather than a misleading input->input arrow.
+func OutputNoiseFloor(result *ProcessingResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
+	return finalRoomToneRMS(result)
+}
+
+// InputNoiseFloor resolves the input room-tone RMS floor (dBFS) for display,
+// the before half of the done-box before->after pair whose after half is
+// FinalNoiseFloor. Both ends are RegionSample.RMSLevel on the same astats RMS
+// dBFS axis, so the pair is honestly comparable. It prefers the elected
+// room-tone RegionSample (ElectedRoomToneSample), measured by the same interval
+// accumulation that MeasureOutputRegions uses for the output, and falls back to
+// the elected NoiseProfile floor (inputRoomToneRMS) when that sample is absent.
+// The bool is false when neither is available.
+func InputNoiseFloor(result *ProcessingResult) (float64, bool) {
+	if result == nil {
+		return 0, false
+	}
+	if m := result.Measurements; m != nil && m.Regions.ElectedRoomToneSample != nil {
+		return m.Regions.ElectedRoomToneSample.RMSLevel, true
+	}
+	return inputRoomToneRMS(result)
+}
+
 // inputRoomToneRMS resolves the elected input room-tone RMS level (dBFS).
 func inputRoomToneRMS(result *ProcessingResult) (float64, bool) {
 	m := result.Measurements

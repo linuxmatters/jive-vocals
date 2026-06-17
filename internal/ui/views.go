@@ -585,13 +585,49 @@ func doneBoxOptionalBeforeAfter(unit string, before, after float64, haveBefore b
 	return fmt.Sprintf("%.1f %s", after, unit)
 }
 
+// noiseFloorMinDB is the displayed floor for any room-tone level at or below the
+// 16-bit noise floor (~-96 dBFS), including digital-silence -Inf. Below it the raw
+// figure is meaningless, so the cell reads "< -96 ㏈" instead.
+const noiseFloorMinDB = -96.0
+
+// formatNoiseFloorCell formats one room-tone floor value as a fixed-width numeric
+// column. It clamps any level at or below noiseFloorMinDB, and -Inf, to the
+// "< -96" sentinel so the column never shows a misleading deep figure.
+func formatNoiseFloorCell(floor float64) string {
+	if math.IsInf(floor, -1) || floor <= noiseFloorMinDB {
+		return fmt.Sprintf("%*s", doneBoxValueWidth, "< -96")
+	}
+	return fmt.Sprintf("%*.0f", doneBoxValueWidth, floor)
+}
+
+// doneBoxNoiseFloorRow formats the done-box room-tone floor row value. Both ends
+// share the astats RMS dBFS axis. With both ends it renders the input→output
+// grammar of the loudness-family rows. It carries no Δ: the floors are already a
+// before/after story, and a signed delta over the "< -96" sentinel would mislead.
+// With one end it shows that single clamped value. The "< -96 ㏈" clamp applies to
+// each end on its own.
+func doneBoxNoiseFloorRow(input, output float64, haveInput, haveOutput bool) string {
+	unitCol := fitWidth("㏈", doneBoxUnitWidth)
+	switch {
+	case haveInput && haveOutput:
+		return fmt.Sprintf("%s → %s %s",
+			formatNoiseFloorCell(input), formatNoiseFloorCell(output), unitCol)
+	case haveOutput:
+		return fmt.Sprintf("%s ㏈", strings.TrimSpace(formatNoiseFloorCell(output)))
+	case haveInput:
+		return fmt.Sprintf("%s ㏈", strings.TrimSpace(formatNoiseFloorCell(input)))
+	default:
+		return "n/a"
+	}
+}
+
 // renderDoneBox renders a completed file as a filename line above an
 // indigo-bordered box with seven labelled rows: Time, Loudness, True peak,
 // Dynamics, Noise floor, Recording, and Processed. The loudness-family
-// before→after rows are grouped first, then the output-only floor, then the
-// source-capture (Recording) and output-quality (Processed) star rows. Shared by
-// the live processing view (StatusComplete) and the persisted
-// final summary so completed files look identical in both. The box matches the
+// before→after rows are grouped first, then the input→output room-tone floor,
+// then the source-capture (Recording) and output-quality (Processed) star rows.
+// Shared by the live processing view (StatusComplete) and the persisted final
+// summary so completed files look identical in both. The box matches the
 // active processing box (RoundedBorder, Padding(0,1), meterWidth inner width) but
 // uses an indigo border to mark "done" against the active sky-blue.
 func renderDoneBox(file FileProgress) string {
@@ -647,16 +683,15 @@ func renderDoneBox(file FileProgress) string {
 	fmt.Fprintf(&content, "%s%s\n",
 		labelStyle.Render("Dynamics"), valueStyle.Render(lraValue))
 
-	// Noise row: the output room-tone noise floor in dBFS. A lower (more negative)
-	// floor is cleaner, the same direction the quality stars move, so the number and
-	// the stars stay consistent. This is a floor, not an amount removed, so it is
-	// labelled "Noise floor", never "reduced". A floor at or below the 16-bit noise
-	// floor (~-96 dBFS), including digital-silence -Inf, displays as "< -96 ㏈"
-	// rather than a misleading raw figure.
-	noiseValue := fmt.Sprintf("%.0f ㏈", file.FinalNoiseFloor)
-	if math.IsInf(file.FinalNoiseFloor, -1) || file.FinalNoiseFloor <= -96 {
-		noiseValue = "< -96 ㏈"
-	}
+	// Noise floor row: input→output room-tone floor, both on the astats RMS dBFS
+	// axis so the pair is honestly comparable and tells the denoise story. A lower
+	// (more negative) floor is cleaner, the same direction the quality stars move,
+	// so the number and the stars stay consistent. This is a floor, not an amount
+	// removed, so it is labelled "Noise floor", never "reduced". The arrow makes
+	// input→output explicit; an absent end shows the single available value.
+	noiseValue := doneBoxNoiseFloorRow(
+		file.InputNoiseFloor, file.FinalNoiseFloor,
+		file.HaveInputNoiseFloor, file.HaveFinalNoiseFloor)
 	fmt.Fprintf(&content, "%s%s\n",
 		labelStyle.Render("Noise floor"), valueStyle.Render(noiseValue))
 

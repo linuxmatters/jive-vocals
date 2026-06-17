@@ -261,7 +261,7 @@ var Definitions = map[string]Definition{
 	"floor_dbfs": {
 		Label: "Noise floor",
 		Unit:  "dBFS",
-		Gloss: "Elected noise floor; overwritten by the room-tone RMS when a profile is elected.",
+		Gloss: "Input VAD noise floor on the K-weighted momentary-LUFS axis (the afftdn seed); a low percentile of the per-interval level set. A different axis and quantity from the room-tone RMS floor (measured_floor_dbfs).",
 	},
 	"floor_source": {
 		Label: "Floor source",
@@ -315,7 +315,7 @@ var Definitions = map[string]Definition{
 	"measured_floor_dbfs": {
 		Label: "Measured floor",
 		Unit:  "dBFS",
-		Gloss: "RMS level of the elected room-tone region.",
+		Gloss: "Input room-tone RMS (dBFS), the RMS level of the elected room-tone region on the astats RMS axis. A different axis and quantity from the VAD noise floor (floor_dbfs).",
 	},
 	"start_s": {
 		Label: "Start",

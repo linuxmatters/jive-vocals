@@ -114,3 +114,78 @@ func TestComputeQualityScoreNilSafe(t *testing.T) {
 		t.Errorf("nil result: stars = %d, want 0", q.Stars)
 	}
 }
+
+// TestInputNoiseFloorPrefersElectedSample locks the source preference: when the
+// elected room-tone RegionSample is present, InputNoiseFloor returns its RMSLevel
+// (the same measurement method as the output), not the NoiseProfile floor.
+func TestInputNoiseFloorPrefersElectedSample(t *testing.T) {
+	result := &ProcessingResult{
+		Measurements: &AudioMeasurements{
+			Regions: RegionMetrics{
+				ElectedRoomToneSample: &RegionSample{RMSLevel: -71.0},
+				NoiseProfile:          &NoiseProfile{MeasuredNoiseFloor: -64.0},
+			},
+		},
+	}
+	floor, ok := InputNoiseFloor(result)
+	if !ok {
+		t.Fatal("InputNoiseFloor: ok = false, want true")
+	}
+	if floor != -71.0 {
+		t.Errorf("InputNoiseFloor = %.1f, want -71.0 (elected sample, not profile)", floor)
+	}
+}
+
+// TestInputNoiseFloorFallsBackToProfile locks the fallback: with no elected
+// room-tone sample, InputNoiseFloor returns the NoiseProfile floor.
+func TestInputNoiseFloorFallsBackToProfile(t *testing.T) {
+	result := &ProcessingResult{
+		Measurements: &AudioMeasurements{
+			Regions: RegionMetrics{NoiseProfile: &NoiseProfile{MeasuredNoiseFloor: -64.0}},
+		},
+	}
+	floor, ok := InputNoiseFloor(result)
+	if !ok {
+		t.Fatal("InputNoiseFloor: ok = false, want true")
+	}
+	if floor != -64.0 {
+		t.Errorf("InputNoiseFloor = %.1f, want -64.0 (profile fallback)", floor)
+	}
+}
+
+// TestInputNoiseFloorAbsent confirms ok = false when neither source exists.
+func TestInputNoiseFloorAbsent(t *testing.T) {
+	if _, ok := InputNoiseFloor(&ProcessingResult{}); ok {
+		t.Error("InputNoiseFloor with no measurements: ok = true, want false")
+	}
+	if _, ok := InputNoiseFloor(nil); ok {
+		t.Error("InputNoiseFloor(nil): ok = true, want false")
+	}
+}
+
+// TestOutputNoiseFloorPresent confirms the genuine Pass 4 output floor is
+// returned when a final room-tone sample exists.
+func TestOutputNoiseFloorPresent(t *testing.T) {
+	result := resultWith(-16.0, -2.0, -64.0, -82.0)
+	floor, ok := OutputNoiseFloor(result)
+	if !ok {
+		t.Fatal("OutputNoiseFloor: ok = false, want true")
+	}
+	if floor != -82.0 {
+		t.Errorf("OutputNoiseFloor = %.1f, want -82.0", floor)
+	}
+}
+
+// TestOutputNoiseFloorAbsentNoFallback locks the no-fallback contract: with no
+// Pass 4 room-tone sample, OutputNoiseFloor returns ok = false even when an input
+// floor exists, so the done box never renders a misleading input->input arrow.
+func TestOutputNoiseFloorAbsentNoFallback(t *testing.T) {
+	result := &ProcessingResult{
+		Measurements: &AudioMeasurements{
+			Regions: RegionMetrics{NoiseProfile: &NoiseProfile{MeasuredNoiseFloor: -64.0}},
+		},
+	}
+	if _, ok := OutputNoiseFloor(result); ok {
+		t.Error("OutputNoiseFloor with no Pass 4 sample: ok = true, want false (no input fallback)")
+	}
+}

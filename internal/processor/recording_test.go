@@ -6,18 +6,18 @@ import (
 )
 
 // recInput is a compact builder for in-memory AudioMeasurements carrying only
-// the Pass-1 INPUT measurements ComputeRecordingScore reads. speechRMS is the
-// elected SpeechProfile RMS; a NaN speechRMS means "no SpeechProfile elected"
-// (the noise-floor-only fallback path).
-func recInput(inputTP, inputI, inputLRA, noiseFloor, speechRMS float64) *AudioMeasurements {
+// the Pass-1 INPUT measurements ComputeRecordingScore reads. speechMom is the
+// elected SpeechProfile momentary-LUFS level (the SNR numerator); a NaN speechMom
+// means "no SpeechProfile elected" (the noise-floor-only fallback path).
+func recInput(inputTP, inputI, inputLRA, noiseFloor, speechMom float64) *AudioMeasurements {
 	m := &AudioMeasurements{}
 	m.Loudness.InputTP = inputTP
 	m.Loudness.InputI = inputI
 	m.Loudness.InputLRA = inputLRA
 	m.Regions.NoiseProfile = &NoiseProfile{MeasuredNoiseFloor: noiseFloor}
-	if !math.IsNaN(speechRMS) {
+	if !math.IsNaN(speechMom) {
 		sp := &SpeechCandidateMetrics{}
-		sp.RMSLevel = speechRMS
+		sp.MomentaryLUFS = speechMom
 		m.Regions.SpeechProfile = sp
 	}
 	return m
@@ -33,23 +33,23 @@ func TestComputeRecordingScoreCorpusAnchors(t *testing.T) {
 		inputI    float64
 		inputLRA  float64
 		floor     float64
-		speechRMS float64
+		speechMom float64
 		wantStars int
 		wantLabel string
 	}{
-		// 83-popey: hot input (-0.13 dBTP) zeroes headroom -> 2 star Fair (~57.9).
-		{"83-popey", -0.13, -29.82, 12.32, -74.04, -39.18, 2, "Fair"},
-		// 83-mark (~85.9) and 83-martin (~80.5) land in the 4 star Great band on the
-		// sweep: partial headroom (warm input true peak) keeps them off 5 stars.
-		{"83-mark", -4.9, -23.0, 11.0, -76.0, -38.0, 4, "Great"},
-		{"83-martin", -4.5, -24.0, 12.5, -75.0, -38.0, 4, "Great"},
+		// 83-popey: hot input (-0.1 dBTP) zeroes headroom -> 2 star Fair (~59.89).
+		{"83-popey", -0.1, -29.8, 12.3, -72.93, -34.79, 2, "Fair"},
+		// 83-mark (~85.16) and 83-martin (~80.65) land in the 4 star Great band:
+		// partial headroom (warm input true peak) keeps them off 5 stars.
+		{"83-mark", -6.2, -35.2, 15.0, -78.05, -38.74, 4, "Great"},
+		{"83-martin", -4.5, -27.8, 14.7, -70.47, -30.92, 4, "Great"},
 		// A clean studio-ish capture: healthy headroom, deep floor, wide SNR, sane
 		// level and a tight range -> 5 star Excellent.
-		{"clean-studio", -9.0, -21.0, 9.0, -78.0, -33.0, 5, "Excellent"},
+		{"clean-studio", -9.0, -21.0, 9.0, -80.0, -28.0, 5, "Excellent"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := ComputeRecordingScore(recInput(tc.inputTP, tc.inputI, tc.inputLRA, tc.floor, tc.speechRMS))
+			got := ComputeRecordingScore(recInput(tc.inputTP, tc.inputI, tc.inputLRA, tc.floor, tc.speechMom))
 			if got.Stars != tc.wantStars {
 				t.Errorf("%s: stars = %d (score %.2f), want %d", tc.name, got.Stars, got.Score, tc.wantStars)
 			}
@@ -61,12 +61,12 @@ func TestComputeRecordingScoreCorpusAnchors(t *testing.T) {
 }
 
 // TestComputeRecordingScorePopeyComposite pins the 83-popey composite close to
-// the documented ~57.9 so the per-axis blend is exercised end to end, not just
+// the documented ~59.89 so the per-axis blend is exercised end to end, not just
 // the star band.
 func TestComputeRecordingScorePopeyComposite(t *testing.T) {
-	got := ComputeRecordingScore(recInput(-0.13, -29.82, 12.32, -74.04, -39.18))
-	if math.Abs(got.Score-57.9) > 0.5 {
-		t.Errorf("83-popey composite = %.3f, want ~57.9 (headroom must zero on a -0.13 dBTP input)", got.Score)
+	got := ComputeRecordingScore(recInput(-0.1, -29.8, 12.3, -72.93, -34.79))
+	if math.Abs(got.Score-59.89) > 0.5 {
+		t.Errorf("83-popey composite = %.3f, want ~59.89 (headroom must zero on a -0.1 dBTP input)", got.Score)
 	}
 }
 
