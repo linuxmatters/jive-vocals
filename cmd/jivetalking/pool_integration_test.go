@@ -180,12 +180,10 @@ func TestProcessAudio_ConcurrentRaceClean(t *testing.T) {
 	results := make([]*processor.ProcessingResult, len(files))
 
 	for i, inputPath := range files {
-		wg.Add(1)
-		go func(i int, inputPath string) {
-			defer wg.Done()
+		wg.Go(func() {
 			clone := base.CloneForWorker(withFilePrefix(inputPath, sharedLog))
 			results[i], errs[i] = processor.ProcessAudio(context.Background(), inputPath, clone, nil)
-		}(i, inputPath)
+		})
 	}
 	wg.Wait()
 

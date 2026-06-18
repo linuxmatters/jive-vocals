@@ -49,10 +49,7 @@ func launchSpectrogramRenders(
 	onError func(processor.SpectrogramImage, error),
 ) {
 	for _, img := range imgs {
-		specWG.Add(1)
-		go func(img processor.SpectrogramImage) {
-			defer specWG.Done()
-
+		specWG.Go(func() {
 			select {
 			case specSem <- struct{}{}:
 				defer func() { <-specSem }()
@@ -63,7 +60,7 @@ func launchSpectrogramRenders(
 			if err := render(ctx, img); err != nil {
 				onError(img, err)
 			}
-		}(img)
+		})
 	}
 }
 
@@ -136,13 +133,7 @@ func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, 
 	render := processingRenderScheduler{sem: specSem, wg: &specWG}
 
 	for i, inputPath := range env.files {
-		wg.Add(1)
-		go func(i int, inputPath string) {
-			// Register wg.Done() before the acquire select so a worker skipped
-			// on a cancelled ctx still decrements the WaitGroup; otherwise
-			// wg.Wait() hangs.
-			defer wg.Done()
-
+		wg.Go(func() {
 			// Acquire the semaphore, but bail out if ctx is already cancelled so
 			// a not-yet-started worker skips its work cleanly. Only release the
 			// slot when this branch actually took one.
@@ -188,7 +179,7 @@ func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, 
 			pass2Time := time.Since(pass2Start) - ph.pass1Time - ph.pass3Time - ph.pass4Time
 
 			emitProcessingReport(env, inputPath, result, ph, processingTimings{fileStart: fileStartTime, pass2: pass2Time}, diagnostics, reportWarnings, render)
-		}(i, inputPath)
+		})
 	}
 
 	wg.Wait()

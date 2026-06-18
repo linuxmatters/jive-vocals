@@ -61,13 +61,7 @@ func runAnalysisPool(env poolEnv, slots []analysisSlot, deps analysisPoolDeps) {
 	var wg sync.WaitGroup
 
 	for i, inputPath := range env.files {
-		wg.Add(1)
-		go func(i int, inputPath string) {
-			// Register wg.Done() before the acquire select so a worker skipped
-			// on a cancelled ctx still decrements the WaitGroup; otherwise
-			// wg.Wait() hangs.
-			defer wg.Done()
-
+		wg.Go(func() {
 			// Acquire the semaphore, but bail out if ctx is already cancelled so
 			// a not-yet-started worker skips its work cleanly. Only release the
 			// slot when this branch actually took one.
@@ -128,7 +122,7 @@ func runAnalysisPool(env poolEnv, slots []analysisSlot, deps analysisPoolDeps) {
 					Error:     slots[i].err,
 				})
 			}
-		}(i, inputPath)
+		})
 	}
 
 	wg.Wait()
