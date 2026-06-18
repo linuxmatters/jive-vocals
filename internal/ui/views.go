@@ -482,8 +482,8 @@ func lerpClamp(v, inLo, inHi, outLo, outHi float64) float64 {
 
 // rgb8 resolves a color.Color to 8-bit sRGB channels.
 func rgb8(c color.Color) (r, g, b uint8) {
-	r16, g16, b16, _ := c.RGBA()
-	return uint8((r16 >> 8) & 0xFF), uint8((g16 >> 8) & 0xFF), uint8((b16 >> 8) & 0xFF)
+	rgba := color.RGBAModel.Convert(c).(color.RGBA)
+	return rgba.R, rgba.G, rgba.B
 }
 
 // renderOverallProgress renders the overall progress footer
