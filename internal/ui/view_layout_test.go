@@ -3,7 +3,6 @@ package ui
 import (
 	"math"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,34 +33,7 @@ func TestHeaderHasNoSubtitle(t *testing.T) {
 // header. Title letters carry a bold prefix (1;38;2;r;g;b), so match the
 // 38;2;r;g;b foreground regardless of any leading SGR attributes.
 func headerColors(s string) [][3]int {
-	var out [][3]int
-	seen := map[[3]int]bool{}
-	for seg := range strings.SplitSeq(s, "\x1b[") {
-		_, after, found := strings.Cut(seg, "38;2;")
-		if !found {
-			continue
-		}
-		body, _, _ := strings.Cut(after, "m")
-		parts := strings.Split(body, ";")
-		if len(parts) < 3 {
-			continue
-		}
-		var c [3]int
-		ok := true
-		for i := range 3 {
-			n, err := strconv.Atoi(parts[i])
-			if err != nil {
-				ok = false
-				break
-			}
-			c[i] = n
-		}
-		if ok && !seen[c] {
-			seen[c] = true
-			out = append(out, c)
-		}
-	}
-	return out
+	return ansiColorTriples(s, false)
 }
 
 // TestHeaderIsGradient confirms the title word is drawn as a multi-colour

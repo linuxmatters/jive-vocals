@@ -33,14 +33,14 @@ func TestUnitMetricFormat(t *testing.T) {
 }
 
 // TestUnitMetricFormatUnroutedPanics pins the default-branch panic contract: a
-// catalogued key on an unrouted unit (here "dB") must panic so it cannot reach a
-// silent mis-format. "crest_factor_astats_db" has Unit "dB", which the switch
-// does not route.
+// catalogued key on an unrouted unit (here "count") must panic so it cannot reach
+// a silent mis-format. "interval_count" has Unit "count", which the switch does
+// not route (it is rendered as an integer via formatInt, not through this path).
 func TestUnitMetricFormatUnroutedPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Fatal("unitMetricFormat on an unrouted unit did not panic")
 		}
 	}()
-	unitMetricFormat("crest_factor_astats_db")
+	unitMetricFormat("interval_count")
 }

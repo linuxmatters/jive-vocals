@@ -2,11 +2,11 @@ package ui
 
 import (
 	"errors"
-	"regexp"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/linuxmatters/jivetalking/internal/processor"
 )
 
@@ -35,7 +35,7 @@ func completedAnalysisView(t *testing.T, res *processor.AnalysisResult) string {
 	m = updated.(AnalysisModel)
 	updated, _ = m.Update(AnalysisCompleteMsg{FileIndex: 0, Result: res})
 	m = updated.(AnalysisModel)
-	return stripANSI(m.View().Content)
+	return ansi.Strip(m.View().Content)
 }
 
 // TestAnalysisVerdictRendersScoreAndGain confirms the completed analysis row
@@ -81,7 +81,7 @@ func TestAnalysisVerdictGainGlyph(t *testing.T) {
 // countFilled returns the number of filled (▰) cells in an ANSI-stripped gain
 // bar.
 func countFilled(s string) int {
-	return strings.Count(stripANSI(s), "▰")
+	return strings.Count(ansi.Strip(s), "▰")
 }
 
 // TestGainBarFill asserts the filled-cell COUNT (ANSI stripped) each
@@ -119,7 +119,7 @@ func TestGainBarFill(t *testing.T) {
 // exact colour.
 func TestGainBarStyled(t *testing.T) {
 	styled := GainBar(-0.1)
-	if stripANSI(styled) == styled {
+	if ansi.Strip(styled) == styled {
 		t.Errorf("GainBar emitted no colour styling: %q", styled)
 	}
 }
@@ -154,13 +154,6 @@ func TestAnalysisVerdictSkippedWithoutMeasurements(t *testing.T) {
 	if strings.Contains(view, "Recording") || strings.Contains(view, "Gain") {
 		t.Errorf("verdict lines rendered without measurements:\n%s", view)
 	}
-}
-
-// ansiRE strips ANSI escape sequences so view assertions match on plain text.
-var ansiRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
-
-func stripANSI(s string) string {
-	return ansiRE.ReplaceAllString(s, "")
 }
 
 func TestAnalysisProgressMsgIndexRouting(t *testing.T) {
@@ -280,7 +273,7 @@ func TestAnalysisMessagesDriveViewWithoutSpinner(t *testing.T) {
 		t.Errorf("progress msg did not update state: %+v", m.Files[0])
 	}
 
-	view := stripANSI(m.View().Content)
+	view := ansi.Strip(m.View().Content)
 	if !strings.Contains(view, "∿") {
 		t.Errorf("active row missing orange wave glyph ∿:\n%s", view)
 	}
@@ -293,7 +286,7 @@ func TestAnalysisMessagesDriveViewWithoutSpinner(t *testing.T) {
 	if !m.Files[0].Done {
 		t.Error("complete msg did not mark file done")
 	}
-	view = stripANSI(m.View().Content)
+	view = ansi.Strip(m.View().Content)
 	if !strings.Contains(view, "🗸 a.wav → a-wav-analysis.md") {
 		t.Errorf("completed row missing '🗸 a.wav → a-wav-analysis.md':\n%s", view)
 	}
@@ -317,7 +310,7 @@ func TestAnalysisViewLayout(t *testing.T) {
 	updated, _ = m.Update(AnalysisCompleteMsg{FileIndex: 2, Error: errors.New("boom")})
 	m = updated.(AnalysisModel)
 
-	view := stripANSI(m.View().Content)
+	view := ansi.Strip(m.View().Content)
 
 	if !strings.Contains(view, "Jivetalking") {
 		t.Errorf("view missing gradient title 'Jivetalking':\n%s", view)

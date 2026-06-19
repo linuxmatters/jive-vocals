@@ -5,40 +5,18 @@ package processor
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"sort"
 	"testing"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
 	"github.com/linuxmatters/jivetalking/internal/audio"
 )
 
-// findProbeAudioFile locates any audio file under testdata/ for integration
-// tests. Returns "" if none exists.
-func findProbeAudioFile() string {
-	// Prefer the small fixture if present (fast), else any flac/wav.
-	candidates := []string{"fixture-5m.flac"}
-	for _, name := range candidates {
-		p := filepath.Join("..", "..", "testdata", name)
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	matches, _ := filepath.Glob(filepath.Join("..", "..", "testdata", "*.flac"))
-	wavs, _ := filepath.Glob(filepath.Join("..", "..", "testdata", "*.wav"))
-	matches = append(matches, wavs...)
-	if len(matches) == 0 {
-		return ""
-	}
-	sort.Strings(matches)
-	return matches[0]
-}
-
-// openTestFilterGraph opens a real testdata audio file and builds a passthrough
-// (anull) filter graph for driving runFilterGraph. It skips the test gracefully
-// when no testdata audio is present (project convention). The returned cleanup
-// frees the graph and closes the reader.
+// openTestFilterGraph generates synthetic audio in t.TempDir() and builds a
+// passthrough (anull) filter graph for driving runFilterGraph. The decode-loop
+// and ctx-cancellation mechanics under test are content-independent, so a
+// synthetic tone+noise stem stands in fully for a real recording and keeps the
+// suite hermetic (no testdata dependence). The returned cleanup frees the graph
+// and closes the reader.
 func openTestFilterGraph(t *testing.T) (
 	reader *audio.Reader,
 	src, sink *ffmpeg.AVFilterContext,
@@ -46,17 +24,17 @@ func openTestFilterGraph(t *testing.T) (
 ) {
 	t.Helper()
 
-	inputPath := findProbeAudioFile()
-	if inputPath == "" {
-		t.Skip("no audio file found under testdata/; drop a .flac (e.g. testdata/fixture-5m.flac) to run this test")
-	}
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		t.Skipf("testdata audio not found: %s", inputPath)
-	}
+	inputPath := generateTestAudio(t, TestAudioOptions{
+		DurationSecs: 2.0,
+		ToneFreq:     440,
+		ToneLevel:    -20.0,
+		NoiseLevel:   -55.0,
+		Dir:          t.TempDir(),
+	})
 
 	r, _, err := audio.OpenAudioFile(inputPath)
 	if err != nil {
-		t.Fatalf("failed to open test audio %s: %v", inputPath, err)
+		t.Fatalf("failed to open generated audio %s: %v", inputPath, err)
 	}
 
 	graph, srcCtx, sinkCtx, err := setupFilterGraph(r.DecoderContext(), "anull")

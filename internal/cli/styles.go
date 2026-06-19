@@ -9,11 +9,14 @@ import (
 	"charm.land/lipgloss/v2/compat"
 )
 
-// Palette is the single source of adaptive colours for both the cli and ui
-// packages. Each value is a compat.AdaptiveColor, which satisfies image/color's
-// Color interface and resolves Light/Dark variants at render time from the
-// terminal background detected globally by the compat package. Use these
-// instead of bespoke lipgloss.Color literals.
+// Palette is the single source of colours for both the cli and ui packages.
+// Every value is a compat.AdaptiveColor, which satisfies image/color's Color
+// interface and resolves Light/Dark variants at render time from the terminal
+// background detected globally by the compat package. Only a named subset
+// adapts: ColorText, ColorFill, ColorSkyBlue, and ColorBlue carry distinct
+// Light and Dark variants. The rest are fixed brand colours with Light == Dark,
+// expressed through the same type for uniformity. Use these instead of bespoke
+// lipgloss.Color literals.
 var (
 	// ColorRed is the Jivetalking brand red (errors, titles, peak zone).
 	ColorRed = compat.AdaptiveColor{Light: lipgloss.Color("#A40000"), Dark: lipgloss.Color("#A40000")}

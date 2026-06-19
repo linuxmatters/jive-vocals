@@ -103,7 +103,7 @@ func ProcessAudio(ctx context.Context, inputPath string, config *BaseFilterConfi
 	// Adapt filter configuration based on Pass 1 measurements
 	effectiveConfig, diagnostics := AdaptConfig(config, measurements)
 	if effectiveConfig == nil {
-		return nil, fmt.Errorf("adaptive config failed")
+		return nil, fmt.Errorf("adaptive config failed for %s: base filter config is nil or invalid", inputPath)
 	}
 
 	// Pass 2: Processing. The start event also surfaces the just-derived effective

@@ -251,24 +251,41 @@ type progressHandler struct {
 	summary ui.AdaptedSummary
 }
 
+// passCompleteThreshold treats any progress at or above this value as a pass-end
+// signal. The producer emits an explicit 1.0 end event, but a stray non-exact
+// value (e.g. 0.999) must still close the pass rather than silently drop its
+// duration, so we bracket on a threshold instead of exact float equality.
+const passCompleteThreshold = 0.999
+
 func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 	ph.log("[MAIN] Sending ProgressMsg: Pass %d (%s), Progress %.1f%%, Level %.1f dB", update.Pass, update.PassName, update.Progress*100, update.Level)
 
-	// Progress 0.0 marks a pass start, 1.0 marks its end; bracket each pass to
-	// measure its wall-clock duration.
-	switch {
-	case update.Pass == processor.PassAnalysis && update.Progress == 0.0:
-		ph.pass1Start = time.Now()
-	case update.Pass == processor.PassAnalysis && update.Progress == 1.0:
-		ph.pass1Time = time.Since(ph.pass1Start)
-	case update.Pass == processor.PassMeasuring && update.Progress == 0.0:
-		ph.pass3Start = time.Now()
-	case update.Pass == processor.PassMeasuring && update.Progress == 1.0:
-		ph.pass3Time = time.Since(ph.pass3Start)
-	case update.Pass == processor.PassNormalising && update.Progress == 0.0:
-		ph.pass4Start = time.Now()
-	case update.Pass == processor.PassNormalising && update.Progress == 1.0:
-		ph.pass4Time = time.Since(ph.pass4Start)
+	// Bracket each pass to measure its wall-clock duration. The first update seen
+	// for a pass marks its start (start time still zero); progress at or above
+	// passCompleteThreshold marks its end. Keying the start off the first sighting
+	// and the end off a threshold avoids exact float-equality on the progress value.
+	switch update.Pass {
+	case processor.PassAnalysis:
+		if ph.pass1Start.IsZero() {
+			ph.pass1Start = time.Now()
+		}
+		if update.Progress >= passCompleteThreshold {
+			ph.pass1Time = time.Since(ph.pass1Start)
+		}
+	case processor.PassMeasuring:
+		if ph.pass3Start.IsZero() {
+			ph.pass3Start = time.Now()
+		}
+		if update.Progress >= passCompleteThreshold {
+			ph.pass3Time = time.Since(ph.pass3Start)
+		}
+	case processor.PassNormalising:
+		if ph.pass4Start.IsZero() {
+			ph.pass4Start = time.Now()
+		}
+		if update.Progress >= passCompleteThreshold {
+			ph.pass4Time = time.Since(ph.pass4Start)
+		}
 	}
 
 	ph.p.Send(ui.ProgressMsg{

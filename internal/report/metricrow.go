@@ -27,6 +27,7 @@ const (
 	fmtPeakDB                       // dBTP true peak: dB scale, digital-silence floor
 	fmtSpectral                     // dimensionless / Hz spectral + astats values
 	fmtSigned                       // explicit-sign values (target offset)
+	fmtRaw                          // plain fixed-decimal floats (seconds): no scientific-notation or floor rule
 )
 
 // metricRow defines one table row: the RunRecord field key (for its definition)
@@ -98,6 +99,8 @@ func formatByRule(value float64, format metricFormat, decimals int) string {
 		return formatMetric(value, decimals)
 	case fmtSigned:
 		return formatMetricSigned(value, decimals)
+	case fmtRaw:
+		return formatFloat(value, decimals)
 	default:
 		return formatMetric(value, decimals)
 	}

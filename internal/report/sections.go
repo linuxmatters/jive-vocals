@@ -250,9 +250,7 @@ func renderNoiseFloor(rec *processor.RunRecord) string {
 		metricValueRow("floor_astats_dbfs", n.FloorAstats),
 		metricValueRow("room_tone_detect_level_dbfs", n.RoomToneDetectLevel),
 		{metricLabel("voice_activated"), metricDefinition("voice_activated"), boolCell(n.VoiceActivated)},
-		// reduction_headroom_db (unit "dB") renders through formatMetric, not the
-		// formatMetricDB its unit would select; keep it explicit.
-		valueRow("reduction_headroom_db", formatMetric(n.ReductionHeadroom, 2)),
+		metricValueRow("reduction_headroom_db", n.ReductionHeadroom),
 	}
 
 	return renderValueTable("## Noise Floor\n\n", rows)
@@ -316,8 +314,7 @@ func renderGateStatistics(g *processor.GateStatistics) string {
 	rows := [][]string{
 		metricValueRow("voiced_low_percentile_dbfs", g.VoicedLowPercentile),
 		metricValueRow("noise_high_percentile_dbfs", g.NoiseHighPercentile),
-		// gate_separation_db (unit "dB") renders through formatMetric; keep it explicit.
-		valueRow("gate_separation_db", formatMetric(g.SeparationDB, 2)),
+		metricValueRow("gate_separation_db", g.SeparationDB),
 	}
 
 	return renderValueTable("### Gate Statistics\n\n", rows)
@@ -332,13 +329,11 @@ func renderRoomToneElected(p *processor.NoiseProfile) string {
 	}
 
 	rows := [][]string{
-		// start_s / duration_s (unit "s") render through formatFloat; keep them explicit.
-		valueRow("start_s", formatFloat(p.Start.Seconds(), 2)),
-		valueRow("duration_s", formatFloat(p.Duration.Seconds(), 2)),
+		metricValueRow("start_s", p.Start.Seconds()),
+		metricValueRow("duration_s", p.Duration.Seconds()),
 		metricValueRow("measured_floor_dbfs", p.MeasuredNoiseFloor),
 		metricValueRow("peak_level_dbfs", p.PeakLevel),
-		// crest_factor_db (unit "dB") renders through formatMetric; keep it explicit.
-		valueRow("crest_factor_db", formatMetric(p.CrestFactor, 2)),
+		metricValueRow("crest_factor_db", p.CrestFactor),
 		metricValueRow("entropy", p.Entropy),
 		metricValueRow("spectral_centroid_hz", p.Spectral.Centroid),
 		metricValueRow("spectral_flatness", p.Spectral.Flatness),
@@ -357,12 +352,10 @@ func renderSpeechElected(p *processor.SpeechCandidateMetrics) string {
 	}
 
 	rows := [][]string{
-		// duration_s (unit "s") renders through formatFloat; keep it explicit.
-		valueRow("duration_s", formatFloat(p.Region.Duration.Seconds(), 2)),
+		metricValueRow("duration_s", p.Region.Duration.Seconds()),
 		metricValueRow("rms_level_dbfs", p.RMSLevel),
 		metricValueRow("peak_level_dbfs", p.PeakLevel),
-		// crest_factor_db (unit "dB") renders through formatMetric; keep it explicit.
-		valueRow("crest_factor_db", formatMetric(p.CrestFactor, 2)),
+		metricValueRow("crest_factor_db", p.CrestFactor),
 		metricValueRow("momentary_lufs", p.MomentaryLUFS),
 		metricValueRow("short_term_lufs", p.ShortTermLUFS),
 		metricValueRow("true_peak_dbtp", p.TruePeak),
@@ -480,8 +473,7 @@ func renderIntervalSummary(rec *processor.RunRecord) string {
 		)
 	}
 	if s.LargestGapDB != nil {
-		// largest_gap_db (unit "dB") renders through formatMetric; keep it explicit.
-		rows = append(rows, valueRow("largest_gap_db", formatMetric(*s.LargestGapDB, 2)))
+		rows = append(rows, metricValueRow("largest_gap_db", *s.LargestGapDB))
 	}
 
 	return renderValueTable("## Interval Summary\n\n", rows)
@@ -511,13 +503,11 @@ func valueRow(key, value string) []string {
 
 // metricValueRow builds a single-stage value row, formatting the float through
 // formatByRule keyed off the key's catalogued Unit so the formatter choice is not
-// re-encoded per call site. It covers the unit classes whose single-stage cells
-// route cleanly through formatByRule: dBFS/dBTP (formatMetricDB), LUFS
-// (formatMetricLUFS), and Hz / unit-less (formatMetric). Decimals follow the unit
-// (4 for unit-less spectral ratios, 2 otherwise), matching every existing cell.
-// Rows on other units (plain "dB" through formatMetric, "s" through formatFloat)
-// keep their explicit formatter at the call site; routing them here would change
-// the rendered bytes.
+// re-encoded per call site. It is the single value-row construction path for every
+// dimensioned single-stage cell: dBFS/dBTP (formatMetricDB), LUFS
+// (formatMetricLUFS), dB / Hz / unit-less (formatMetric), and "s" (formatFloat,
+// via fmtRaw). Decimals follow the unit (4 for unit-less spectral ratios, 2
+// otherwise), matching every existing cell.
 func metricValueRow(key string, value float64) []string {
 	format, decimals := unitMetricFormat(key)
 	return valueRow(key, formatByRule(value, format, decimals))
@@ -536,8 +526,12 @@ func unitMetricFormat(key string) (metricFormat, int) {
 		return fmtPeakDB, 2
 	case "LUFS":
 		return fmtLUFS, 2
+	case "dB":
+		return fmtSpectral, 2
 	case "Hz":
 		return fmtSpectral, 2
+	case "s":
+		return fmtRaw, 2
 	case "":
 		return fmtSpectral, 4
 	default:

@@ -15,30 +15,7 @@ import (
 // fillColors extracts the distinct RGB foreground triples (38;2;r;g;b) from a
 // rendered bar, in order of first appearance, ignoring the empty-track colour.
 func fillColors(s string) [][3]int {
-	var out [][3]int
-	seen := map[[3]int]bool{}
-	for seg := range strings.SplitSeq(s, "\x1b[") {
-		if !strings.HasPrefix(seg, "38;2;") {
-			continue
-		}
-		body, _, _ := strings.Cut(seg, "m")
-		parts := strings.Split(body, ";")
-		if len(parts) < 5 {
-			continue
-		}
-		r, err1 := strconv.Atoi(parts[2])
-		g, err2 := strconv.Atoi(parts[3])
-		b, err3 := strconv.Atoi(parts[4])
-		if err1 != nil || err2 != nil || err3 != nil {
-			continue
-		}
-		c := [3]int{r, g, b}
-		if !seen[c] {
-			seen[c] = true
-			out = append(out, c)
-		}
-	}
-	return out
+	return ansiColorTriples(s, true)
 }
 
 func abs(n int) int {
