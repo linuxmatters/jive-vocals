@@ -34,7 +34,11 @@ type AnalysisModel struct {
 
 	// Global state
 	StartTime time.Time
-	Done      bool
+	// ElapsedTime is frozen from time.Since(StartTime) in Update on each progress
+	// message, so View stays a pure function of model state (no clock read at
+	// render). Mirrors FileProgress.ElapsedTime in the processing model.
+	ElapsedTime time.Duration
+	Done        bool
 
 	// Progress bar (owned by Update; rendered via ViewAs)
 	progress progress.Model
@@ -107,6 +111,7 @@ func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AnalysisProgressMsg:
+		m.ElapsedTime = time.Since(m.StartTime)
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
 			m.Files[msg.FileIndex].Progress = msg.Progress
 			m.Files[msg.FileIndex].Level = msg.Level
@@ -163,7 +168,7 @@ func (m AnalysisModel) View() tea.View {
 	activeIcon := lipgloss.NewStyle().Foreground(cli.ColorOrange).Render("∿")
 	doneStyle := lipgloss.NewStyle().Foreground(cli.ColorGreen)
 	errorStyle := lipgloss.NewStyle().Foreground(cli.ColorRed)
-	elapsed := time.Since(m.StartTime)
+	elapsed := m.ElapsedTime
 
 	for i := range m.Files {
 		f := &m.Files[i]

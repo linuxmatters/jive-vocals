@@ -98,12 +98,25 @@ func OpenAudioFile(filename string) (*Reader, *Metadata, error) {
 		Channels:   decCtx.ChLayout().NbChannels(),
 	}
 
+	frame := ffmpeg.AVFrameAlloc()
+	if frame == nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("failed to allocate frame for file: %s", filename)
+	}
+
+	packet := ffmpeg.AVPacketAlloc()
+	if packet == nil {
+		ffmpeg.AVFrameFree(&frame)
+		cleanup()
+		return nil, nil, fmt.Errorf("failed to allocate packet for file: %s", filename)
+	}
+
 	reader := &Reader{
 		fmtCtx:    fmtCtx,
 		decCtx:    decCtx,
 		streamIdx: streamIdx,
-		frame:     ffmpeg.AVFrameAlloc(),
-		packet:    ffmpeg.AVPacketAlloc(),
+		frame:     frame,
+		packet:    packet,
 	}
 
 	return reader, metadata, nil
