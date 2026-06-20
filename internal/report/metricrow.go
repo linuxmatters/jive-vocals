@@ -91,6 +91,11 @@ func formatCell(getter func() (float64, bool), format metricFormat) string {
 // count (formatCell uses 4 for spectral, 2 otherwise; loudnormValueCell uses 2).
 func formatByRule(value float64, format metricFormat, decimals int) string {
 	switch format {
+	// fmtDB (dBFS levels) and fmtPeakDB (dBTP true peak) share formatMetricDB
+	// today: both want the "< -120" digital-silence floor and +Inf placeholder.
+	// fmtPeakDB stays a separate name so true-peak call sites read on their own
+	// axis and can diverge later (e.g. a dBTP value may exceed 0 for inter-sample
+	// peaks, so a future ceiling or infSign policy could differ from dBFS).
 	case fmtDB, fmtPeakDB:
 		return formatMetricDB(value, decimals)
 	case fmtLUFS:

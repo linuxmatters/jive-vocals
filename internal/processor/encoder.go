@@ -225,12 +225,17 @@ func (e *Encoder) Close() error {
 // package must not import internal/ui, so the value is mirrored here.
 const meterLevelFloorDB = -70.0
 
+// meterLevelUnsupportedDB is the level reported when a frame's sample format is
+// unsupported. It is a mid-range sentinel, not the silence floor, so an
+// unsupported format shows a visible meter reading rather than looking silent.
+const meterLevelUnsupportedDB = -30.0
+
 // calculateFrameLevel returns the RMS (Root Mean Square) level of an audio frame
 // in dB, clamped to the VU-meter display range [meterLevelFloorDB, 0].
 func calculateFrameLevel(frame *ffmpeg.AVFrame) float64 {
 	sumSquares, sampleCount, _, ok := frameSumSquaresAndPeak(frame)
 	if !ok {
-		return -30.0 // Unsupported format
+		return meterLevelUnsupportedDB
 	}
 	if sampleCount == 0 {
 		return meterLevelFloorDB // Silence threshold

@@ -220,5 +220,6 @@ The full source layout, architecture, and contribution standards live in [AGENTS
 - [Usage Guide](docs/Usage.md): driving Jivetalking in depth: quality ratings, analysis-only mode, and diagnostics
 - [Audio Pipeline](docs/Pipeline.md): how and why the processing pipeline is built and tuned, with a diagram
 - [The hardware that taught me](docs/Inspiration.md): the influences and heritage behind jivetalking's processing approach
+- [Levelator Comparison](docs/Levelator-Comparison-And-Gap-Analysis.md): how Jivetalking compares to The Levelator, with capabilities and gaps
 - [Spectral Metrics Reference](docs/Spectral-Metrics-Reference.md): how measurements drive adaptation
 - [Normalisation Tuning](docs/Normalisation-Tuning.md): why the loudnorm and limiter constants hold their corpus-derived values
