@@ -240,6 +240,8 @@ type progressHandler struct {
 	fileIndex  int
 	pass1Start time.Time
 	pass1Time  time.Duration
+	pass2Start time.Time
+	pass2Time  time.Duration
 	pass3Start time.Time
 	pass3Time  time.Duration
 	pass4Start time.Time
@@ -271,6 +273,13 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 		}
 		if update.Progress >= passCompleteThreshold {
 			ph.pass1Time = time.Since(ph.pass1Start)
+		}
+	case processor.PassProcessing:
+		if ph.pass2Start.IsZero() {
+			ph.pass2Start = time.Now()
+		}
+		if update.Progress >= passCompleteThreshold {
+			ph.pass2Time = time.Since(ph.pass2Start)
 		}
 	case processor.PassMeasuring:
 		if ph.pass3Start.IsZero() {

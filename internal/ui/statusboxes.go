@@ -97,6 +97,7 @@ func joinStatusBoxes(passBox string, file *FileProgress, termWidth int) string {
 	// the early return above. AdaptedSummary is comparable, so == is a complete key
 	// check. A height change (meter rows appearing/disappearing) re-renders here.
 	c := &file.statusBoxCache
+	// Deliberate in-place cache write during View; safe because Bubbletea drives Update/View serially.
 	if !c.valid || c.summary != file.Summary || c.joinHeight != passHeight {
 		c.chain = renderChainBox(file.Summary, passHeight)
 		c.analysis = renderAnalysisBox(file.Summary, passHeight)

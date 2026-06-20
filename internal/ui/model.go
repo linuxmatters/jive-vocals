@@ -315,6 +315,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case ProgressMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex] = updateFileProgress(m.Files[msg.FileIndex], msg)
 		}
 		return m, nil
@@ -369,6 +370,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				continue
 			}
 			target := m.Files[i].CurrentLevel
+			// Deliberate in-place write into the aliased meters backing array; safe because Bubbletea drives Update/View serially.
 			m.meters[i].pos, m.meters[i].vel = m.spring.Update(
 				m.meters[i].pos, m.meters[i].vel, target)
 			m.meters[i].progPos, m.meters[i].progVel = m.progressSpring.Update(
@@ -389,7 +391,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) View() tea.View {
 	// Render a placeholder until the first WindowSizeMsg sets m.Width.
 	if m.Width == 0 {
-		view := tea.NewView(fmt.Sprintf("Initializing...\nFiles: %d\n", len(m.Files)))
+		view := tea.NewView(fmt.Sprintf("Initialising...\nFiles: %d\n", len(m.Files)))
 		view.AltScreen = true
 		return view
 	}

@@ -139,7 +139,7 @@ func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the UI
 func (m AnalysisModel) View() tea.View {
 	if m.Width == 0 {
-		return tea.NewView("Initializing...")
+		return tea.NewView("Initialising...")
 	}
 
 	var b strings.Builder
