@@ -3,6 +3,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
@@ -317,10 +318,18 @@ func (m Model) Init() tea.Cmd {
 	return meterTick()
 }
 
-// processingFooterHeight is the row count View() reserves below the viewport.
-// The processing view has no footer, so it is zero; named so the viewport-height
-// maths reads symmetrically with the header reservation.
-const processingFooterHeight = 0
+// processingFooterHeight is the row count View() reserves below the viewport for
+// the scroll-hint footer. It is ALWAYS 1, even when the queue fits and the hint
+// is blank: reserving the row unconditionally keeps the viewport height (and so
+// the file boxes) from reflowing when the hint toggles on overflow.
+const processingFooterHeight = 1
+
+// scrollbarWidth is the column reserved at the right edge of the viewport for the
+// vertical scrollbar strip. The viewport is sized to m.Width - scrollbarWidth so
+// the strip joins beside it without pushing content off-screen; the column is
+// reserved unconditionally (a blank strip when the queue fits) so the file boxes
+// never reflow when the scrollbar toggles on overflow.
+const scrollbarWidth = 1
 
 // sizeViewport (re)builds and sizes the file-queue viewport from the current
 // terminal dimensions. The viewport height is the terminal height minus the
@@ -334,12 +343,15 @@ func (m *Model) sizeViewport() {
 	}
 	headerHeight := lipgloss.Height(renderProcessingHeader(*m))
 	vpHeight := max(m.Height-headerHeight-processingFooterHeight, 1)
+	// Reserve one column for the scrollbar strip, floored at 1 so a tiny terminal
+	// still yields a usable viewport.
+	vpWidth := max(m.Width-scrollbarWidth, 1)
 	if !m.vpReady {
-		m.vp = viewport.New(viewport.WithWidth(m.Width), viewport.WithHeight(vpHeight))
+		m.vp = viewport.New(viewport.WithWidth(vpWidth), viewport.WithHeight(vpHeight))
 		m.vpReady = true
 		return
 	}
-	m.vp.SetWidth(m.Width)
+	m.vp.SetWidth(vpWidth)
 	m.vp.SetHeight(vpHeight)
 }
 
@@ -512,7 +524,34 @@ func (m Model) renderScrollingView() string {
 	}
 	// Pure render: the viewport's content and scroll offset are managed in Update
 	// (refreshViewportContent), since View's value receiver discards any mutation.
-	return renderProcessingHeader(m) + "\n" + m.vp.View()
+	//
+	// The scrollbar and the scroll hint appear ONLY when the file queue overflows
+	// the viewport. Both the scrollbar column and the hint row are reserved
+	// unconditionally in sizeViewport / processingFooterHeight, so toggling them
+	// fills a pre-reserved slot and never reflows the file boxes.
+	overflow := m.vp.TotalLineCount() > m.vp.Height()
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, m.vp.View(), m.scrollbarStrip(overflow))
+
+	hint := ""
+	if overflow {
+		hint = renderScrollHint()
+	}
+
+	return renderProcessingHeader(m) + "\n" + body + "\n" + hint
+}
+
+// scrollbarStrip returns the right-edge scrollbar column for the viewport. On
+// overflow it is the live thumb/track strip from the viewport's scroll state; when
+// the queue fits it is a blank strip of spaces so the reserved column holds its
+// width and the file boxes do not reflow. Read-only viewport queries only, keeping
+// renderScrollingView pure.
+func (m Model) scrollbarStrip(overflow bool) string {
+	vpHeight := m.vp.Height()
+	if !overflow {
+		return strings.TrimRight(strings.Repeat(" \n", vpHeight), "\n")
+	}
+	return renderScrollbar(vpHeight, m.vp.TotalLineCount(), vpHeight, m.vp.ScrollPercent())
 }
 
 // updateFileProgress updates a FileProgress based on a ProgressMsg

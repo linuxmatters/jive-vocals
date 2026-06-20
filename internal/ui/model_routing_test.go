@@ -139,15 +139,17 @@ func TestWindowSizeMsgSizesViewport(t *testing.T) {
 	if !m.vpReady {
 		t.Fatal("WindowSizeMsg did not build the viewport")
 	}
-	if m.vp.Width() != 100 {
-		t.Errorf("viewport width = %d, want 100", m.vp.Width())
+	// Width is the terminal width minus the reserved scrollbar column.
+	if m.vp.Width() != 100-scrollbarWidth {
+		t.Errorf("viewport width = %d, want %d (100 - scrollbar %d)", m.vp.Width(), 100-scrollbarWidth, scrollbarWidth)
 	}
-	// Height must be the terminal height minus the rendered header, never the
-	// full terminal height (the header stays pinned outside the viewport).
+	// Height must be the terminal height minus the rendered header and the
+	// scroll-hint footer row, never the full terminal height (the header stays
+	// pinned outside the viewport; the footer row is reserved unconditionally).
 	headerHeight := lipgloss.Height(renderProcessingHeader(m))
-	wantHeight := 30 - headerHeight
+	wantHeight := 30 - headerHeight - processingFooterHeight
 	if m.vp.Height() != wantHeight {
-		t.Errorf("viewport height = %d, want %d (30 - header %d)", m.vp.Height(), wantHeight, headerHeight)
+		t.Errorf("viewport height = %d, want %d (30 - header %d - footer %d)", m.vp.Height(), wantHeight, headerHeight, processingFooterHeight)
 	}
 	if m.vp.Height() >= 30 {
 		t.Errorf("viewport height %d not reduced below terminal height 30; header not reserved", m.vp.Height())
@@ -156,8 +158,8 @@ func TestWindowSizeMsgSizesViewport(t *testing.T) {
 	// A second resize re-sizes the existing viewport rather than rebuilding.
 	updated, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = updated.(Model)
-	if m.vp.Width() != 80 {
-		t.Errorf("viewport width after resize = %d, want 80", m.vp.Width())
+	if m.vp.Width() != 80-scrollbarWidth {
+		t.Errorf("viewport width after resize = %d, want %d (80 - scrollbar %d)", m.vp.Width(), 80-scrollbarWidth, scrollbarWidth)
 	}
 }
 
