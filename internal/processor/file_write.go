@@ -1,32 +1,12 @@
 package processor
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 )
 
-// ErrOutputExists is returned when a publish destination already exists.
-var ErrOutputExists = errors.New("output already exists")
-
-var (
-	processorLink   = os.Link
-	processorRemove = os.Remove
-)
-
-// DestinationExistsError identifies the output path that blocked a no-clobber publish.
-type DestinationExistsError struct {
-	Path string
-}
-
-func (e *DestinationExistsError) Error() string {
-	return fmt.Sprintf("output already exists: %s", e.Path)
-}
-
-func (e *DestinationExistsError) Unwrap() error {
-	return ErrOutputExists
-}
+var processorRename = os.Rename
 
 // createSiblingTempPath creates a hidden, same-directory temp path whose basename
 // includes the marker and ends in .tmp.flac; tests pin the exact naming pattern.
@@ -61,19 +41,12 @@ func createSiblingTempPathSuffix(targetPath, marker, suffix string) (string, err
 	return tempPath, nil
 }
 
-// renameNoClobber publishes a same-directory temp file by linking src to dst,
-// then removing src. The link provides atomic no-clobber behaviour and avoids a
-// check-then-use destination reservation that os.Rename could later overwrite.
-func renameNoClobber(src, dst string) error {
-	if err := processorLink(src, dst); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return &DestinationExistsError{Path: dst}
-		}
+// publishOutput moves a same-directory temp file to dst, atomically overwriting
+// any existing destination (os.Rename replaces dst on the same filesystem), so a
+// re-run replaces the prior output rather than failing.
+func publishOutput(src, dst string) error {
+	if err := processorRename(src, dst); err != nil {
 		return fmt.Errorf("failed to publish output to %s: %w", dst, err)
-	}
-
-	if err := processorRemove(src); err != nil {
-		return fmt.Errorf("published output to %s but failed to remove temporary source %s: %w", dst, src, err)
 	}
 
 	return nil

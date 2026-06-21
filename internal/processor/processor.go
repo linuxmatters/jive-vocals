@@ -3,7 +3,6 @@ package processor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -207,10 +206,7 @@ func ProcessAudio(ctx context.Context, inputPath string, config *BaseFilterConfi
 	// Rename output file to include LUFS value: <name>-processed.<ext> → <name>-LUFS-NN-processed.<ext>
 	lufsValue := lufsFilenameValue(result.OutputLUFS)
 	finalPath := generateLUFSOutputPath(inputPath, lufsValue)
-	if err := renameNoClobber(outputPath, finalPath); err != nil {
-		if existsErr, ok := errors.AsType[*DestinationExistsError](err); ok {
-			return nil, fmt.Errorf("failed to publish output, destination already exists: %s: %w", existsErr.Path, ErrOutputExists)
-		}
+	if err := publishOutput(outputPath, finalPath); err != nil {
 		return nil, fmt.Errorf("failed to publish output: %w", err)
 	}
 	cleanupTempOutput = false
