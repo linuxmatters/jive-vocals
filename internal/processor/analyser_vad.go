@@ -774,7 +774,9 @@ func detectVoiceActivity(measurements *AudioMeasurements, intervals []IntervalSa
 
 	measurements.Noise.Floor = floor
 	measurements.Noise.FloorSource = "vad_percentile"
-	measurements.Noise.VoiceActivated = flooredFraction(intervals, axis) >= vadVoiceActivatedFraction
+	flooredFrac := flooredFraction(intervals, axis)
+	measurements.Noise.FlooredFraction = flooredFrac
+	measurements.Noise.VoiceActivated = flooredFrac >= vadVoiceActivatedFraction
 
 	log.Logf("VAD: split=%.1f dB (axis=%d), floor=%.1f dB, margin=%.2f dB, gapTol=%d, runs=%d, speechElected=%v, noiseRegion=%v",
 		split, axis, floor, margin, tol, len(runs), profile != nil, noiseRegion != nil)

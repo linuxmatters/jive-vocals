@@ -3,6 +3,7 @@ package processor
 import (
 	"encoding/json"
 	"math"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -51,10 +52,33 @@ type RunRecord struct {
 // RunProvenance is the §8.1 `run` block: identity + provenance for the run.
 type RunProvenance struct {
 	InputFile    string  `json:"input_file"`
+	Version      string  `json:"version"`      // jivetalking version string (same value --version prints; "dev" for local builds)
+	Executable   string  `json:"executable"`   // Absolute, symlink-resolved path of the running jivetalking binary
 	ProcessedAt  string  `json:"processed_at"` // RFC3339 timestamp captured at record build
 	DurationS    float64 `json:"duration_s"`
 	SampleRateHz int     `json:"sample_rate_hz"`
 	Channels     int     `json:"channels"`
+}
+
+// RunVersion is the jivetalking version string injected via ldflags at build
+// time. main.go sets it to the same value --version prints before any record is
+// built (mirroring how the package-level run provenance is populated); it stays
+// empty for callers that do not set it (e.g. tests).
+var RunVersion string
+
+// resolveExecutablePath returns the absolute, symlink-resolved path of the
+// running binary. It resolves os.Executable() through filepath.EvalSymlinks,
+// falling back to the raw os.Executable result if EvalSymlinks fails and to ""
+// if os.Executable itself fails. It never fails the run.
+func resolveExecutablePath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		return resolved
+	}
+	return exe
 }
 
 // LoudnessDomain is the §8.1 `loudness` block: the EBU R128 target plus one
@@ -291,6 +315,8 @@ func newPass1Record(m *AudioMeasurements) *RunRecord {
 	rec := &RunRecord{
 		SchemaVersion: schemaVersion,
 		Run: RunProvenance{
+			Version:     RunVersion,
+			Executable:  resolveExecutablePath(),
 			ProcessedAt: time.Now().Format(time.RFC3339),
 		},
 		Loudness: LoudnessDomain{TargetILUFS: targetILUFS},

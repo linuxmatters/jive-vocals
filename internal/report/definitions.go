@@ -245,6 +245,11 @@ var Definitions = map[string]Definition{
 		Unit:  "",
 		Gloss: "True when the floored (digital-silence) interval fraction is high, the platform-gated capture signature.",
 	},
+	"floored_fraction": {
+		Label: "Floored fraction",
+		Unit:  "",
+		Gloss: "Fraction (0..1) of intervals sitting at the digital-silence floor; the detection margin behind voice_activated, which trips at or above the fixed threshold.",
+	},
 	"reduction_headroom_db": {
 		Label: "Reduction headroom",
 		Unit:  "dB",

@@ -20,8 +20,9 @@ import (
 // Header
 // =============================================================================
 
-// renderHeader renders the run provenance block: input file, processed-at, audio
-// duration, sample rate, and channel layout. Reads only rec.Run.
+// renderHeader renders the run provenance block: input file, jivetalking
+// version, resolved executable path, processed-at, audio duration, sample rate,
+// and channel layout. Reads only rec.Run.
 func renderHeader(rec *processor.RunRecord) string {
 	var b strings.Builder
 	b.WriteString("# Audio Processing Report\n\n")
@@ -29,6 +30,8 @@ func renderHeader(rec *processor.RunRecord) string {
 
 	rows := [][]string{
 		{"Input file", rec.Run.InputFile},
+		{"Version", stringCell(rec.Run.Version)},
+		{"Executable", stringCell(rec.Run.Executable)},
 		{"Processed at", rec.Run.ProcessedAt},
 		{"Duration", formatDuration(durationFromSeconds(rec.Run.DurationS))},
 		{"Sample rate", formatSampleRate(rec.Run.SampleRateHz)},
@@ -232,7 +235,8 @@ func renderSpectral(rec *processor.RunRecord) string {
 
 // renderNoiseFloor renders the input-only noise domain block: the elected floor
 // and its source, the two distinct floor estimates (prescan, astats), the
-// adaptive room-tone detect level, the voice-activated flag, and the reduction
+// adaptive room-tone detect level, the voice-activated flag, the floored-interval
+// fraction behind it, and the reduction
 // headroom. Reads only rec.Noise. Raw measured values only - no "Noise Reduction"
 // delta, no "Floor-Speech SNR", no "Character", no per-row verdict.
 // Returns the empty string when the record carries no noise block (defensive;
@@ -250,6 +254,7 @@ func renderNoiseFloor(rec *processor.RunRecord) string {
 		metricValueRow("floor_astats_dbfs", n.FloorAstats),
 		metricValueRow("room_tone_detect_level_dbfs", n.RoomToneDetectLevel),
 		{metricLabel("voice_activated"), metricDefinition("voice_activated"), boolCell(n.VoiceActivated)},
+		metricValueRow("floored_fraction", n.FlooredFraction),
 		metricValueRow("reduction_headroom_db", n.ReductionHeadroom),
 	}
 
