@@ -186,7 +186,8 @@ type DynamicsMetrics struct {
 // NoiseMetrics is the input-only noise domain block (8.1/8.2). It holds the
 // canonical elected noise floor (Floor + FloorSource), the two distinct floor
 // estimates kept separate (prescan, astats), the adaptive room-tone detect level,
-// the voice-activated flag, and the noise-reduction headroom.
+// the voice-activated flag, the floored-interval fraction behind that flag, and
+// the noise-reduction headroom.
 type NoiseMetrics struct {
 	Floor               float64 `json:"floor_dbfs"`                  // Elected noise floor; under the VAD it is the momentary-LUFS p10 (vad_percentile source), so the value is on the momentary-LUFS axis
 	FloorSource         string  `json:"floor_source"`                // Source of Floor: "astats" / "rms_estimate" / "ebur128_estimate" / "vad_percentile"
@@ -194,6 +195,7 @@ type NoiseMetrics struct {
 	FloorAstats         float64 `json:"floor_astats_dbfs"`           // FFmpeg astats noise floor estimate (dBFS)
 	RoomToneDetectLevel float64 `json:"room_tone_detect_level_dbfs"` // Adaptive room tone detection threshold, derived from the momentary-LUFS-axis seed
 	VoiceActivated      bool    `json:"voice_activated"`             // True when the floored (digital-silence) interval fraction is high (platform-gated capture signature)
+	FlooredFraction     float64 `json:"floored_fraction"`            // Fraction (0..1) of intervals at the digital-silence floor; the detection margin behind VoiceActivated (>= vadVoiceActivatedFraction)
 	ReductionHeadroom   float64 `json:"reduction_headroom_db"`       // dB gap between noise and quiet speech
 }
 

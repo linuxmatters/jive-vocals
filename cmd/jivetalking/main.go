@@ -79,6 +79,10 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Stamp the same version string the run records carry, so the report run
+	// section matches --version output.
+	processor.RunVersion = version
+
 	if len(cliArgs.Files) == 0 {
 		cli.PrintError("No input files specified")
 		_ = ctx.PrintUsage(false)

@@ -16,6 +16,8 @@ func fullLoudnessRecord() *processor.RunRecord {
 	return &processor.RunRecord{
 		Run: processor.RunProvenance{
 			InputFile:    "EP83-mark.flac",
+			Version:      "0.6.0",
+			Executable:   "/usr/local/bin/jivetalking",
 			ProcessedAt:  "2026-06-11T17:20:55+01:00",
 			DurationS:    125.5,
 			SampleRateHz: 44100,
@@ -300,6 +302,7 @@ func regionsRecord() *processor.RunRecord {
 			FloorAstats:         math.NaN(),
 			RoomToneDetectLevel: -82.60,
 			VoiceActivated:      false,
+			FlooredFraction:     0.1234,
 			ReductionHeadroom:   40.12,
 		},
 		Regions: processor.RegionMetrics{
@@ -332,6 +335,8 @@ func TestRenderNoiseFloor(t *testing.T) {
 		"Reduction headroom",
 		"40.12",
 		"no", // voice_activated bool
+		"Floored fraction",
+		"0.1234", // floored_fraction (4 decimals, unit-less)
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("noise floor missing %q\n%s", want, got)

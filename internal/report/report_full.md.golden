@@ -5,6 +5,8 @@
 | Field | Value |
 | --- | --- |
 | Input file | EP83-mark.flac |
+| Version | 0.6.0 |
+| Executable | /usr/local/bin/jivetalking |
 | Processed at | 2026-06-11T17:20:55+01:00 |
 | Duration | 2m 5s |
 | Sample rate | 44.1 kHz |
@@ -79,6 +81,7 @@
 | astats floor | FFmpeg astats noise-floor estimate, the minimum local peak over the sliding window. (dBFS) | - |
 | Room-tone detect level | Adaptive threshold below which an interval is treated as a room-tone candidate. (dBFS) | -82.60 |
 | Voice activated | True when the floored (digital-silence) interval fraction is high, the platform-gated capture signature. | no |
+| Floored fraction | Fraction (0..1) of intervals sitting at the digital-silence floor; the detection margin behind voice_activated, which trips at or above the fixed threshold. | 0.1234 |
 | Reduction headroom | Gap in dB between the noise floor and quiet speech. (dB) | 40.12 |
 
 ## Regions
