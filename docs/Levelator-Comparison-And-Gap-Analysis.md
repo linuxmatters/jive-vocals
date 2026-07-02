@@ -173,7 +173,7 @@ volume (pre-gain, when needed) -> alimiter (levelling limiter) -> loudnorm (line
 | Look-ahead | Infinite (multi-pass) [2] | Infinite (Pass 1 + Pass 3 pre-calc) |
 | Loudness target | -18.0 dB RMS, unweighted [2] | -16 LUFS, K-weighted |
 | Silence/speech detection | Fixed 50 ms / -44 dB, iterative [2] | Adaptive unified VAD (Otsu split, spectral veto, per-file) |
-| Medium-term levelling | Yes: time-windowed loudness map [3] | Partial: 200 ms-release RMS compressor, single global normalisation gain (see 4.3) |
+| Medium-term levelling | Yes: time-windowed loudness map [3] | Covered by design: 200 ms-release RMS compressor plus -16 LUFS integrated target; a discrete leveller was tested and rejected (see 4.3) |
 | Noise reduction | None [10-recv] | `anlmdn` + adaptive `afftdn` with measured profile |
 | Gating / expansion | None | Soft expander, voiced-anchored threshold |
 | High-pass / low-pass | None | Fixed 80 Hz HP, 20.5 kHz LP |
@@ -207,26 +207,25 @@ volume (pre-gain, when needed) -> alimiter (levelling limiter) -> loudnorm (line
 ### 4.2 What Levelator has that Jivetalking lacks
 
 1. **A drag-and-drop GUI.** Levelator's accessibility drove its adoption: drop a file, get `<name>.output.wav` seconds later [15][16-recv]. Jivetalking is CLI/TUI.
-2. **Time-windowed medium-term levelling (the loudness map).** See 4.3. This is the one genuine algorithmic capability Jivetalking does not fully replicate.
-3. **Format-preserving output.** Levelator returns the input's format, rate, and channel count [5]. Jivetalking standardises to 44.1 kHz / 16-bit / mono by design, which is a deliberate choice, not a gap, but it differs from Levelator's behaviour.
+2. **Format-preserving output.** Levelator returns the input's format, rate, and channel count [5]. Jivetalking standardises to 44.1 kHz / 16-bit / mono by design, which is a deliberate choice, not a gap, but it differs from Levelator's behaviour.
+
+Levelator's time-windowed loudness map is not on this list. Section 4.3 shows it is not a capability Jivetalking lacks: the chain reaches the same evenness by design, and a discrete leveller measured worse.
 
 ### 4.3 Does Jivetalking close the medium-term levelling gap?
 
-This is the crux of the revision. The honest verdict: **the gap is much narrower than before, and partly closed on the mechanism itself, but not fully equivalent.**
+This is the crux of the revision. The honest verdict: **there is no gap to close. The gap was a mirage.** Levelator is a chain-in-a-box for people who have no chain. Jivetalking is the chain, and it already covers Levelator's real jobs. A discrete time-based leveller duplicates the compressor and loudnorm rather than filling a hole.
 
-**What now closes part of the gap:**
+**Tested and rejected.** We built a discrete time-based leveller and measured it across three full-corpus sweeps. Every iteration came out neutral-to-harmful: it never improved a consistency metric, it mostly widened them, and it lifted the noise floor. A well-built speech chain leaves no room for a slow leveller to do useful work, so the stage was dropped.
 
-- **The levelling compressor is a real medium-term control.** It is FFmpeg `acompressor` in RMS mode, ratio 3.0, attack 10 ms, **release 200 ms**, soft knee 4.0 (`adaptive_levelling_compressor.go:39`). The 200 ms release is the classic medium-term constant: it holds gain reduction across intra-phrase dips and evens the loud-to-quiet swing of a delivery, rather than chasing transients.
-- **Its threshold is programme-dependent.** It is pinned to the elected speech RMS plus 9 dB, not to a peak or a silence-diluted full-file average (`adaptive_levelling_compressor.go:91`). A louder passage crosses the threshold more and is pulled down more. For content above the threshold, this reduces both intra-speaker and inter-speaker level differences, bounded by the 3:1 ratio.
-- **Pre-calculated, look-ahead design.** Like Levelator, the gains are computed from a full-file measurement before the render, not reacted to live.
+**Why the architecture already covers it:**
 
-**What keeps part of the gap open:**
+- **Levelling and compression are one mechanism at different timescales.** A low-ratio, long-release compressor is a leveller. Broadcast and podcast chains carry no separate "macro leveller" box. Medium-term evenness comes from the compressor's ratio and release plus the integrated loudness target. The levelling compressor is FFmpeg `acompressor` in RMS mode, ratio 3.0, attack 10 ms, release 200 ms, soft knee 4.0, threshold pinned to the elected speech RMS plus 9 dB (`adaptive_levelling_compressor.go:39`, `adaptive_levelling_compressor.go:91`). The 200 ms release holds gain reduction across intra-phrase dips and evens the loud-to-quiet swing of a delivery.
+- **Levelator's headline job does not apply here.** Levelator's main trick was balancing different speakers at different levels on one track. Jivetalking processes one presenter per file to a -16 LUFS integrated target, so inter-speaker balance is solved by the architecture before any leveller could run. That was Levelator's main reason to exist.
+- **The absolute target is loudnorm's job.** Linear-mode loudnorm reaches -16 LUFS integrated from a full-file measurement, computed before the render (`normalise.go:1269`). Short and medium dynamics are the compressor's job. Between them the two stages cover the work a loudness map was invented to do.
 
-- **No time-windowed loudness map.** Jivetalking measures one integrated loudness for the file and loudnorm linear mode applies **one global gain** (`normalise.go:873`, `normalise.go:1269`). It does not allocate different gains to different time regions. Levelator's signature is exactly that per-region gain (riding the fader) [3].
-- **Slow inter-speaker drift survives.** If speaker A sits 6 dB hotter than speaker B across a conversation, the single global gain moves both together, so the difference persists. The compressor smooths it for the parts above threshold, but does not level it out region by region. The 200 ms release tracks phrase-level dynamics, not the sentence-to-section drift the loudness map targets.
-- **The compressor is a reactive filter, not a map.** Its threshold and time constants are fixed once per file. It approximates medium-term levelling; it does not reproduce a planned per-region gain curve.
+**The one genuine residual:** slow intra-speaker drift over a long session (a presenter drifting 3 to 4 dB across half an hour). The chain does not explicitly flatten that. Two points hold. The corpus sweep found no such benefit to capture. And if the drift ever mattered, the correct fix is a longer compressor release, not a separate gain-automation stage stacked on top. Stacking one on top fights the compressor and lifts the floor, which is what the sweeps showed.
 
-**Net:** in overall output quality and feature coverage Jivetalking now clearly leads, including the true-peak levelling and the pre-calculated normaliser. On the specific medium-term levelling magic, Jivetalking covers the faster half (phrase-level dynamics, via the 200 ms compressor with a speech-relative threshold) and leaves the slower half (sentence-to-section inter-speaker gain riding) to a single global gain. The gap is real but small, and it is the last structural difference rather than a quality deficit.
+**Net:** Jivetalking leads on output quality and feature coverage, including the true-peak levelling and the pre-calculated normaliser. On medium-term levelling there is no deficit. Adding a Levelator-style stage measured worse across the corpus, because the chain already does the job.
 
 ---
 
@@ -234,19 +233,21 @@ This is the crux of the revision. The honest verdict: **the gap is much narrower
 
 ### High priority
 
-1. **Optional time-segmented gain riding (the true Levelator feature).** Build a per-region loudness map from the Pass 1 interval data (already measured at 250 ms) and apply a slow, bounded gain envelope before the global normalise, with limits and smoothing to avoid pumping. This is the one capability that would fully close 4.3. Feasibility: medium; the measurement spine already exists. Status: the only remaining algorithmic gap, worth a design spike.
-
-2. **Drag-and-drop GUI wrapper.** A thin wrapper (file watcher or small native app) that runs `jivetalking` on dropped files would match Levelator's accessibility, which was the real driver of its adoption. Feasibility: high; no core change.
+1. **Drag-and-drop GUI wrapper.** A thin wrapper (file watcher or small native app) that runs `jivetalking` on dropped files would match Levelator's accessibility, which was the real driver of its adoption. Feasibility: high; no core change.
 
 ### Medium priority
 
-3. **Document the pipeline as an "Algorithms" page.** Levelator's algorithm page is still cited 18 years on. Jivetalking has the material in AGENTS.md, Pipeline.md, and Normalisation-Tuning.md; a public-facing version would build the same trust.
+2. **Document the pipeline as an "Algorithms" page.** Levelator's algorithm page is still cited 18 years on. Jivetalking has the material in AGENTS.md, Pipeline.md, and Normalisation-Tuning.md; a public-facing version would build the same trust.
 
-4. **Position against the real Levelator status.** Levelator survives only on macOS, and its Linux build is dead. Jivetalking's maintained Linux build is a concrete advantage to state plainly for Levelator refugees on Linux. Neither tool has a current Windows release.
+3. **Position against the real Levelator status.** Levelator survives only on macOS, and its Linux build is dead. Jivetalking's maintained Linux build is a concrete advantage to state plainly for Levelator refugees on Linux. Neither tool has a current Windows release.
 
 ### Low priority
 
-5. **Reconsider format-preserving output as an option.** A flag to keep input rate and channels would ease migration for users who expect Levelator's behaviour, without changing the -16 LUFS default.
+4. **Reconsider format-preserving output as an option.** A flag to keep input rate and channels would ease migration for users who expect Levelator's behaviour, without changing the -16 LUFS default.
+
+### Tested and rejected
+
+**Time-segmented gain riding (a Levelator-style leveller).** We built a per-region gain stage from the Pass 1 interval data and measured it across three full-corpus sweeps. Every iteration came out neutral-to-harmful: it never improved a consistency metric, it mostly widened them, and it lifted the noise floor. The stage was dropped. See 4.3. Do not revisit without a specific drift case the current chain fails, and fix that with a longer compressor release before adding a separate stage.
 
 ---
 
@@ -264,7 +265,7 @@ Not a clean death. The Conversations Network shut down in 2012 [13], the 32-bit 
 
 1. **Simplicity drove adoption.** Keep the "it just works" default. The GUI wrapper (Recommendation 2) is the highest-leverage usability move.
 2. **Open source is the insurance Levelator never had.** Its Linux and Windows users had no recourse. Jivetalking's open licence and maintained Linux and macOS builds remove that risk for those platforms.
-3. **The medium term is still the prize.** Levelator's one irreplaceable trick was time-windowed levelling. Jivetalking now approximates it well with a programme-relative compressor; a real loudness-map mode would finish the job.
+3. **The medium term was already won, not still the prize.** Levelator's time-windowed levelling looked irreplaceable, but a well-built chain reaches the same evenness through its compressor and integrated target. A discrete loudness-map stage, tested across three corpus sweeps, only damaged the audio. There was nothing left to finish.
 4. **Target a real standard.** Jivetalking's -16 LUFS is the correct modern choice over an unweighted in-house RMS target.
 
 ---

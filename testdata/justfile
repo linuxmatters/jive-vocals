@@ -189,8 +189,9 @@ process-corpus ver="":
     for f in \
         {{ testdata }}/LMP-{68..85}-{mark,martin,popey}.flac \
         {{ testdata }}/LMP-81s-{mark,martin,popey}.flac \
-        {{ testdata }}/TT-202-{anna,marius,patrick}.wav \
-        {{ testdata }}/BF-08-stephen.wav; do
+        {{ testdata }}/TT-202-{anna,marius,patrick}.flac \
+        {{ testdata }}/TT-203-{marius,patrick}.flac \
+        {{ testdata }}/BF-08-stephen.flac; do
         [[ -f "$f" ]] && files+=("$f")
     done
     (( ${#files[@]} )) || die "no corpus inputs found under testdata/"
