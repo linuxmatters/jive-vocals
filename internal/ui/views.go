@@ -70,12 +70,12 @@ func buildScrollbar(vpHeight, totalLines, visibleLines int, scrollPercent float6
 	if totalLines > 0 {
 		visibleFraction = float64(visibleLines) / float64(totalLines)
 	}
-	visibleFraction = math.Max(0, math.Min(1, visibleFraction))
+	visibleFraction = max(0, min(1, visibleFraction))
 
 	thumbHeight := int(math.Round(float64(vpHeight) * visibleFraction))
 	thumbHeight = max(1, min(thumbHeight, vpHeight))
 
-	scrollPercent = math.Max(0, math.Min(1, scrollPercent))
+	scrollPercent = max(0, min(1, scrollPercent))
 	thumbTop := int(math.Round(float64(vpHeight-thumbHeight) * scrollPercent))
 	thumbTop = max(0, min(thumbTop, vpHeight-thumbHeight))
 
@@ -245,8 +245,7 @@ func renderTimeline(file FileProgress) string {
 	// Mini dot timeline filled to progress. Filled dots muted, empty dots use the
 	// meter empty-track colour, so the timeline reads as secondary to the main
 	// gradient bar above.
-	filled := int(file.Progress*float64(timelineWidth) + 0.5)
-	filled = max(0, min(filled, timelineWidth))
+	filled := filledCells(file.Progress, timelineWidth, 0)
 	filledStyle := lipgloss.NewStyle().Foreground(cli.ColorMuted)
 	emptyStyle := lipgloss.NewStyle().Foreground(cli.ColorFill)
 	timeline := filledStyle.Render(strings.Repeat("▰", filled)) +
@@ -554,11 +553,10 @@ const gainBarWidth = 5
 // of truth.
 func GainBar(inputTP float64) string {
 	position := gainGlyphPosition(inputTP)
-	filled := int(math.Round(position * float64(gainBarWidth)))
 	// Floor at one cell so the cold/blue end always shows a pip, an empty bar
 	// would lose the under-recorded signal. A clipping input (>= 0 dBTP) maxes
 	// the bar so the worst case reads as a full, red-tipped run.
-	filled = max(1, min(filled, gainBarWidth))
+	filled := filledCells(position, gainBarWidth, 1)
 	if inputTP >= 0 {
 		filled = gainBarWidth
 	}
@@ -569,6 +567,15 @@ func GainBar(inputTP float64) string {
 	// (clipping).
 	ramp := lipgloss.Blend1D(gainBarWidth, cli.ColorCyanBright, cli.ColorBlue, cli.ColorGreen, cli.ColorOrange, cli.ColorRed)
 	return renderFilledBar(gainBarWidth, filled, ramp)
+}
+
+// filledCells converts a fill fraction into a filled-cell count for a
+// width-cell bar: frac is clamped to [0,1], rounded to the nearest cell, and the
+// count clamped to [minFilled, width]. minFilled lets a bar pin a minimum
+// visible fill (GainBar's one-pip floor); the plain bars pass 0.
+func filledCells(frac float64, width, minFilled int) int {
+	frac = max(0, min(frac, 1))
+	return max(minFilled, min(int(math.Round(frac*float64(width))), width))
 }
 
 // renderFilledBar draws a width-cell coloured bar: the first filled cells use the

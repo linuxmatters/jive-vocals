@@ -66,17 +66,14 @@ func durationKeySeconds(m map[string]any, nsKey, secKey string) {
 	m[secKey] = time.Duration(ns).Seconds()
 }
 
-// toInt64 coerces a sanitised JSON-tree value to int64 nanoseconds. sanitiseValue
-// returns a time.Duration via its default case (Kind Int64 is unhandled there, so
-// the concrete time.Duration passes through v.Interface()); the int64/int/float64
-// forms are handled defensively for any other numeric origin.
+// toInt64 coerces a sanitised JSON-tree value to int64 nanoseconds. Two forms
+// occur: sanitiseValue's reflection walk passes a concrete time.Duration through
+// its default case (Kind Int64 is unhandled there), while its custom-marshaler
+// route (e.g. NoiseProfile) re-decodes the marshalled JSON, so the ns value
+// arrives as a float64.
 func toInt64(v any) (int64, bool) {
 	switch n := v.(type) {
 	case time.Duration:
-		return int64(n), true
-	case int64:
-		return n, true
-	case int:
 		return int64(n), true
 	case float64:
 		return int64(n), true
@@ -86,20 +83,12 @@ func toInt64(v any) (int64, bool) {
 }
 
 // recordWrapper holds the single source pointer the three unit-honesty wrappers
-// share, plus the mechanical scaffolding common to all of them: the nil-checked
-// accessor and the null-on-nil sanitise-then-marshal core. The per-type key
-// transforms stay explicit on each wrapper's MarshalJSON; only this boilerplate is
-// shared. The source pointer is unexported so JSON marshalling stays
-// representation-controlled.
+// share, plus the null-on-nil sanitise-then-marshal core common to all of them.
+// The per-type key transforms stay explicit on each wrapper's MarshalJSON; only
+// this boilerplate is shared. The source pointer is unexported so JSON
+// marshalling stays representation-controlled.
 type recordWrapper[T any] struct {
 	src *T
-}
-
-// source returns the wrapped pointer. Callers must nil-check the concrete wrapper
-// before calling, since promotion through a nil embedding pointer would panic
-// (the per-type accessors below own that guard).
-func (w *recordWrapper[T]) source() *T {
-	return w.src
 }
 
 // marshalWithTransform sanitises the source (null on nil), applies the per-type
@@ -128,8 +117,6 @@ func (p noiseProfileRecord) MarshalJSON() ([]byte, error) {
 	return p.marshalWithTransform(func(m map[string]any) {
 		durationKeySeconds(m, "start", "start_s")
 		durationKeySeconds(m, "duration", "duration_s")
-		durationKeySeconds(m, "original_start", "original_start_s")
-		durationKeySeconds(m, "original_duration", "original_duration_s")
 	})
 }
 
@@ -139,7 +126,7 @@ func (p *noiseProfileRecord) Profile() *NoiseProfile {
 	if p == nil {
 		return nil
 	}
-	return p.source()
+	return p.src
 }
 
 // noiseProfileJSON is the flat JSON contract for NoiseProfile: the embedded
@@ -171,10 +158,6 @@ type noiseProfileJSON struct {
 
 	BandNoise     []float64 `json:"band_noise_dbfs,omitempty"`
 	BandsMeasured bool      `json:"band_noise_measured,omitempty"`
-
-	OriginalStart    time.Duration `json:"original_start,omitempty"`
-	OriginalDuration time.Duration `json:"original_duration,omitempty"`
-	WasRefined       bool          `json:"was_refined,omitempty"`
 }
 
 // MarshalJSON preserves the flat spectral_* JSON contract while the Go model
@@ -210,10 +193,6 @@ func (p NoiseProfile) MarshalJSON() ([]byte, error) {
 
 		BandNoise:     p.BandNoise,
 		BandsMeasured: p.BandsMeasured,
-
-		OriginalStart:    p.OriginalStart,
-		OriginalDuration: p.OriginalDuration,
-		WasRefined:       p.WasRefined,
 	}
 	return json.Marshal(sanitiseValue(reflect.ValueOf(flat)))
 }
@@ -246,7 +225,7 @@ func (s *speechProfileRecord) Profile() *SpeechCandidateMetrics {
 	if s == nil {
 		return nil
 	}
-	return s.source()
+	return s.src
 }
 
 // normalisationRecord wraps NormalisationResult for the record. It presents the
@@ -275,7 +254,7 @@ func (n *normalisationRecord) Result() *NormalisationResult {
 	if n == nil {
 		return nil
 	}
-	return n.source()
+	return n.src
 }
 
 // loudnormMeasuredNumeric converts FFmpeg's string-keyed LoudnormStats into the

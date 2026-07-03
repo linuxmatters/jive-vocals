@@ -69,11 +69,6 @@ type NoiseProfile struct {
 	// only when every band measured successfully.
 	BandNoise     []float64 `json:"band_noise_dbfs,omitempty"`     // Per-band RMS (dBFS) across the afftdn fixed bands
 	BandsMeasured bool      `json:"band_noise_measured,omitempty"` // True only when all afftdn bands measured successfully
-
-	// Golden sub-region refinement info (populated when a long candidate is refined)
-	OriginalStart    time.Duration `json:"original_start,omitempty"`    // Original candidate start before refinement (time.Duration ns)
-	OriginalDuration time.Duration `json:"original_duration,omitempty"` // Original candidate duration before refinement (time.Duration ns)
-	WasRefined       bool          `json:"was_refined,omitempty"`       // True if region was refined from a longer candidate
 }
 
 // RegionSample holds the bare per-region measurement subset shared by the room

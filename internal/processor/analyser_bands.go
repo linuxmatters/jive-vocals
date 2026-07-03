@@ -81,10 +81,9 @@ func measureSpeechBandRMS(ctx context.Context, reader *audio.Reader, start, dura
 		return nil
 	}
 
-	lenientHandler := func(error) error { return nil }
 	if err := runFilterGraph(ctx, reader, bufferSrcCtx, bufferSinkCtx, FrameLoopConfig{
-		OnPushError: lenientHandler,
-		OnPullError: lenientHandler,
+		OnPushError: breakOnError,
+		OnPullError: breakOnError,
 		OnFrame:     extract,
 	}); err != nil {
 		return 0, false, err

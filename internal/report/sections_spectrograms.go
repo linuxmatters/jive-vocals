@@ -23,14 +23,18 @@ var spectrogramKindOrder = []struct {
 	{processor.SpectrogramKindSpeech, "Speech"},
 }
 
+// spectrogramColumn is one stage column: the record stage key and the table
+// header shown for it.
+type spectrogramColumn struct {
+	stage  string
+	header string
+}
+
 // spectrogramStageOrder is the stable stage (column) order. Processing records
 // carry before+after; analysis-only records carry input only. A column is
 // emitted only when at least one image populates it, mirroring the absent-stage
 // convention the metric tables use (renderLoudness etc.).
-var spectrogramStageOrder = []struct {
-	stage  string
-	header string
-}{
+var spectrogramStageOrder = []spectrogramColumn{
 	{processor.SpectrogramStageBefore, "Before"},
 	{processor.SpectrogramStageAfter, "After"},
 	{processor.SpectrogramStageInput, "Input"},
@@ -59,7 +63,7 @@ func renderSpectrograms(rec *processor.RunRecord) string {
 	}
 
 	// Columns: keep only stages that at least one image populates.
-	stages := make([]struct{ stage, header string }, 0, len(spectrogramStageOrder))
+	stages := make([]spectrogramColumn, 0, len(spectrogramStageOrder))
 	for _, s := range spectrogramStageOrder {
 		if present[s.stage] {
 			stages = append(stages, s)

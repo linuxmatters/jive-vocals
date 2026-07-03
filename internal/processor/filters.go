@@ -284,7 +284,6 @@ type BaseFilterConfig struct {
 type AdaptiveDiagnostics struct {
 	BandlimitLPReason string `json:"bandlimit_lowpass_reason"`
 
-	SpeechGateDynamicRange        float64 `json:"dynamic_range_db"`
 	SpeechGateQuietSpeechEstimate float64 `json:"quiet_speech_estimate_dbfs"`
 	SpeechGateSpeechSeparation    float64 `json:"separation_db"`
 	SpeechGateSpeechHeadroom      float64 `json:"speech_headroom_db"`
@@ -373,46 +372,18 @@ func (cfg *BaseFilterConfig) CloneForWorker(logger func(format string, args ...a
 }
 
 func defaultFilterConfigDefaults() filterConfigDefaults {
-	return assembleFilterDefaults(
-		defaultDownmixConfig(),
-		defaultAnalysisConfig(),
-		defaultResampleConfig(),
-		defaultRumbleHighPassConfig(),
-		defaultBandlimitLowPassConfig(),
-		defaultNoiseReductionConfig(),
-		defaultSpeechGateConfig(),
-		defaultLevellingCompressorConfig(),
-		defaultDeesserConfig(),
-		defaultAdeclickConfig(),
-		defaultLoudnormConfig(),
-	)
-}
-
-func assembleFilterDefaults(
-	downmix DownmixConfig,
-	analysis AnalysisConfig,
-	resample ResampleConfig,
-	rumbleHighPass RumbleHighPassConfig,
-	bandlimitLowPass BandlimitLowPassConfig,
-	noiseReduction NoiseReductionConfig,
-	speechGate SpeechGateConfig,
-	levellingCompressor LevellingCompressorConfig,
-	deesser DeesserConfig,
-	adeclick AdeclickConfig,
-	loudnorm LoudnormConfig,
-) filterConfigDefaults {
 	return filterConfigDefaults{
-		Downmix:             downmix,
-		Analysis:            analysis,
-		Resample:            resample,
-		RumbleHighPass:      rumbleHighPass,
-		BandlimitLowPass:    bandlimitLowPass,
-		NoiseReduction:      noiseReduction,
-		SpeechGate:          speechGate,
-		LevellingCompressor: levellingCompressor,
-		Deesser:             deesser,
-		Adeclick:            adeclick,
-		Loudnorm:            loudnorm,
+		Downmix:             defaultDownmixConfig(),
+		Analysis:            defaultAnalysisConfig(),
+		Resample:            defaultResampleConfig(),
+		RumbleHighPass:      defaultRumbleHighPassConfig(),
+		BandlimitLowPass:    defaultBandlimitLowPassConfig(),
+		NoiseReduction:      defaultNoiseReductionConfig(),
+		SpeechGate:          defaultSpeechGateConfig(),
+		LevellingCompressor: defaultLevellingCompressorConfig(),
+		Deesser:             defaultDeesserConfig(),
+		Adeclick:            defaultAdeclickConfig(),
+		Loudnorm:            defaultLoudnormConfig(),
 
 		FilterOrder: Pass2FilterOrder,
 	}
@@ -536,31 +507,12 @@ func DefaultEffectiveFilterConfig() *EffectiveFilterConfig {
 }
 
 func deriveEffectiveFilterConfig(base *BaseFilterConfig) *EffectiveFilterConfig {
-	return assembleEffectiveFilterConfig(base, deriveAdaptiveFilterResult(base))
-}
-
-func deriveAdaptiveFilterResult(base *BaseFilterConfig) *filterConfigDefaults {
 	if base == nil {
 		return nil
 	}
 
-	defaults := cloneFilterDefaults(&base.filterConfigDefaults)
-	return &defaults
-}
-
-func assembleEffectiveFilterConfig(base *BaseFilterConfig, adaptive *filterConfigDefaults) *EffectiveFilterConfig {
-	if base == nil {
-		return nil
-	}
-
-	effective := &EffectiveFilterConfig{}
-	copyFilterDefaults(effective, &base.filterConfigDefaults)
-	if adaptive != nil {
-		copyFilterDefaults(effective, adaptive)
-	}
-	effective.FilterOrder = cloneFilterOrder(base.FilterOrder)
-
-	return effective
+	effective := EffectiveFilterConfig(cloneFilterDefaults(&base.filterConfigDefaults))
+	return &effective
 }
 
 func cloneFilterDefaults(src *filterConfigDefaults) filterConfigDefaults {
@@ -577,13 +529,6 @@ func cloneFilterOrder(order []FilterID) []FilterID {
 		return nil
 	}
 	return append([]FilterID(nil), order...)
-}
-
-func copyFilterDefaults(dst *EffectiveFilterConfig, src *filterConfigDefaults) {
-	if dst == nil {
-		return
-	}
-	*dst = EffectiveFilterConfig(cloneFilterDefaults(src))
 }
 
 // DbToLinear converts decibel value to linear amplitude.

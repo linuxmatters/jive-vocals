@@ -259,7 +259,7 @@ func measureWithLoudnorm(ctx context.Context, inputPath string, config *Effectiv
 		loudnorm.TargetI,
 		loudnorm.TargetTP,
 		loudnorm.TargetLRA,
-		boolToString(loudnorm.DualMono),
+		strconv.FormatBool(loudnorm.DualMono),
 		escapeFilterGraphOptionValue(statsPath),
 	)
 
@@ -278,10 +278,9 @@ func measureWithLoudnorm(ctx context.Context, inputPath string, config *Effectiv
 	// Note: We free the filter graph explicitly to trigger loudnorm JSON output
 
 	// Process all frames through loudnorm (no encoding - just measurement)
-	lenientHandler := func(err error) error { return nil }
 	loopErr := deps.runFilterGraph(ctx, reader, bufferSrcCtx, bufferSinkCtx, FrameLoopConfig{
-		OnPushError: lenientHandler,
-		OnPullError: lenientHandler,
+		OnPushError: breakOnError,
+		OnPullError: breakOnError,
 		OnInputFrame: func(inputFrame *ffmpeg.AVFrame) {
 			// Measure the instantaneous level of the Pass-2 output being read so the
 			// VU meter animates consistently with Passes 1-2.
@@ -1095,10 +1094,9 @@ func newLoudnormApplicationFrameLoop(
 	var currentLevel float64
 	const progressUpdateInterval = 100 // Send progress update every N frames
 
-	lenientHandler := func(err error) error { return nil }
 	return FrameLoopConfig{
-		OnPushError: lenientHandler,
-		OnPullError: lenientHandler,
+		OnPushError: breakOnError,
+		OnPullError: breakOnError,
 		OnInputFrame: func(inputFrame *ffmpeg.AVFrame) {
 			// Drive progress from input-frame consumption so the bar advances
 			// monotonically. samplesProcessed and totalSamples are both at the input rate.
@@ -1279,8 +1277,8 @@ func buildLoudnormFilterSpec(config *EffectiveFilterConfig, measurement *Loudnor
 		measurement.InputLRA,
 		measurement.InputThresh,
 		offset, // Capped makeup matching the capped I= (binds the gain cap)
-		boolToString(loudnorm.DualMono),
-		boolToString(loudnorm.Linear),
+		strconv.FormatBool(loudnorm.DualMono),
+		strconv.FormatBool(loudnorm.Linear),
 	)
 	// stats_file: loudnorm writes its JSON (including normalization_type) here on
 	// graph free. The caller reads it post-free for the report's Norm Type
@@ -1331,12 +1329,4 @@ func buildLoudnormFilterSpec(config *EffectiveFilterConfig, measurement *Loudnor
 	filters = append(filters, config.buildRequiredOutputFormatFilter())
 
 	return strings.Join(filters, ",")
-}
-
-// boolToString converts bool to loudnorm's expected string format
-func boolToString(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }

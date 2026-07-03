@@ -31,7 +31,6 @@ func processingRecord() *processor.RunRecord {
 
 	diag := &processor.AdaptiveDiagnostics{
 		BandlimitLPReason:             "20.5 kHz band-limit (always on)",
-		SpeechGateDynamicRange:        29.915058,
 		SpeechGateQuietSpeechEstimate: -75.290897,
 		SpeechGateSpeechSeparation:    9.297741,
 		SpeechGateSpeechHeadroom:      -7.623852,
@@ -126,8 +125,7 @@ func TestRenderFiltersParams(t *testing.T) {
 		"-36.38", // levelling compressor threshold
 		// Diagnostics rendered as objective values.
 		"20.5 kHz band-limit (always on)",
-		"29.92", // gate dynamic range dB
-		"none",  // clamp reason
+		"none", // clamp reason
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("filters output missing %q\n%s", want, got)

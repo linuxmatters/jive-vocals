@@ -500,22 +500,17 @@ func renderValueTable(heading string, rows [][]string) string {
 	return b.String()
 }
 
-// valueRow builds a three-cell Metric | Definition | Value row for a single-stage
-// table, looking up the label and gloss from Definitions by key.
-func valueRow(key, value string) []string {
-	return []string{metricLabel(key), metricDefinition(key), value}
-}
-
-// metricValueRow builds a single-stage value row, formatting the float through
-// formatByRule keyed off the key's catalogued Unit so the formatter choice is not
-// re-encoded per call site. It is the single value-row construction path for every
-// dimensioned single-stage cell: dBFS/dBTP (formatMetricDB), LUFS
-// (formatMetricLUFS), dB / Hz / unit-less (formatMetric), and "s" (formatFloat,
-// via fmtRaw). Decimals follow the unit (4 for unit-less spectral ratios, 2
-// otherwise), matching every existing cell.
+// metricValueRow builds a three-cell Metric | Definition | Value row for a
+// single-stage table, looking up the label and gloss from Definitions by key and
+// formatting the float through formatByRule keyed off the key's catalogued Unit
+// so the formatter choice is not re-encoded per call site. It is the single
+// value-row construction path for every dimensioned single-stage cell: dBFS/dBTP
+// (formatMetricDB), LUFS (formatMetricLUFS), dB / Hz / unit-less (formatMetric),
+// and "s" (formatFloat, via fmtRaw). Decimals follow the unit (4 for unit-less
+// spectral ratios, 2 otherwise), matching every existing cell.
 func metricValueRow(key string, value float64) []string {
 	format, decimals := unitMetricFormat(key)
-	return valueRow(key, formatByRule(value, format, decimals))
+	return []string{metricLabel(key), metricDefinition(key), formatByRule(value, format, decimals)}
 }
 
 // unitMetricFormat maps a metric key's catalogued Unit to the formatByRule rule
