@@ -512,7 +512,7 @@ func sanitiseValue(v reflect.Value) any {
 		}
 		return out
 
-	case reflect.Float64, reflect.Float32:
+	case reflect.Float64:
 		f := v.Float()
 		if math.IsNaN(f) || math.IsInf(f, 0) {
 			return nil
@@ -587,7 +587,7 @@ func isEmptyValue(v reflect.Value) bool {
 		return v.Int() == 0
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		return v.Uint() == 0
-	case reflect.Float32, reflect.Float64:
+	case reflect.Float64:
 		return v.Float() == 0
 	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()

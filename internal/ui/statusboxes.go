@@ -384,10 +384,7 @@ func renderAnalysisBox(s AdaptedSummary, height int) string {
 // wider separation reads greener (cleaner). Reuses the meter's colour grammar.
 func separationBar(separationDB float64) string {
 	const span = 60.0
-	frac := separationDB / span
-	frac = max(0, min(frac, 1))
-	filled := int(frac*float64(separationBarWidth) + 0.5)
-	filled = max(0, min(filled, separationBarWidth))
+	filled := filledCells(separationDB/span, separationBarWidth, 0)
 
 	ramp := lipgloss.Blend1D(separationBarWidth, cli.ColorRed, cli.ColorYellow, cli.ColorGreen)
 	return renderFilledBar(separationBarWidth, filled, ramp)

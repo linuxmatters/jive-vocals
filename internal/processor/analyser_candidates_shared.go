@@ -195,19 +195,22 @@ func scoreSpeechIntervalWindow(intervals []IntervalSample) float64 {
 
 	n := float64(len(intervals))
 
-	// Accumulate metrics
+	// Accumulate metrics, counting voiced intervals (kurtosis above threshold)
+	// in the same pass for the voicing density score below.
 	var kurtosisSum, flatnessSum, centroidSum, rmsSum float64
 	var rolloffSum, fluxSum float64
-	kurtosisValues := make([]float64, len(intervals))
+	voicedCount := 0
 
-	for i, interval := range intervals {
+	for _, interval := range intervals {
 		kurtosisSum += interval.Spectral.Kurtosis
 		flatnessSum += interval.Spectral.Flatness
 		centroidSum += interval.Spectral.Centroid
 		rmsSum += interval.RMSLevel
 		rolloffSum += interval.Spectral.Rolloff
 		fluxSum += interval.Spectral.Flux
-		kurtosisValues[i] = interval.Spectral.Kurtosis
+		if interval.Spectral.Kurtosis > voicedKurtosisThreshold {
+			voicedCount++
+		}
 	}
 
 	avgKurtosis := kurtosisSum / n
@@ -217,10 +220,11 @@ func scoreSpeechIntervalWindow(intervals []IntervalSample) float64 {
 	avgRolloff := rolloffSum / n
 	avgFlux := fluxSum / n
 
-	// Calculate kurtosis variance for consistency score
+	// Calculate kurtosis variance for consistency score (second pass over the
+	// intervals, mean first then variance, mirroring levelVariance)
 	var kurtosisVarianceSum float64
-	for _, k := range kurtosisValues {
-		diff := k - avgKurtosis
+	for _, interval := range intervals {
+		diff := interval.Spectral.Kurtosis - avgKurtosis
 		kurtosisVarianceSum += diff * diff
 	}
 	kurtosisVariance := kurtosisVarianceSum / n
@@ -231,12 +235,6 @@ func scoreSpeechIntervalWindow(intervals []IntervalSample) float64 {
 	// comparison. Rather than using a hard gate that prevents differentiation
 	// among low-density candidates (e.g., whispered speech, heavily accented speech),
 	// we use a weighted score component that allows relative ranking.
-	voicedCount := 0
-	for _, k := range kurtosisValues {
-		if k > voicedKurtosisThreshold {
-			voicedCount++
-		}
-	}
 	voicingDensity := float64(voicedCount) / n
 	voicingScore := calculateVoicingScore(voicingDensity)
 	// voicingScore: 0.0 at 0% density, 1.0 at 60%+ density

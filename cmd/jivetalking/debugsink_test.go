@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -115,11 +116,14 @@ func TestDebugSinkPrefixAttribution(t *testing.T) {
 		if m == nil {
 			t.Fatalf("line %d malformed: %q", n, line)
 		}
+		id, err := strconv.Atoi(m[2])
+		if err != nil {
+			t.Fatalf("line %d writer id %q: %v", n, m[2], err)
+		}
 		// The marker's writer id must match the payload's writer id.
-		if m[1] != fmt.Sprintf("%02d", mustAtoi(t, m[2])) {
+		if m[1] != fmt.Sprintf("%02d", id) {
 			t.Fatalf("line %d marker/payload writer mismatch: %q", n, line)
 		}
-		id := mustAtoi(t, m[2])
 		if id < 0 || id >= wrappers {
 			t.Fatalf("line %d writer id %d out of range", n, id)
 		}
@@ -155,16 +159,4 @@ func readLines(t *testing.T, path string) []string {
 		t.Fatalf("scan %s: %v", path, err)
 	}
 	return lines
-}
-
-func mustAtoi(t *testing.T, s string) int {
-	t.Helper()
-	n := 0
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			t.Fatalf("non-numeric value %q", s)
-		}
-		n = n*10 + int(r-'0')
-	}
-	return n
 }

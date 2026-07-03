@@ -12,11 +12,11 @@ import (
 // All filters are disabled by default - enable only what you need for each test.
 // This isolates tests from application default configuration changes.
 func newTestBaseConfig() *BaseFilterConfig {
-	defaults := assembleFilterDefaults(
-		DownmixConfig{Enabled: false},
-		AnalysisConfig{Enabled: false},
-		ResampleConfig{Enabled: false, SampleRate: 44100, Format: "s16", FrameSize: 4096},
-		RumbleHighPassConfig{
+	defaults := filterConfigDefaults{
+		Downmix:  DownmixConfig{Enabled: false},
+		Analysis: AnalysisConfig{Enabled: false},
+		Resample: ResampleConfig{Enabled: false, SampleRate: 44100, Format: "s16", FrameSize: 4096},
+		RumbleHighPass: RumbleHighPassConfig{
 			Enabled:   false,
 			Frequency: 80.0,
 			Poles:     2,
@@ -24,14 +24,14 @@ func newTestBaseConfig() *BaseFilterConfig {
 			Mix:       1.0,
 			Transform: "tdii",
 		},
-		BandlimitLowPassConfig{
+		BandlimitLowPass: BandlimitLowPassConfig{
 			Enabled:   false,
 			Frequency: 16000.0,
 			Poles:     2,
 			Width:     0.707,
 			Mix:       1.0,
 		},
-		NoiseReductionConfig{
+		NoiseReduction: NoiseReductionConfig{
 			Enabled:              false,
 			Strength:             0.00001,
 			PatchSec:             0.006,
@@ -42,7 +42,7 @@ func newTestBaseConfig() *BaseFilterConfig {
 			AfftdnNoiseType:      "w",
 			AfftdnTrackNoise:     true,
 		},
-		SpeechGateConfig{
+		SpeechGate: SpeechGateConfig{
 			Enabled:   false,
 			Threshold: 0.01,
 			Ratio:     2.0,
@@ -53,7 +53,7 @@ func newTestBaseConfig() *BaseFilterConfig {
 			Makeup:    1.0,
 			Detection: "rms",
 		},
-		LevellingCompressorConfig{
+		LevellingCompressor: LevellingCompressorConfig{
 			Enabled:   false,
 			Threshold: -20,
 			Ratio:     2.5,
@@ -63,11 +63,12 @@ func newTestBaseConfig() *BaseFilterConfig {
 			Knee:      2.5,
 			Mix:       1.0,
 		},
-		DeesserConfig{Enabled: false, Intensity: 0.5, Amount: 0.5, Frequency: 0.5},
-		AdeclickConfig{Enabled: true, Threshold: 2.0, Window: 55.0, Overlap: 50.0, Method: "s"},
-		LoudnormConfig{Enabled: true, TargetI: -16.0, TargetTP: -1.5, TargetLRA: 11.0, DualMono: true, Linear: true},
-	)
-	defaults.FilterOrder = Pass2FilterOrder
+		Deesser:  DeesserConfig{Enabled: false, Intensity: 0.5, Amount: 0.5, Frequency: 0.5},
+		Adeclick: AdeclickConfig{Enabled: true, Threshold: 2.0, Window: 55.0, Overlap: 50.0, Method: "s"},
+		Loudnorm: LoudnormConfig{Enabled: true, TargetI: -16.0, TargetTP: -1.5, TargetLRA: 11.0, DualMono: true, Linear: true},
+
+		FilterOrder: Pass2FilterOrder,
+	}
 	return &BaseFilterConfig{filterConfigDefaults: defaults}
 }
 
@@ -456,7 +457,6 @@ func perFileStateFieldNames() []string {
 		"OutputAnalysisEnabled",
 		"BandlimitLPReason",
 		"SpeechGateDepthDB",
-		"SpeechGateDynamicRange",
 		"SpeechGateQuietSpeechEstimate",
 		"SpeechGateSpeechSeparation",
 		"SpeechGateSpeechHeadroom",
@@ -1018,33 +1018,6 @@ func TestFilterOrderRespected(t *testing.T) {
 	}
 }
 
-func TestDeriveAdaptiveFilterResultDeepCopiesFilterOrder(t *testing.T) {
-	base := DefaultFilterConfig()
-	base.FilterOrder = []FilterID{FilterDeesser, FilterAnalysis}
-	base.Resample.SampleRate = 48000
-
-	adaptive := deriveAdaptiveFilterResult(base)
-	if adaptive == nil {
-		t.Fatal("deriveAdaptiveFilterResult returned nil")
-	}
-	if !reflect.DeepEqual(adaptive.FilterOrder, base.FilterOrder) {
-		t.Errorf("FilterOrder = %v, want %v", adaptive.FilterOrder, base.FilterOrder)
-	}
-
-	adaptive.FilterOrder[0] = FilterDownmix
-	if base.FilterOrder[0] == FilterDownmix {
-		t.Fatal("adaptive FilterOrder mutation changed base FilterOrder")
-	}
-	if adaptive.Resample.SampleRate != base.Resample.SampleRate {
-		t.Errorf("Resample.SampleRate = %d, want %d",
-			adaptive.Resample.SampleRate, base.Resample.SampleRate)
-	}
-	adaptive.Resample.SampleRate = 32000
-	if base.Resample.SampleRate == 32000 {
-		t.Fatal("adaptive typed Resample mutation changed base Resample")
-	}
-}
-
 func TestCloneFilterDefaultsCopiesTypedFamilies(t *testing.T) {
 	base := DefaultFilterConfig()
 	base.NoiseReduction.AfftdnEnabled = false
@@ -1063,45 +1036,6 @@ func TestCloneFilterDefaultsCopiesTypedFamilies(t *testing.T) {
 	if base.FilterOrder[0] == FilterDownmix {
 		t.Fatal("clone FilterOrder mutation changed base FilterOrder")
 	}
-}
-
-func TestAssembleEffectiveFilterConfig(t *testing.T) {
-	base := DefaultFilterConfig()
-	base.FilterOrder = []FilterID{FilterDeesser, FilterAnalysis}
-	base.Loudnorm.TargetI = -18.0
-
-	adaptive := deriveAdaptiveFilterResult(base)
-	adaptive.RumbleHighPass.Frequency = 65.0
-	adaptive.NoiseReduction.AfftdnEnabled = false
-	adaptive.FilterOrder = []FilterID{FilterDownmix}
-
-	effective := assembleEffectiveFilterConfig(base, adaptive)
-	if effective == nil {
-		t.Fatal("assembleEffectiveFilterConfig returned nil")
-	}
-	if effective.RumbleHighPass.Frequency != adaptive.RumbleHighPass.Frequency {
-		t.Errorf("RumbleHighPass.Frequency = %.1f, want adaptive %.1f",
-			effective.RumbleHighPass.Frequency, adaptive.RumbleHighPass.Frequency)
-	}
-	if effective.NoiseReduction.AfftdnEnabled {
-		t.Error("NoiseReduction.AfftdnEnabled = true, want adaptive false")
-	}
-	if effective.Loudnorm.TargetI != base.Loudnorm.TargetI {
-		t.Errorf("Loudnorm.TargetI = %.1f, want base %.1f", effective.Loudnorm.TargetI, base.Loudnorm.TargetI)
-	}
-	if !reflect.DeepEqual(effective.FilterOrder, base.FilterOrder) {
-		t.Errorf("FilterOrder = %v, want base order %v", effective.FilterOrder, base.FilterOrder)
-	}
-
-	effective.FilterOrder[0] = FilterDownmix
-	if base.FilterOrder[0] == FilterDownmix {
-		t.Fatal("effective FilterOrder mutation changed base FilterOrder")
-	}
-	if adaptive.FilterOrder[0] != FilterDownmix {
-		t.Fatal("effective FilterOrder mutation changed adaptive FilterOrder")
-	}
-
-	assertNoStaleEffectiveConfigFields(t)
 }
 
 func TestDeriveEffectiveFilterConfig(t *testing.T) {

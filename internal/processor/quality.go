@@ -122,13 +122,8 @@ func scoreNoiseCleanliness(result *ProcessingResult) float64 {
 // outputTruePeak resolves the real Pass 4 output true peak in dBTP. Prefers the
 // normalisation result; falls back to the final output measurements.
 func outputTruePeak(result *ProcessingResult) float64 {
-	if result.NormResult != nil {
-		if !result.NormResult.Skipped {
-			return result.NormResult.OutputTP
-		}
-		if result.NormResult.FinalMeasurements != nil {
-			return result.NormResult.FinalMeasurements.Loudness.OutputTP
-		}
+	if result.NormResult != nil && !result.NormResult.Skipped {
+		return result.NormResult.OutputTP
 	}
 	if result.FilteredMeasurements != nil {
 		return result.FilteredMeasurements.Loudness.OutputTP

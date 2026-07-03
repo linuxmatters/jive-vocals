@@ -223,10 +223,10 @@ func openAudioMetadata(inputPath string) (*audio.Metadata, error) {
 // input duration is unknown.
 func (ph *progressHandler) timings(pass2Time time.Duration, fileStart time.Time, result *processor.ProcessingResult) report.Timings {
 	t := report.Timings{
-		Pass1: ph.pass1Time,
+		Pass1: ph.passTime[processor.PassAnalysis-1],
 		Pass2: pass2Time,
-		Pass3: ph.pass3Time,
-		Pass4: ph.pass4Time,
+		Pass3: ph.passTime[processor.PassMeasuring-1],
+		Pass4: ph.passTime[processor.PassNormalising-1],
 	}
 	if result.InputMetadata.DurationSecs > 0 {
 		totalTime := time.Since(fileStart)
@@ -239,17 +239,14 @@ func (ph *progressHandler) timings(pass2Time time.Duration, fileStart time.Time,
 // progressHandler relays processor progress updates to the TUI and records
 // per-pass timings from the start/end progress boundaries.
 type progressHandler struct {
-	p          *tea.Program
-	log        func(string, ...any)
-	fileIndex  int
-	pass1Start time.Time
-	pass1Time  time.Duration
-	pass2Start time.Time
-	pass2Time  time.Duration
-	pass3Start time.Time
-	pass3Time  time.Duration
-	pass4Start time.Time
-	pass4Time  time.Duration
+	p         *tea.Program
+	log       func(string, ...any)
+	fileIndex int
+
+	// passStart/passTime bracket the wall-clock of the four passes, indexed by
+	// PassNumber-1 (PassAnalysis..PassNormalising).
+	passStart [4]time.Time
+	passTime  [4]time.Duration
 
 	// summary is the filter-chain status view-model, built from the Pass-2 start
 	// update (chain + analysis rows). The pool reads it back at completion to merge
@@ -270,34 +267,13 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 	// for a pass marks its start (start time still zero); progress at or above
 	// passCompleteThreshold marks its end. Keying the start off the first sighting
 	// and the end off a threshold avoids exact float-equality on the progress value.
-	switch update.Pass {
-	case processor.PassAnalysis:
-		if ph.pass1Start.IsZero() {
-			ph.pass1Start = time.Now()
+	if update.Pass >= processor.PassAnalysis && update.Pass <= processor.PassNormalising {
+		idx := int(update.Pass) - 1
+		if ph.passStart[idx].IsZero() {
+			ph.passStart[idx] = time.Now()
 		}
 		if update.Progress >= passCompleteThreshold {
-			ph.pass1Time = time.Since(ph.pass1Start)
-		}
-	case processor.PassProcessing:
-		if ph.pass2Start.IsZero() {
-			ph.pass2Start = time.Now()
-		}
-		if update.Progress >= passCompleteThreshold {
-			ph.pass2Time = time.Since(ph.pass2Start)
-		}
-	case processor.PassMeasuring:
-		if ph.pass3Start.IsZero() {
-			ph.pass3Start = time.Now()
-		}
-		if update.Progress >= passCompleteThreshold {
-			ph.pass3Time = time.Since(ph.pass3Start)
-		}
-	case processor.PassNormalising:
-		if ph.pass4Start.IsZero() {
-			ph.pass4Start = time.Now()
-		}
-		if update.Progress >= passCompleteThreshold {
-			ph.pass4Time = time.Since(ph.pass4Start)
+			ph.passTime[idx] = time.Since(ph.passStart[idx])
 		}
 	}
 

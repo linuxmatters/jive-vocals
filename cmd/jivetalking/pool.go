@@ -218,7 +218,7 @@ func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, 
 			// Pass 2 is bracketed directly by the progress handler (the Pass-2
 			// start/end updates), matching passes 1/3/4, so a missed timer cannot
 			// silently land in Pass 2.
-			emitProcessingReport(env, inputPath, result, ph, processingTimings{fileStart: fileStartTime, pass2: ph.pass2Time}, diagnostics, reportWarnings, render)
+			emitProcessingReport(env, inputPath, result, ph, processingTimings{fileStart: fileStartTime, pass2: ph.passTime[processor.PassProcessing-1]}, diagnostics, reportWarnings, render)
 		})
 }
 
@@ -342,7 +342,7 @@ func emitReportArtefacts(a reportArtefacts) {
 // processingTimings is the timing data clump emitProcessingReport needs from the
 // pool worker: fileStart marks when the worker began (feeds both the report's
 // real-time factor and the FileCompleteMsg ProcessingTime), pass2 is the Pass-2
-// wall-clock the progress handler brackets directly (ph.pass2Time). Bundling the
+// wall-clock the progress handler brackets directly (ph.passTime). Bundling the
 // pair keeps the emitProcessingReport signature short.
 type processingTimings struct {
 	fileStart time.Time

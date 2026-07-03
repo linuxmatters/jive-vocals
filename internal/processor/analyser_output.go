@@ -168,10 +168,9 @@ func measureOutputRegionFromReader(ctx context.Context, reader *audio.Reader, st
 		return nil
 	}
 
-	lenientHandler := func(err error) error { return nil }
 	_ = runFilterGraph(ctx, reader, bufferSrcCtx, bufferSinkCtx, FrameLoopConfig{
-		OnPushError: lenientHandler,
-		OnPullError: lenientHandler,
+		OnPushError: breakOnError,
+		OnPullError: breakOnError,
 		OnFrame:     extractMeasurements,
 	})
 

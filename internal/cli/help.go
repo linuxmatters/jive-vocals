@@ -39,11 +39,13 @@ func StyledHelpPrinter() func(kong.HelpOptions, *kong.Context) error {
 	return func(options kong.HelpOptions, ctx *kong.Context) error {
 		var sb strings.Builder
 
-		// Title and description
+		// Title and description (Kong's Description populates Model.Help)
 		sb.WriteString(RenderTitle())
 		sb.WriteString("\n")
-		sb.WriteString(helpDescStyle.Render("Professional podcast audio preprocessor"))
-		sb.WriteString("\n")
+		if ctx.Model.Help != "" {
+			sb.WriteString(helpDescStyle.Render(ctx.Model.Help))
+			sb.WriteString("\n")
+		}
 
 		// Usage
 		sb.WriteString(helpSectionStyle.Render("Usage:"))

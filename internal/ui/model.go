@@ -42,14 +42,7 @@ const analysisBarOverhead = 13
 // progressWidthFor clamps the bar width derived from a terminal width and its
 // surrounding chrome into the supported range.
 func progressWidthFor(termWidth, overhead int) int {
-	w := termWidth - overhead
-	if w < minProgressWidth {
-		return minProgressWidth
-	}
-	if w > maxProgressWidth {
-		return maxProgressWidth
-	}
-	return w
+	return max(minProgressWidth, min(termWidth-overhead, maxProgressWidth))
 }
 
 // handleCommonMsg processes the messages both Update methods treat identically:
