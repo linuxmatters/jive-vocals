@@ -409,6 +409,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FileStartMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex].Status = StatusAnalysing
 			m.Files[msg.FileIndex].StartTime = time.Now()
 		}
@@ -420,6 +421,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// receipt only; the 60 fps meter tick never carries this. Sent at Pass-2
 		// start (chain + analysis) and at completion (limiter ceiling).
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex].Summary = msg.Summary
 			// Invalidate the memoised side panels: the summary is the primary cache
 			// key, so a new one must force a re-render. joinStatusBoxes also re-checks
@@ -432,6 +434,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FileCompleteMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex].Status = StatusComplete
 			m.Files[msg.FileIndex].CompletionResult = msg.CompletionResult
 

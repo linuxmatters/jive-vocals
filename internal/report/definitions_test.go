@@ -67,6 +67,13 @@ func TestRequiredKeysCarryUnitWhereDimensioned(t *testing.T) {
 		"flux":                true,
 		"slope":               true,
 		"decrease":            true,
+		"floor_source":        true,
+		"voice_activated":     true,
+		"floored_fraction":    true,
+		"spectral_flatness":   true,
+		"spectral_kurtosis":   true,
+		"voicing_density":     true,
+		"score":               true,
 	}
 	for _, key := range requiredKeys {
 		if dimensionless[key] {

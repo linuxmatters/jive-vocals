@@ -518,7 +518,10 @@ func metricValueRow(key string, value float64) []string {
 // classes metricValueRow routes; an unhandled unit panics so a new single-stage
 // row cannot silently mis-format (the caller picks an explicit formatter instead).
 func unitMetricFormat(key string) (metricFormat, int) {
-	d, _ := DefinitionFor(key)
+	d, ok := DefinitionFor(key)
+	if !ok {
+		panic("report: unitMetricFormat: no definition for key " + key)
+	}
 	switch d.Unit {
 	case "dBFS":
 		return fmtDB, 2

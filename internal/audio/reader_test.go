@@ -162,6 +162,42 @@ func TestErrorWrapping_PreservesSentinels(t *testing.T) {
 	}
 }
 
+// TestDurationSeconds covers the sentinel guard and the tick-to-seconds ratio
+// without a decoder. AVNoptsValue (an unknown container duration) must map to 0,
+// a known tick count must yield the exact AV_TIME_BASE ratio, and the result
+// must never be negative for a non-negative input.
+func TestDurationSeconds(t *testing.T) {
+	t.Parallel()
+
+	// AV_TIME_BASE is 1_000_000 ticks per second, so this many ticks is exactly
+	// 123.5 s. The division is exact in float64, so an equality check is safe.
+	const oneAndAHalf = int64(123_500_000)
+
+	tests := []struct {
+		name string
+		raw  int64
+		want float64
+	}{
+		{"sentinel maps to zero", int64(ffmpeg.AVNoptsValue), 0},
+		{"zero ticks", 0, 0},
+		{"known tick count", oneAndAHalf, 123.5},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := durationSeconds(tc.raw)
+			if got != tc.want {
+				t.Errorf("durationSeconds(%d) = %v, want %v", tc.raw, got, tc.want)
+			}
+			if got < 0 {
+				t.Errorf("durationSeconds(%d) = %v, want non-negative", tc.raw, got)
+			}
+		})
+	}
+}
+
 // TestMetadata_FieldRoundTrip is a trivial pure-value check on the Metadata
 // struct: the fields OpenAudioFile populates are plain and carry the units the
 // doc comments promise. It guards against an accidental field reorder or type

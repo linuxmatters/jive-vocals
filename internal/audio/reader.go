@@ -90,10 +90,8 @@ func OpenAudioFile(filename string) (*Reader, *Metadata, error) {
 		return nil, nil, fmt.Errorf("failed to open decoder: %w", err)
 	}
 
-	duration := float64(fmtCtx.Duration()) / float64(ffmpeg.AVTimeBase)
-
 	metadata := &Metadata{
-		Duration:   duration,
+		Duration:   durationSeconds(fmtCtx.Duration()),
 		SampleRate: decCtx.SampleRate(),
 		Channels:   decCtx.ChLayout().NbChannels(),
 	}
@@ -120,6 +118,17 @@ func OpenAudioFile(filename string) (*Reader, *Metadata, error) {
 	}
 
 	return reader, metadata, nil
+}
+
+// durationSeconds converts a container duration in AV_TIME_BASE ticks to
+// seconds. A container that does not know its duration reports AVNoptsValue;
+// that sentinel maps to 0 (the honest absent value downstream consumers already
+// tolerate) rather than a garbage ratio.
+func durationSeconds(raw int64) float64 {
+	if raw == int64(ffmpeg.AVNoptsValue) {
+		return 0
+	}
+	return float64(raw) / float64(ffmpeg.AVTimeBase)
 }
 
 // ReadFrame reads the next decoded audio frame

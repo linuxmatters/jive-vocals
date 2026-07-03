@@ -1201,6 +1201,129 @@ func TestCalculateLinearModeTarget(t *testing.T) {
 	}
 }
 
+// refLimiterCeiling and refPreGain are verbatim copies of the arithmetic the
+// former calculateLimiterCeiling and calculatePreGain carried. They are the
+// reference oracle for TestDeriveLimiterAndPreGainEquivalence, so the grid keeps
+// proving bit-identity after the production helpers were merged and deleted.
+func refLimiterCeiling(measuredI, measuredTP, targetI, targetTP float64) (ceiling float64, needed, clamped bool) {
+	gainRequired := targetI - measuredI
+	projectedTP := measuredTP + gainRequired
+	if projectedTP <= targetTP {
+		return 0, false, false
+	}
+	ceiling = targetTP - gainRequired
+	if ceiling < minLimiterCeilingDB {
+		ceiling = minLimiterCeilingDB
+		clamped = true
+	}
+	return ceiling, true, clamped
+}
+
+func refPreGain(measuredI, targetI, targetTP float64) (preGainDB, reDerivedCeiling float64) {
+	gainRequired := targetI - measuredI
+	idealCeiling := targetTP - gainRequired
+	if idealCeiling >= minLimiterCeilingDB {
+		return 0.0, 0.0
+	}
+	preGainDB = minLimiterCeilingDB - idealCeiling
+	postGainI := measuredI + preGainDB
+	newGainRequired := targetI - postGainI
+	reDerivedCeiling = targetTP - newGainRequired
+	return preGainDB, reDerivedCeiling
+}
+
+// TestDeriveLimiterAndPreGainEquivalence proves deriveLimiterAndPreGain returns
+// bit-identical results to the former calculateLimiterCeiling + calculatePreGain
+// pair (preserved here as refLimiterCeiling / refPreGain) across a grid of
+// (measuredI, measuredTP, targetI, targetTP), including the minLimiterCeilingDB
+// clamp boundary where the ceiling re-derivation fires.
+func TestDeriveLimiterAndPreGainEquivalence(t *testing.T) {
+	measuredIs := []float64{-55.0, -43.2, -40.0, -36.6, -33.5, -24.9, -20.0, -16.0, -12.0}
+	measuredTPs := []float64{-30.0, -20.0, -18.6, -15.0, -10.0, -6.0, -5.0, -3.0, -1.0}
+	targetIs := []float64{-16.0, -14.0}
+	targetTPs := []float64{-2.0, -1.5, -1.0}
+
+	for _, mI := range measuredIs {
+		for _, mTP := range measuredTPs {
+			for _, tI := range targetIs {
+				for _, tTP := range targetTPs {
+					wantCeiling, wantNeeded, wantClamped := refLimiterCeiling(mI, mTP, tI, tTP)
+					wantPreGainDB, wantReDerived := refPreGain(mI, tI, tTP)
+
+					got := deriveLimiterAndPreGain(mI, mTP, tI, tTP)
+
+					if got.ceiling != wantCeiling || got.needed != wantNeeded || got.clamped != wantClamped ||
+						got.preGainDB != wantPreGainDB || got.reDerivedCeiling != wantReDerived {
+						t.Errorf("deriveLimiterAndPreGain(%.2f, %.2f, %.2f, %.2f) = "+
+							"{ceiling:%v needed:%v clamped:%v preGainDB:%v reDerivedCeiling:%v}, "+
+							"want {ceiling:%v needed:%v clamped:%v preGainDB:%v reDerivedCeiling:%v}",
+							mI, mTP, tI, tTP,
+							got.ceiling, got.needed, got.clamped, got.preGainDB, got.reDerivedCeiling,
+							wantCeiling, wantNeeded, wantClamped, wantPreGainDB, wantReDerived)
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestDeriveLimiterAndPreGainPinned pins the merged helper's exact expected values
+// at named points, including the clamp boundary where reDerivedCeiling fires. This
+// outlives the reference oracle: it does not depend on any pre-merge implementation.
+func TestDeriveLimiterAndPreGainPinned(t *testing.T) {
+	tests := []struct {
+		name             string
+		mI, mTP, tI, tTP float64
+		want             limiterDerivation
+	}{
+		{
+			name: "no limiting - quiet peaks",
+			mI:   -20.0, mTP: -10.0, tI: -16.0, tTP: -2.0,
+			// gain 4.0, projectedTP -6.0 <= -2.0 -> no limiting; idealCeiling -6.0 >= -24.0 -> no pre-gain
+			want: limiterDerivation{},
+		},
+		{
+			name: "limiting needed - not clamped",
+			mI:   -24.9, mTP: -5.0, tI: -16.0, tTP: -2.0,
+			// gain 8.9, projectedTP 3.9 > -2.0, ceiling -2.0 - 8.9 = -10.9 (above -24.0)
+			want: limiterDerivation{ceiling: -10.9, needed: true},
+		},
+		{
+			name: "clamped - re-derivation fires",
+			mI:   -43.2, mTP: -18.6, tI: -16.0, tTP: -2.0,
+			// gain 27.2, projectedTP 8.6 > -2.0, idealCeiling -29.2 < -24.0 -> clamped
+			// deficit -24.0 - (-29.2) = 5.2, postGainI -38.0, reDerived -2.0 - 22.0 = -24.0
+			want: limiterDerivation{ceiling: -24.0, needed: true, clamped: true, preGainDB: 5.2, reDerivedCeiling: -24.0},
+		},
+		{
+			name: "clamp boundary - ceiling equals minimum exactly, not clamped",
+			mI:   -36.6, mTP: -15.0, tI: -16.0, tTP: -2.0,
+			// gain 20.6, projectedTP 5.6 > -2.0, ceiling -22.6 (above -24.0), idealCeiling -22.6 >= -24.0
+			want: limiterDerivation{ceiling: -22.6, needed: true},
+		},
+	}
+
+	const tol = 1e-9
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := deriveLimiterAndPreGain(tt.mI, tt.mTP, tt.tI, tt.tTP)
+			if got.needed != tt.want.needed || got.clamped != tt.want.clamped {
+				t.Fatalf("flags: got needed=%v clamped=%v, want needed=%v clamped=%v",
+					got.needed, got.clamped, tt.want.needed, tt.want.clamped)
+			}
+			if math.Abs(got.ceiling-tt.want.ceiling) > tol {
+				t.Errorf("ceiling = %v, want %v", got.ceiling, tt.want.ceiling)
+			}
+			if math.Abs(got.preGainDB-tt.want.preGainDB) > tol {
+				t.Errorf("preGainDB = %v, want %v", got.preGainDB, tt.want.preGainDB)
+			}
+			if math.Abs(got.reDerivedCeiling-tt.want.reDerivedCeiling) > tol {
+				t.Errorf("reDerivedCeiling = %v, want %v", got.reDerivedCeiling, tt.want.reDerivedCeiling)
+			}
+		})
+	}
+}
+
 func TestCalculateLimiterCeiling(t *testing.T) {
 	// Minimum ceiling is -24.0 dBTP (alimiter limit=0.0625)
 	const minCeiling = -24.0
@@ -1351,7 +1474,7 @@ func TestCalculateLimiterCeiling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ceiling, needed, clamped := calculateLimiterCeiling(
+			ceiling, needed, clamped := refLimiterCeiling(
 				tt.measuredI, tt.measuredTP, tt.targetI, tt.targetTP)
 
 			if needed != tt.wantNeeded {
@@ -1404,7 +1527,7 @@ func TestDerivedCeilingFormula(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ceiling, needed, clamped := calculateLimiterCeiling(c.filteredI, c.filteredTP, targetI, targetTP)
+			ceiling, needed, clamped := refLimiterCeiling(c.filteredI, c.filteredTP, targetI, targetTP)
 			if !needed {
 				t.Fatalf("expected limiting to be needed for filteredI=%.1f filteredTP=%.1f", c.filteredI, c.filteredTP)
 			}
@@ -1549,10 +1672,10 @@ func TestBuildLoudnormFilterSpec_PreGain(t *testing.T) {
 			}
 
 			// Pre-compute values (the caller's responsibility)
-			ceiling, needsLimiting, clamped := calculateLimiterCeiling(
+			ceiling, needsLimiting, clamped := refLimiterCeiling(
 				tt.inputI, tt.inputTP, config.Loudnorm.TargetI, config.Loudnorm.TargetTP,
 			)
-			preGainDB, reDerivedCeiling := calculatePreGain(
+			preGainDB, reDerivedCeiling := refPreGain(
 				tt.inputI, config.Loudnorm.TargetI, config.Loudnorm.TargetTP,
 			)
 			if clamped {
@@ -1806,7 +1929,7 @@ func TestPreGainCeilingRederivation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Step 1: original values should be clamped
-			origCeiling, origNeeded, origClamped := calculateLimiterCeiling(
+			origCeiling, origNeeded, origClamped := refLimiterCeiling(
 				tt.measuredI, tt.measuredTP, tt.targetI, tt.targetTP)
 
 			if !origNeeded {
@@ -1832,7 +1955,7 @@ func TestPreGainCeilingRederivation(t *testing.T) {
 			postGainI := tt.measuredI + deficit
 			postGainTP := tt.measuredTP + deficit
 
-			newCeiling, newNeeded, newClamped := calculateLimiterCeiling(
+			newCeiling, newNeeded, newClamped := refLimiterCeiling(
 				postGainI, postGainTP, tt.targetI, tt.targetTP)
 
 			if !newNeeded {
@@ -1853,7 +1976,7 @@ func TestPreGainCeilingRederivation(t *testing.T) {
 
 func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 	// Verifies the arithmetic chain that ApplyNormalisation uses when the
-	// ceiling is clamped: calculateLimiterCeiling -> deficit -> post-gain I ->
+	// ceiling is clamped: deriveLimiterAndPreGain -> deficit -> post-gain I ->
 	// calculateLinearModeTarget -> buildLoudnormFilterSpec. Each function is
 	// called with the same inputs ApplyNormalisation would derive, confirming
 	// the full -16.0 LUFS target is preserved.
@@ -1911,8 +2034,8 @@ func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Step 1: calculateLimiterCeiling (same as ApplyNormalisation)
-			_, limiterNeeded, limiterClamped := calculateLimiterCeiling(
+			// Step 1: limiter ceiling decision (same as ApplyNormalisation)
+			_, limiterNeeded, limiterClamped := refLimiterCeiling(
 				tt.measuredI, tt.measuredTP, tt.targetI, tt.targetTP)
 
 			if !limiterNeeded {
@@ -1958,10 +2081,10 @@ func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 			}
 
 			// Pre-compute values (the caller's responsibility)
-			bCeiling, bNeeded, bClamped := calculateLimiterCeiling(
+			bCeiling, bNeeded, bClamped := refLimiterCeiling(
 				tt.measuredI, tt.measuredTP, tt.targetI, tt.targetTP,
 			)
-			preGainDB, bReDerived := calculatePreGain(
+			preGainDB, bReDerived := refPreGain(
 				tt.measuredI, tt.targetI, tt.targetTP,
 			)
 			if bClamped {
@@ -2031,7 +2154,7 @@ func TestCalculatePreGain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			preGainDB, reDerivedCeiling := calculatePreGain(tt.measuredI, tt.targetI, tt.targetTP)
+			preGainDB, reDerivedCeiling := refPreGain(tt.measuredI, tt.targetI, tt.targetTP)
 
 			if math.Abs(preGainDB-tt.wantPreGainDB) > 0.01 {
 				t.Errorf("preGainDB = %.2f, want %.2f", preGainDB, tt.wantPreGainDB)
@@ -2263,13 +2386,13 @@ func TestPlanLimiterForLoudnormMatchesInlineCalculation(t *testing.T) {
 				},
 			}
 
-			wantCeiling, wantNeeded, wantClamped := calculateLimiterCeiling(
+			wantCeiling, wantNeeded, wantClamped := refLimiterCeiling(
 				output.Loudness.OutputI,
 				output.Loudness.OutputTP,
 				config.Loudnorm.TargetI,
 				config.Loudnorm.TargetTP,
 			)
-			wantPreGainDB, reDerivedCeiling := calculatePreGain(
+			wantPreGainDB, reDerivedCeiling := refPreGain(
 				output.Loudness.OutputI,
 				config.Loudnorm.TargetI,
 				config.Loudnorm.TargetTP,

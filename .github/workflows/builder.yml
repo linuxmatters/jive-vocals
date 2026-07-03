@@ -32,11 +32,11 @@ jobs:
       - run: go vet ./...
       - name: Check cyclomatic complexity
         run: |
-          go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+          go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
           gocyclo -top 20 -ignore '_test\.go$' -avg .
       - name: Check ineffectual assignments
         run: |
-          go install github.com/gordonklaus/ineffassign@latest
+          go install github.com/gordonklaus/ineffassign@v0.2.0
           ineffassign ./...
       - uses: golangci/golangci-lint-action@v9
 

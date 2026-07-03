@@ -44,3 +44,25 @@ func TestUnitMetricFormatUnroutedPanics(t *testing.T) {
 	}()
 	unitMetricFormat("interval_count")
 }
+
+// TestUnitMetricFormatUncataloguedPanics pins the no-definition panic: a key with
+// no catalogue entry must fail loudly rather than mis-format on a zero-value Unit.
+func TestUnitMetricFormatUncataloguedPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("unitMetricFormat on an uncatalogued key did not panic")
+		}
+	}()
+	unitMetricFormat("not_a_real_key")
+}
+
+// TestMetricLabelUncataloguedPanics pins the metricLabel no-definition panic: a
+// key with no catalogue entry must fail loudly rather than return the raw key.
+func TestMetricLabelUncataloguedPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("metricLabel on an uncatalogued key did not panic")
+		}
+	}()
+	metricLabel("not_a_real_key")
+}

@@ -84,9 +84,6 @@ labels:
     description: Hacktoberfest contribution
 
 swatches:
-  - path: .github/workflows/tailor.yml
-    alteration: never
-
   - path: .github/dependabot.yml
     alteration: first-fit
 
@@ -101,9 +98,6 @@ swatches:
 
   - path: .github/ISSUE_TEMPLATE/config.yml
     alteration: first-fit
-
-  - path: .github/pull_request_template.md
-    alteration: never
 
   - path: SECURITY.md
     alteration: always
@@ -134,6 +128,3 @@ swatches:
 
   - path: .tailor.yml
     alteration: first-fit
-
-  - path: .github/workflows/tailor-automerge.yml
-    alteration: never
