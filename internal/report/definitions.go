@@ -405,7 +405,6 @@ var requiredKeys = []string{
 	"dc_offset",
 	"zero_crossings_rate",
 	"bit_depth",
-	"entropy",
 
 	// Spectral (13)
 	"mean",

@@ -364,7 +364,9 @@ type limiterDerivation struct {
 //
 // Ceilings below alimiter's engine floor (minLimiterCeilingDB) are clamped; on a
 // clamp, preGainDB raises the signal before limiting and reDerivedCeiling is the
-// ceiling re-derived from the post-gain values. Both are 0.0 when not clamped.
+// ceiling re-derived from the post-gain values. Both are 0.0 when not clamped,
+// and the whole derivation is zero when limiting is not needed (so diagnostics
+// never report a pre-gain alongside a disabled limiter).
 // See docs/Normalisation-Tuning.md for the minLimiterCeilingDB derivation.
 //
 // Parameters:
@@ -390,10 +392,13 @@ func deriveLimiterAndPreGain(measuredI, measuredTP, targetI, targetTP float64) l
 		d.reDerivedCeiling = targetTP - newGainRequired
 	}
 
-	// No limiting needed if linear mode already possible
+	// No limiting needed if linear mode already possible. Return a zero
+	// derivation: any pre-gain computed above is moot without a limiter, and
+	// leaving it set would mislead diagnostics (PreGainDB > 0 with
+	// LimiterEnabled false).
 	projectedTP := measuredTP + gainRequired
 	if projectedTP <= targetTP {
-		return d
+		return limiterDerivation{}
 	}
 
 	// Derived ceiling: targetTP - gainRequired (= filtered_I + B, the full crest budget).

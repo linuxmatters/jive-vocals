@@ -156,12 +156,7 @@ func TestRenderNormalisationDeviationNumber(t *testing.T) {
 		t.Errorf("deviation must render as signed LU number +0.01\n%s", got)
 	}
 	// NOT the legacy boolean/verdict string.
-	for _, banned := range []string{"Within target", "Outside tolerance", "true", "false"} {
-		// "true"/"false" could appear inside a value; scope the check to the
-		// deviation context by asserting the verdict phrases are absent entirely.
-		if banned == "true" || banned == "false" {
-			continue
-		}
+	for _, banned := range []string{"Within target", "Outside tolerance"} {
 		if strings.Contains(got, banned) {
 			t.Errorf("normalisation must NOT contain legacy verdict %q\n%s", banned, got)
 		}
@@ -211,9 +206,12 @@ func TestRenderNormalisationAnalysisOnlyEmpty(t *testing.T) {
 	}
 }
 
-func TestRenderSpectrogramsStubEmpty(t *testing.T) {
+// TestRenderSpectrogramsEmptyWithoutPaths asserts renderSpectrograms returns
+// empty when the record carries no spectrogram paths, as processingRecord()
+// does not.
+func TestRenderSpectrogramsEmptyWithoutPaths(t *testing.T) {
 	if got := renderSpectrograms(processingRecord()); got != "" {
-		t.Errorf("renderSpectrograms stub must return empty, got %q", got)
+		t.Errorf("renderSpectrograms must return empty without spectrogram paths, got %q", got)
 	}
 	// An empty return must produce no visible Spectrograms heading.
 	if strings.Contains(renderSpectrograms(processingRecord()), "Spectrograms") {

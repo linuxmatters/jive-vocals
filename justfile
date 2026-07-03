@@ -22,13 +22,8 @@ _check-submodule:
 # Get latest stable ffmpeg-statigo release tag from GitHub
 _get-latest-tag:
     #!/usr/bin/env bash
-    if command -v jq &> /dev/null; then
-        curl -s https://api.github.com/repos/linuxmatters/ffmpeg-statigo/releases | \
-            jq -r '[.[] | select(.prerelease == false and .draft == false and (.tag_name | startswith("v")))][0].tag_name'
-    else
-        curl -s https://api.github.com/repos/linuxmatters/ffmpeg-statigo/releases | \
-            grep -B5 '"prerelease": false' | grep '"tag_name"' | grep -v 'lib-' | head -1 | cut -d'"' -f4
-    fi
+    curl -s https://api.github.com/repos/linuxmatters/ffmpeg-statigo/releases | \
+        jq -r '[.[] | select(.prerelease == false and .draft == false and (.tag_name | startswith("v")))][0].tag_name'
 
 # Setup or update ffmpeg-statigo submodule and library
 setup:

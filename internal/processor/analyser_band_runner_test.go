@@ -145,7 +145,7 @@ func TestRunBandMeasurementsCancelledStopsCleanly(t *testing.T) {
 
 func TestRunBandMeasurementsBoundedConcurrency(t *testing.T) {
 	// In-flight measure calls must never exceed the shared semaphore capacity.
-	capacity := len(bandMeasureSem)
+	capacity := cap(bandMeasureSem)
 	if capacity < 1 {
 		t.Skip("semaphore capacity below 1")
 	}

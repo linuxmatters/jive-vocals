@@ -30,6 +30,7 @@
             gocyclo
             golangci-lint
             ineffassign
+            jq
             just
             mediainfo
             vhs

@@ -195,11 +195,8 @@ Requires Go, Nix, and a tolerance for CGO.
 # Enter development shell (FFmpeg dependencies provided)
 nix develop
 
-# Initialise submodules (ffmpeg-statigo provides embedded FFmpeg)
+# Initialise submodules and download static FFmpeg libraries
 just setup
-
-# Download static FFmpeg libraries
-cd third_party/ffmpeg-statigo && go run ./cmd/download-lib
 
 # Build (never use go build directly - requires CGO + version injection)
 just build

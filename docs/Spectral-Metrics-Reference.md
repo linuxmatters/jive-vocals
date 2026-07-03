@@ -4,7 +4,7 @@ Objective definitions of the audio metrics Jivetalking measures and emits. Each 
 
 Derived from the `audio-metrics` skill. Verified against FFmpeg filter docs (https://ffmpeg.org/ffmpeg-filters.html) and source on `release/8.1` and `master` (`libavfilter/af_aspectralstats.c`, `af_astats.c`, `af_loudnorm.c`, `doc/filters.texi`). Where a derivation is medium-confidence, the entry marks it `medium`.
 
-Jivetalking captures these metrics across its four-pass pipeline: `astats` + `aspectralstats` + `ebur128` in Pass 1 analysis, region re-measures in Pass 2/4, and `loudnorm` in Pass 3/4. For the canonical run-record JSON key names, see `AUDIO-MEASUREMENTS.md` §8.4 (Conventions); that section is the single source of truth for the key strings, which are an internal, still-settling contract. This reference defines the metrics; it does not restate the JSON keys.
+Jivetalking captures these metrics across its four-pass pipeline: `astats` + `aspectralstats` + `ebur128` in Pass 1 analysis, region remeasures in Pass 2/4, and `loudnorm` in Pass 3/4. The canonical run-record JSON key names are the struct tags in `internal/processor/runrecord.go`; those tags are the single source of truth for the key strings, which are an internal, still-settling contract. This reference defines the metrics; it does not restate the JSON keys.
 
 ## aspectralstats - per-frame spectral statistics
 
@@ -14,7 +14,7 @@ Statistics run over the half-spectrum magnitude array `magnitude[n] = hypotf(re,
 | --- | --- | --- | --- | --- | --- |
 | mean | Arithmetic mean of magnitude bins | `sum(mag[n]) / size` | magnitude (linear) | >= 0 | high |
 | variance | Population variance of magnitudes about `mean` | `sum((mag[n]-mean)^2) / size` | magnitude^2 | >= 0 | high |
-| centroid | Magnitude-weighted mean frequency | `Sum(mag[n]*n*scale) / Sum mag[n]` | Hz | 0 .. max_freq | high |
+| centroid | Magnitude-weighted mean frequency | `Sum(mag[n]*n*scale) / Sum mag[n]` | Hz | 0 to max_freq | high |
 | spread | Magnitude-weighted std-dev of frequency about centroid | `sqrt( Sum(mag[n]*(n*scale-centroid)^2) / Sum mag[n] )` | Hz | >= 0 | high |
 | skewness | Third standardised spectral moment about centroid | `Sum(mag[n]*(n*scale-centroid)^3) / (Sum mag[n] * spread^3)` | dimensionless | signed | high |
 | kurtosis | Fourth standardised spectral moment about centroid | `Sum(mag[n]*(n*scale-centroid)^4) / (Sum mag[n] * spread^4)` | dimensionless | >= 0 | high |
@@ -24,7 +24,7 @@ Statistics run over the half-spectrum magnitude array `magnitude[n] = hypotf(re,
 | flux | L2 distance between this frame's and the previous frame's magnitude spectrum | `sqrt( Sum(mag[n] - prev_mag[n])^2 )` | magnitude (linear) | >= 0; per-frame; not normalised | high |
 | slope | Linear-regression slope of magnitude vs normalised bin index | `Sum(((n-m)/m)*(mag[n]-mean_mag)) / Sum((n-m)/m)^2`, `m = size*0.5` | magnitude per normalised-bin | signed | medium |
 | decrease | Relative spectral decrease from the first bin | `Sum_{n>=1}((mag[n]-mag[0])/n) / Sum_{n>=1} mag[n]` | dimensionless | signed | medium |
-| rolloff | Frequency below which 85% of cumulative magnitude lies | smallest `n` with `Sum_{0..n} mag >= 0.85*Sum mag`, returns `n*scale` | Hz | 0 .. max_freq | high |
+| rolloff | Frequency below which 85% of cumulative magnitude lies | smallest `n` with `Sum_{0..n} mag >= 0.85*Sum mag`, returns `n*scale` | Hz | 0 to max_freq | high |
 
 Source notes:
 
@@ -43,7 +43,7 @@ Samples are normalised to `[-1, 1]`; `LINEAR_TO_DB(x) = 20*log10(x)`. Metadata k
 | RMS trough | RMS of the quietest short window | min per-window RMS over `length` seconds | dBFS | <= 0 | high |
 | RMS peak | RMS of the loudest short window | max per-window RMS over `length` seconds | dBFS | <= 0 | high |
 | Crest factor | Peak amplitude / RMS amplitude (time domain) | `max(-nmin, nmax) / sqrt(Sum x^2/N)`; returns 1 if RMS=0 | linear ratio, dimensionless (not dB) | >= 1 | high |
-| Dynamic range | Span between loudest and quietest non-zero sample | `20*log10( 2*max(\|min\|,\|max\|) / min_non_zero )` | dB | >= 0 | high |
+| Dynamic range | Span between loudest and quietest nonzero sample | `20*log10( 2*max(\|min\|,\|max\|) / min_non_zero )` | dB | >= 0 | high |
 | Noise floor | Minimum local peak over the sliding window | `20*log10(noise_floor)`, min of per-window local peaks over `length` seconds | dBFS | <= 0 | high |
 | Flat factor | Run-length flatness at the min/max levels | `20*log10( (min_runs+max_runs)/(min_count+max_count) )` | dB-scaled | >= 0 | medium |
 | Peak count | Number of occasions (not samples) the signal hit Min or Max level | `min_count + max_count` | count (integer) | >= 0 | high |
@@ -72,7 +72,7 @@ Gating (BS.1770-2 onward, adopted by EBU R128 / Tech 3341): absolute gate -70 LU
 
 ## loudnorm - EBU R128 normalisation (FFmpeg 8.1)
 
-JSON stats print at filter teardown when `print_format=json`. Two measurement states: `r128_in` (raw input) and `r128_out` (post-processing output). Output is exactly these 10 keys; no gain/offset field exists in 8.1 (any blog or master claim of extra fields does not apply). 8.1 is byte-identical to master for options, struct, JSON, and decision regions. Jivetalking parses these strings in Pass 3, then applies loudnorm in linear mode in Pass 4.
+JSON stats print at filter teardown when `print_format=json`. Two measurement states: `r128_in` (raw input) and `r128_out` (output after processing). Output is exactly these 10 keys; no gain/offset field exists in 8.1 (any blog or master claim of extra fields does not apply). 8.1 is byte-identical to master for options, struct, JSON, and decision regions. Jivetalking parses these strings in Pass 3, then applies loudnorm in linear mode in Pass 4.
 
 | Field | Measures | I/O/Control | Units | Range/scale | Confidence |
 | --- | --- | --- | --- | --- | --- |
@@ -108,7 +108,7 @@ Method: K-weighted loudness per ITU-R BS.1770 / EBU R128 via the bundled `ebur12
 
 ## Standards and platform targets
 
-External reference targets, not interpretation. Each row marks whether it is a formal standard or a platform norm. Jivetalking targets -16 LUFS with a -2.0 dBTP ceiling by default.
+External reference targets, not interpretation. Each row marks whether it is a formal standard or a platform norm. Jivetalking targets -16 LUFS with a -1.0 dBTP ceiling by default.
 
 | Target | Exact value | Tolerance / extras | Publisher | Classification |
 | --- | --- | --- | --- | --- |

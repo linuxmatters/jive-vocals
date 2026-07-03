@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -148,7 +149,7 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 	}
 
 	reports := newReportCapture()
-	runAnalysisOnlyWithDeps([]string{inputPath}, config, func(string, ...any) {}, 1, false, analysisOnlyDeps{
+	failed := runAnalysisOnlyWithDeps([]string{inputPath}, config, func(string, ...any) {}, 1, false, analysisOnlyDeps{
 		stdout: &output,
 		hasTTY: func() bool {
 			return false
@@ -171,6 +172,9 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 		writeRunRecord:      func(*processor.RunRecord, string) error { return nil },
 		writeSidecars:       func(*processor.AudioMeasurements, string) error { return nil },
 	})
+	if failed != 0 {
+		t.Fatalf("failure count = %d, want 0 (the analysis succeeds)", failed)
+	}
 
 	got := output.String()
 	// stdout carries the banner plus the one-line confirmation, never the
@@ -265,7 +269,9 @@ func TestRunAnalysisOnlyWithDeps_DiagnosticsGatesSidecars(t *testing.T) {
 				return nil
 			},
 		}
-		runAnalysisOnlyWithDeps([]string{inputPath}, config, func(string, ...any) {}, 1, diagnostics, deps)
+		if failed := runAnalysisOnlyWithDeps([]string{inputPath}, config, func(string, ...any) {}, 1, diagnostics, deps); failed != 0 {
+			t.Fatalf("failure count = %d, want 0 (the analysis succeeds)", failed)
+		}
 		_, reportWritten = reports.content(reportPath)
 		return reportWritten, recordWritten, sidecarPaths
 	}
@@ -323,7 +329,7 @@ func TestRunAnalysisOnlyWithDeps_PassesPerWorkerConfigClones(t *testing.T) {
 	}
 
 	reports := newReportCapture()
-	runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, 1, false, analysisOnlyDeps{
+	failed := runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, 1, false, analysisOnlyDeps{
 		stdout: &output,
 		hasTTY: func() bool {
 			return false
@@ -343,6 +349,9 @@ func TestRunAnalysisOnlyWithDeps_PassesPerWorkerConfigClones(t *testing.T) {
 		writeRunRecord:      func(*processor.RunRecord, string) error { return nil },
 		writeSidecars:       func(*processor.AudioMeasurements, string) error { return nil },
 	})
+	if failed != 0 {
+		t.Fatalf("failure count = %d, want 0 (every analysis succeeds)", failed)
+	}
 
 	if len(analysedConfigs) != len(files) {
 		t.Fatalf("analysed config count = %d, want %d", len(analysedConfigs), len(files))
@@ -405,7 +414,7 @@ func TestRunAnalysisOnlyWithDeps_OrderedOutputParityAcrossJobs(t *testing.T) {
 	run := func(jobs int) (string, *reportCapture) {
 		var output bytes.Buffer
 		reports := newReportCapture()
-		runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, jobs, false, analysisOnlyDeps{
+		failed := runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, jobs, false, analysisOnlyDeps{
 			stdout: &output,
 			hasTTY: func() bool {
 				return false
@@ -428,6 +437,9 @@ func TestRunAnalysisOnlyWithDeps_OrderedOutputParityAcrossJobs(t *testing.T) {
 			writeRunRecord: func(*processor.RunRecord, string) error { return nil },
 			writeSidecars:  func(*processor.AudioMeasurements, string) error { return nil },
 		})
+		if failed != 0 {
+			t.Fatalf("jobs=%d failure count = %d, want 0 (every analysis succeeds)", jobs, failed)
+		}
 		return output.String(), reports
 	}
 
@@ -509,7 +521,7 @@ func TestRunAnalysisOnlyWithDeps_NonTTYBannerThenOrderedReports(t *testing.T) {
 	}
 
 	reports := newReportCapture()
-	runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, len(files), false, analysisOnlyDeps{
+	failed := runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, len(files), false, analysisOnlyDeps{
 		stdout: &output,
 		hasTTY: func() bool {
 			return false
@@ -532,6 +544,9 @@ func TestRunAnalysisOnlyWithDeps_NonTTYBannerThenOrderedReports(t *testing.T) {
 		writeRunRecord: func(*processor.RunRecord, string) error { return nil },
 		writeSidecars:  func(*processor.AudioMeasurements, string) error { return nil },
 	})
+	if failed != 0 {
+		t.Fatalf("failure count = %d, want 0 (every analysis succeeds)", failed)
+	}
 
 	got := output.String()
 
@@ -618,7 +633,7 @@ func TestRunAnalysisOnlyWithDeps_FailureIsolation(t *testing.T) {
 	var printErrors []string
 
 	reports := newReportCapture()
-	runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, 4, false, analysisOnlyDeps{
+	failed := runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, 4, false, analysisOnlyDeps{
 		stdout: &output,
 		hasTTY: func() bool {
 			return false
@@ -643,6 +658,12 @@ func TestRunAnalysisOnlyWithDeps_FailureIsolation(t *testing.T) {
 		writeRunRecord: func(*processor.RunRecord, string) error { return nil },
 		writeSidecars:  func(*processor.AudioMeasurements, string) error { return nil },
 	})
+
+	// The returned count matches the one non-cancelled per-file error, the
+	// value main() folds into the exit code.
+	if failed != 1 {
+		t.Fatalf("failure count = %d, want 1 (one non-cancelled per-file error)", failed)
+	}
 
 	// The failing file reports exactly one error naming the file and "boom".
 	if len(printErrors) != 1 {
@@ -677,6 +698,75 @@ func TestRunAnalysisOnlyWithDeps_FailureIsolation(t *testing.T) {
 	pos2 := strings.Index(plain, "🗸 "+files[2]+" → ")
 	if pos0 < 0 || pos2 < 0 || pos2 <= pos0 {
 		t.Fatalf("sibling confirmations out of input order (pos0=%d, pos2=%d):\n%s", pos0, pos2, plain)
+	}
+}
+
+// TestRunAnalysisOnlyWithDeps_CancelledSlotsExcludedFromFailureCount proves the
+// returned failure count mirrors the report loop's cancellation skip: a slot
+// whose error wraps context.Canceled (a user quit mid-analysis) does not count
+// and prints no error, so an all-cancelled run returns 0, while a genuine
+// failure that landed before the cancel still counts. Cancelled and failed
+// slots alike write no report.
+func TestRunAnalysisOnlyWithDeps_CancelledSlotsExcludedFromFailureCount(t *testing.T) {
+	files := []string{"file0.wav", "file1.wav", "file2.wav"}
+	baseConfig := processor.DefaultFilterConfig()
+
+	// run drives the pool with every analysis returning a context.Canceled-
+	// wrapped error, except genuineFailPath (when non-empty) which fails with a
+	// plain error. The mutex keeps the printError capture safe against any
+	// concurrent caller, matching the FailureIsolation test above.
+	run := func(genuineFailPath string) (failed int, printErrors []string) {
+		var mu sync.Mutex
+		analyse := func(_ context.Context, path string, _ *processor.BaseFilterConfig, _ processor.ProgressCallback) (*processor.AnalysisResult, error) {
+			if path == genuineFailPath {
+				return nil, errors.New("boom")
+			}
+			return nil, fmt.Errorf("analysis aborted: %w", context.Canceled)
+		}
+
+		reports := newReportCapture()
+		failed = runAnalysisOnlyWithDeps(files, baseConfig, func(string, ...any) {}, 2, false, analysisOnlyDeps{
+			stdout: io.Discard,
+			hasTTY: func() bool { return false },
+			openMetadata: func(string) (*audio.Metadata, error) {
+				return &audio.Metadata{Duration: 120, SampleRate: 48000, Channels: 1}, nil
+			},
+			analyse: analyse,
+			printError: func(message string) {
+				mu.Lock()
+				printErrors = append(printErrors, message)
+				mu.Unlock()
+			},
+			writeMarkdownReport: reports.write,
+			writeRunRecord:      func(*processor.RunRecord, string) error { return nil },
+			writeSidecars:       func(*processor.AudioMeasurements, string) error { return nil },
+		})
+
+		// No slot succeeded, so no slot may write a report.
+		for _, f := range files {
+			if _, ok := reports.content(report.AnalysisReportPath(f)); ok {
+				t.Fatalf("cancelled/failed slot %q wrote an analysis report", f)
+			}
+		}
+		return failed, printErrors
+	}
+
+	// All slots cancelled: count 0 (a user quit exits 0) and no error spew.
+	failed, printErrors := run("")
+	if failed != 0 {
+		t.Fatalf("all-cancelled failure count = %d, want 0", failed)
+	}
+	if len(printErrors) != 0 {
+		t.Fatalf("cancelled slots printed errors: %v", printErrors)
+	}
+
+	// One genuine failure among the cancellations: only it counts and prints.
+	failed, printErrors = run(files[1])
+	if failed != 1 {
+		t.Fatalf("failure count with one genuine failure = %d, want 1", failed)
+	}
+	if len(printErrors) != 1 || !strings.Contains(printErrors[0], files[1]) || !strings.Contains(printErrors[0], "boom") {
+		t.Fatalf("printError calls = %v, want exactly one naming %q and %q", printErrors, files[1], "boom")
 	}
 }
 

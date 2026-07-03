@@ -112,6 +112,9 @@ func getFlags(ctx *kong.Context) []helpRow {
 
 	// Parse flags from the model
 	for _, f := range ctx.Model.Flags {
+		if f.Hidden {
+			continue
+		}
 		if f.Name == "help" {
 			continue // the help flag is prepended above
 		}

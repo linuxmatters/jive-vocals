@@ -97,7 +97,7 @@ The Levelator is levelling-only. It has **no noise reduction, no de-essing, no g
 
 ## 2. Jivetalking Current Capabilities
 
-This section describes the current branch, not a historical release. Code citations are `file:line`.
+This section describes the current branch, not a historical release. Code citations name the owning function and file.
 
 ### Architecture
 
@@ -105,28 +105,28 @@ Jivetalking is a Go CLI tool using embedded FFmpeg. It transforms raw voice reco
 
 | Pass | Purpose | Where |
 |------|---------|-------|
-| 1 Analysis | Measures LUFS, true peak, LRA, noise floor, spectral metrics, and runs the unified VAD | `processor.go:41`, `analyser.go` |
-| 2 Processing | Applies the adaptive filter chain tuned to Pass 1 | `processor.go:137`, `filters.go:58` |
-| 3 Measuring | Runs loudnorm in measure-only mode to capture input stats (JSON to a stats file) | `normalise.go:226` |
-| 4 Normalising | Applies the pre-computed gains and the limiters | `normalise.go:912` |
+| 1 Analysis | Measures LUFS, true peak, LRA, noise floor, spectral metrics, and runs the unified VAD | `ProcessAudio` in `processor.go`, `analyser.go` |
+| 2 Processing | Applies the adaptive filter chain tuned to Pass 1 | `processWithFilters` in `processor.go`, `Pass2FilterOrder` in `filters.go` |
+| 3 Measuring | Runs loudnorm in measure-only mode to capture input stats (JSON to a stats file) | `measureWithLoudnorm` in `normalise.go` |
+| 4 Normalising | Applies the pre-computed gains and the limiters | `applyLoudnormAndMeasure` in `normalise.go` |
 
-📌 KEY: like Levelator, Jivetalking has infinite look-ahead. It measures the whole file before it renders, and the gains are fixed before audio flows. Pass 3 measures, Pass 4 applies (`normalise.go:257`, `normalise.go:912`).
+📌 KEY: like Levelator, Jivetalking has infinite look-ahead. It measures the whole file before it renders, and the gains are fixed before audio flows. Pass 3 measures, Pass 4 applies (`measureWithLoudnorm` and `applyLoudnormAndMeasure` in `normalise.go`).
 
 ### The unified voice-activity detector (VAD)
 
 Pass 1 runs one detector that produces every speech and noise output the later filters consume (`analyser_vad.go`).
 
-- **One axis.** All level decisions sit on the K-weighted momentary-LUFS scale (`analyser_vad.go:51`), chosen because momentary loudness is steadier across a brief breath than 250 ms RMS and is the BS.1770 foreground signal.
-- **One split.** A per-250 ms level histogram (1 dB bins) is split with Otsu's method, clamped between the noise floor plus 2 dB and the 75th percentile (`analyser_vad.go:259`, `analyser_vad.go:332`).
-- **Noise floor.** A low percentile (p10) of the non-silent level set, anchored to a pre-scan seed (`analyser_vad.go:311`, `analyser_vad.go:320`).
-- **Speech election.** Hysteresis-built runs with adaptive gap tolerance (2 s to 10 s) and a spectral veto (vocal-band centroid 200 Hz to 6 kHz, structured-spectrum entropy below 0.70). The elected speech region is the highest-scoring run of at least 10 s, scored SNR-primary (`analyser_candidates_speech.go:216`).
-- **Gate statistics.** Voiced p10, noise p95, and their difference (GateSeparationDB) come from the same split (`analyser_vad.go:220`).
+- **One axis.** All level decisions sit on the K-weighted momentary-LUFS scale (`axisMomentaryLUFS` in `analyser_vad.go`), chosen because momentary loudness is steadier across a brief breath than 250 ms RMS and is the BS.1770 foreground signal.
+- **One split.** A per-250 ms level histogram (1 dB bins) is split with Otsu's method, clamped between the noise floor plus 2 dB and the 75th percentile (`otsuSplit` and `clampSplit` in `analyser_vad.go`).
+- **Noise floor.** A low percentile (p10) of the non-silent level set, anchored to a pre-scan seed (`percentileFloor` in `analyser_vad.go`).
+- **Speech election.** Hysteresis-built runs with adaptive gap tolerance (2 s to 10 s) and a spectral veto (vocal-band centroid 200 Hz to 6 kHz, structured-spectrum entropy below 0.70). The elected speech region is the highest-scoring run of at least 10 s, scored SNR-primary (`findBestSpeechRegion` in `analyser_candidates_speech.go`).
+- **Gate statistics.** Voiced p10, noise p95, and their difference (GateSeparationDB) come from the same split (`deriveGateStatistics` in `analyser_vad.go`).
 
-**Voice-activated detection.** Platform-gated captures (Riverside, Zencastr) crush the gaps between phrases to digital silence. Jivetalking flags these when the floored fraction (windows at or below -115 dBFS) is at least 0.20 (`analyser_vad.go:698`, `analyser_vad.go:779`). A recent fix counts non-finite (NaN) momentary windows as floored, because FFmpeg's ebur128 reports digital silence as NaN on macOS arm64 and as -inf or finite-low on Linux; counting non-finite as floored makes the detection give the same answer on both platforms (`analyser_vad.go:708`). When voice-activated, the FFT denoiser is dropped to avoid warble on true silence.
+**Voice-activated detection.** Platform-gated captures (Riverside, Zencastr) crush the gaps between phrases to digital silence. Jivetalking flags these when the floored fraction (windows at or below -115 dBFS) is at least 0.20 (`flooredFraction` and `detectVoiceActivity` in `analyser_vad.go`). A recent fix counts non-finite (NaN) momentary windows as floored, because FFmpeg's ebur128 reports digital silence as NaN on macOS arm64 and as -inf or finite-low on Linux; counting non-finite as floored makes the detection give the same answer on both platforms (`flooredFraction` in `analyser_vad.go`). When voice-activated, the FFT denoiser is dropped to avoid warble on true silence.
 
 ### Noise reduction, gate, compressor, de-esser
 
-Pass 2 chain order (`filters.go:58`, AGENTS.md):
+Pass 2 chain order (`Pass2FilterOrder` in `filters.go`, AGENTS.md):
 
 ```
 downmix -> rumble highpass -> bandlimit lowpass -> noise reduction -> speech gate -> levelling compressor -> de-esser -> analysis -> resample
@@ -138,20 +138,20 @@ downmix -> rumble highpass -> bandlimit lowpass -> noise reduction -> speech gat
 | Band-limit low-pass | No (fixed 20.5 kHz) | Consistent encoder bandwidth |
 | Noise reduction | `afftdn` enable, floor `nf`, profile `nt` | `anlmdn` fixed; `afftdn` dropped on voice-activated, else `nf` pinned to the measured floor, and given a measured 15-band noise profile on a trustworthy room tone (`adaptive.go`) |
 | Speech gate | Threshold, ratio, depth | Threshold = voiced p10 minus 6 dB; ratio 1.5 to 2.0 from LRA; depth 14 dB, cut to 8 dB on a narrow gap (`adaptive_speech_gate.go`) |
-| Levelling compressor | Threshold only | `max(SpeechProfile.RMSLevel, Dynamics.RMSLevel) + 9 dB` (`adaptive_levelling_compressor.go:91`) |
+| Levelling compressor | Threshold only | `max(SpeechProfile.RMSLevel, Dynamics.RMSLevel) + 9 dB` (`tuneLevellingCompressorThreshold` in `adaptive_levelling_compressor.go`) |
 | De-esser | Intensity `i` (0.0 to 0.85) | Speech-region sibilant-band excess, 6 to 9 kHz vs 1 to 3 kHz |
 
 ### Normalisation and peak levelling (Pass 3/4)
 
-Pass 4 order (`normalise.go:1205`):
+Pass 4 order (`buildLoudnormFilterSpec` in `normalise.go`):
 
 ```
 volume (pre-gain, when needed) -> alimiter (levelling limiter) -> loudnorm (linear) -> aresample -> adeclick -> alimiter (brickwall) -> astats -> aspectralstats -> ebur128
 ```
 
-- **loudnorm linear mode** applies one global scalar gain to reach -16 LUFS, using the Pass 3 measured stats (`normalise.go:1269`). Linear mode is the transparent choice: it preserves dynamics and avoids the pumping of loudnorm's dynamic mode. A per-file internal true-peak target is derived for each file so every file reaches full -16 LUFS (`normalise.go:563`).
-- **Pre-gain** (`volume`) lifts very quiet recordings so the limiter ceiling stays viable; the ceiling is derived as `targetTP - gainRequired` (`normalise.go:407`).
-- **Two limiters, two jobs.** The prefix `alimiter` (the "levelling limiter") reduces peaks to create headroom so loudnorm can apply its full linear gain (`normalise.go:446`). The final-stage `alimiter` is a brickwall pinned below the loudnorm target by an inter-sample headroom margin (corpus-derived 0.9 dB), and it owns true-peak delivery (`normalise.go:474`). The brickwall limits sample peak with enough margin to keep the oversampled true peak under target.
+- **loudnorm linear mode** applies one global scalar gain to reach -16 LUFS, using the Pass 3 measured stats (`buildLoudnormFilterSpec` in `normalise.go`). Linear mode is the transparent choice: it preserves dynamics and avoids the pumping of loudnorm's dynamic mode. A per-file internal true-peak target is derived for each file so every file reaches full -16 LUFS (`loudnormInternalTargetTP` in `normalise.go`).
+- **Pre-gain** (`volume`) lifts very quiet recordings so the limiter ceiling stays viable; the ceiling is derived as `targetTP - gainRequired` (`deriveLimiterAndPreGain` in `normalise.go`).
+- **Two limiters, two jobs.** The prefix `alimiter` (the "levelling limiter") reduces peaks to create headroom so loudnorm can apply its full linear gain (`buildPreLimiterPrefix` in `normalise.go`). The final-stage `alimiter` is a brickwall pinned below the loudnorm target by an inter-sample headroom margin (corpus-derived 0.9 dB), and it owns true-peak delivery (`buildBrickwallLimiter` in `normalise.go`). The brickwall limits sample peak with enough margin to keep the oversampled true peak under target.
 
 📌 KEY: this is the "peak levelling" the older document lacked. Levelator stops at a -1.0 dB sample-peak ceiling [2]; Jivetalking delivers a true-peak-aware -1 dBTP using an oversampled internal limiter plus the brickwall margin.
 
@@ -219,9 +219,9 @@ This is the crux of the revision. The honest verdict: **there is no gap to close
 
 **Why the architecture already covers it:**
 
-- **Levelling and compression are one mechanism at different timescales.** A low-ratio, long-release compressor is a leveller. Broadcast and podcast chains carry no separate "macro leveller" box. Medium-term evenness comes from the compressor's ratio and release plus the integrated loudness target. The levelling compressor is FFmpeg `acompressor` in RMS mode, ratio 3.0, attack 10 ms, release 200 ms, soft knee 4.0, threshold pinned to the elected speech RMS plus 9 dB (`adaptive_levelling_compressor.go:39`, `adaptive_levelling_compressor.go:91`). The 200 ms release holds gain reduction across intra-phrase dips and evens the loud-to-quiet swing of a delivery.
+- **Levelling and compression are one mechanism at different timescales.** A low-ratio, long-release compressor is a leveller. Broadcast and podcast chains carry no separate "macro leveller" box. Medium-term evenness comes from the compressor's ratio and release plus the integrated loudness target. The levelling compressor is FFmpeg `acompressor` in RMS mode, ratio 3.0, attack 10 ms, release 200 ms, soft knee 4.0, threshold pinned to the elected speech RMS plus 9 dB (`tuneLevellingCompressor` and `tuneLevellingCompressorThreshold` in `adaptive_levelling_compressor.go`). The 200 ms release holds gain reduction across intra-phrase dips and evens the loud-to-quiet swing of a delivery.
 - **Levelator's headline job does not apply here.** Levelator's main trick was balancing different speakers at different levels on one track. Jivetalking processes one presenter per file to a -16 LUFS integrated target, so inter-speaker balance is solved by the architecture before any leveller could run. That was Levelator's main reason to exist.
-- **The absolute target is loudnorm's job.** Linear-mode loudnorm reaches -16 LUFS integrated from a full-file measurement, computed before the render (`normalise.go:1269`). Short and medium dynamics are the compressor's job. Between them the two stages cover the work a loudness map was invented to do.
+- **The absolute target is loudnorm's job.** Linear-mode loudnorm reaches -16 LUFS integrated from a full-file measurement, computed before the render (`buildLoudnormFilterSpec` in `normalise.go`). Short and medium dynamics are the compressor's job. Between them the two stages cover the work a loudness map was invented to do.
 
 **The one genuine residual:** slow intra-speaker drift over a long session (a presenter drifting 3 to 4 dB across half an hour). The chain does not explicitly flatten that. Two points hold. The corpus sweep found no such benefit to capture. And if the drift ever mattered, the correct fix is a longer compressor release, not a separate gain-automation stage stacked on top. Stacking one on top fights the compressor and lifts the floor, which is what the sweeps showed.
 
@@ -296,7 +296,7 @@ Not a clean death. The Conversations Network shut down in 2012 [13], the 32-bit 
 
 ### Jivetalking code (current branch)
 
-Citations are inline as `file:line`. Primary files: `internal/processor/analyser_vad.go` (VAD), `internal/processor/analyser_candidates_speech.go` (speech election), `internal/processor/adaptive.go`, `adaptive_levelling_compressor.go`, `adaptive_speech_gate.go` (adaptation), `internal/processor/normalise.go` (Pass 3/4), `internal/processor/filters.go` (chain), `internal/processor/processor.go` (orchestration), plus `AGENTS.md`, `docs/Pipeline.md`, `docs/Normalisation-Tuning.md`.
+Citations are inline as function and file. Primary files: `internal/processor/analyser_vad.go` (VAD), `internal/processor/analyser_candidates_speech.go` (speech election), `internal/processor/adaptive.go`, `adaptive_levelling_compressor.go`, `adaptive_speech_gate.go` (adaptation), `internal/processor/normalise.go` (Pass 3/4), `internal/processor/filters.go` (chain), `internal/processor/processor.go` (orchestration), plus `AGENTS.md`, `docs/Pipeline.md`, `docs/Normalisation-Tuning.md`.
 
 ---
 

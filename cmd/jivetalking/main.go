@@ -108,7 +108,12 @@ func main() {
 	config.SetLogger(log)
 
 	if cliArgs.AnalysisOnly {
-		runAnalysisOnly(cliArgs.Files, config, log, resolveJobs(len(cliArgs.Files), runtime.NumCPU()), cliArgs.Diagnostics)
+		if failed := runAnalysisOnly(cliArgs.Files, config, log, resolveJobs(len(cliArgs.Files), runtime.NumCPU()), cliArgs.Diagnostics); failed > 0 {
+			if debugLog != nil {
+				debugLog.Close()
+			}
+			os.Exit(1) //nolint:gocritic // exitAfterDefer: debugLog explicitly closed above
+		}
 		return
 	}
 
@@ -147,7 +152,7 @@ func main() {
 	// tea.Program.Send is a non-blocking no-op, so the pool's FileComplete/
 	// AllComplete sends do not block, and the acquire-time ctx.Done() select
 	// lets not-yet-started workers exit at once.
-	<-poolDone
+	failedFiles := <-poolDone
 	close(reportWarnings)
 
 	if runErr != nil {
@@ -168,6 +173,16 @@ func main() {
 
 	for warning := range reportWarnings {
 		cli.PrintWarning(warning)
+	}
+
+	// Per-file processing failures (excluding cancellation) make the run exit
+	// non-zero so scripted callers see the failure. Report, run-record, sidecar,
+	// and spectrogram write failures stay warnings and never affect the exit.
+	if failedFiles > 0 {
+		if debugLog != nil {
+			debugLog.Close()
+		}
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: debugLog explicitly closed above
 	}
 }
 
@@ -315,16 +330,19 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 
 // runAnalysisOnly performs Pass 1 analysis on each file under a bounded worker
 // pool, then displays results to console in input order. Skips full 4-pass
-// processing.
-func runAnalysisOnly(files []string, config *processor.BaseFilterConfig, log func(string, ...any), jobs int, diagnostics bool) {
-	runAnalysisOnlyWithDeps(files, config, log, jobs, diagnostics, defaultAnalysisOnlyDeps())
+// processing. Returns the number of files whose analysis failed with a real
+// (non-cancellation) error.
+func runAnalysisOnly(files []string, config *processor.BaseFilterConfig, log func(string, ...any), jobs int, diagnostics bool) int {
+	return runAnalysisOnlyWithDeps(files, config, log, jobs, diagnostics, defaultAnalysisOnlyDeps())
 }
 
 // runAnalysisOnlyWithDeps drives the analysis-only path with injected
 // dependencies for testing. diagnostics gates the bulk diagnostic artefacts (the
 // .jsonl sidecars and the input-only spectrogram PNGs). When false the always-on
-// set (.md/.json) still writes; only the opt-in sidecars skip.
-func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig, log func(string, ...any), jobs int, diagnostics bool, deps analysisOnlyDeps) {
+// set (.md/.json) still writes; only the opt-in sidecars skip. Returns the
+// number of files whose analysis failed with a real error; cancellation
+// (context.Canceled-wrapped errors and never-started slots) is excluded.
+func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig, log func(string, ...any), jobs int, diagnostics bool, deps analysisOnlyDeps) int {
 	slots := make([]analysisSlot, len(files))
 
 	poolDeps := analysisPoolDeps{
@@ -399,12 +417,14 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 	// stdout print to avoid doubling up. The .md report is written in both modes.
 	render := analysisRenderScheduler{ctx: specCtx, sem: specSem, wg: &specWG}
 	noTTY := !tty
+	failed := 0
 	for i := range files {
 		if slots[i].err != nil {
 			if errors.Is(slots[i].err, context.Canceled) {
 				continue
 			}
 			deps.printError(fmt.Sprintf("Analysis failed for %s: %v", files[i], slots[i].err))
+			failed++
 			continue
 		}
 
@@ -414,6 +434,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 
 		emitAnalysisReport(files[i], slots[i].result, slots[i].meta, diagnostics, noTTY, deps, render)
 	}
+	return failed
 }
 
 // analysisRenderScheduler bundles the background spectrogram-render state shared

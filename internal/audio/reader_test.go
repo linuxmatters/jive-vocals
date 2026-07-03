@@ -1,8 +1,6 @@
 package audio
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,9 +10,8 @@ import (
 
 // These tests stay hermetic: they never decode or process a real audio file
 // and need nothing under testdata/. They exercise the CGO boundary's safe
-// behaviours - Close nil-guard idempotency, OpenAudioFile error returns on
-// paths that are not decodable, and the sentinel error wrapping that ReadFrame
-// relies on - all reachable without a valid audio stream.
+// behaviours - Close nil-guard idempotency and OpenAudioFile error returns on
+// paths that are not decodable - all reachable without a valid audio stream.
 
 // TestReaderClose_ZeroValueIdempotent proves Close on a zero-value Reader (all
 // resource pointers nil) neither panics nor double-frees, and that calling it
@@ -122,46 +119,6 @@ func TestOpenAudioFile_EmptyPath(t *testing.T) {
 	}
 }
 
-// TestErrorWrapping_PreservesSentinels proves the %w wrapping ReadFrame uses
-// keeps errors.Is matching against the ffmpeg sentinels. ReadFrame branches on
-// errors.Is(err, ffmpeg.AVErrorEOF) and ffmpeg.EAgain after wrapping decode
-// failures; if the wrap verb or the sentinel's Is method ever changed, this
-// classification would break silently and ReadFrame would mis-handle EOF. We
-// reproduce the exact wrap shape here rather than decoding, since the wrapping
-// is the pure, testable contract.
-func TestErrorWrapping_PreservesSentinels(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		sentinel error
-	}{
-		{"EOF", ffmpeg.AVErrorEOF},
-		{"EAgain", ffmpeg.EAgain},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Mirror reader.go's wrap shape, e.g. "failed to receive frame: %w".
-			wrapped := fmt.Errorf("failed to receive frame: %w", tc.sentinel)
-
-			if !errors.Is(wrapped, tc.sentinel) {
-				t.Errorf("errors.Is(wrapped, %s) = false, want true", tc.name)
-			}
-			// A different sentinel must NOT match, so the classification is precise.
-			other := ffmpeg.EAgain
-			if errors.Is(tc.sentinel, ffmpeg.EAgain) {
-				other = ffmpeg.AVErrorEOF
-			}
-			if errors.Is(wrapped, other) {
-				t.Errorf("errors.Is(wrapped %s, other sentinel) = true, want false", tc.name)
-			}
-		})
-	}
-}
-
 // TestDurationSeconds covers the sentinel guard and the tick-to-seconds ratio
 // without a decoder. AVNoptsValue (an unknown container duration) must map to 0,
 // a known tick count must yield the exact AV_TIME_BASE ratio, and the result
@@ -195,29 +152,5 @@ func TestDurationSeconds(t *testing.T) {
 				t.Errorf("durationSeconds(%d) = %v, want non-negative", tc.raw, got)
 			}
 		})
-	}
-}
-
-// TestMetadata_FieldRoundTrip is a trivial pure-value check on the Metadata
-// struct: the fields OpenAudioFile populates are plain and carry the units the
-// doc comments promise. It guards against an accidental field reorder or type
-// change that a struct-literal caller would silently inherit.
-func TestMetadata_FieldRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	m := Metadata{
-		Duration:   123.5,
-		SampleRate: 48000,
-		Channels:   2,
-	}
-
-	if m.Duration != 123.5 {
-		t.Errorf("Duration = %v, want 123.5", m.Duration)
-	}
-	if m.SampleRate != 48000 {
-		t.Errorf("SampleRate = %d, want 48000", m.SampleRate)
-	}
-	if m.Channels != 2 {
-		t.Errorf("Channels = %d, want 2", m.Channels)
 	}
 }

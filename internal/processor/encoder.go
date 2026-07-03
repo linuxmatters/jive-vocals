@@ -191,15 +191,19 @@ func (e *Encoder) receivePackets() error {
 	return nil
 }
 
-// Close closes the encoder and output file
+// Close closes the encoder and output file.
 // Safe to call multiple times - subsequent calls are no-ops.
+// The teardown always runs to completion in reverse acquisition order (packet,
+// encCtx, pb, fmtCtx), mirroring the createOutputEncoder rollback; the first
+// error encountered is captured and returned after every resource is freed.
 func (e *Encoder) Close() error {
 	if e.fmtCtx == nil {
 		return nil
 	}
 
+	var firstErr error
 	if _, err := ffmpeg.AVWriteTrailer(e.fmtCtx); err != nil {
-		return fmt.Errorf("failed to write trailer: %w", err)
+		firstErr = fmt.Errorf("failed to write trailer: %w", err)
 	}
 
 	ffmpeg.AVPacketFree(&e.packet)
@@ -207,8 +211,8 @@ func (e *Encoder) Close() error {
 
 	if e.fmtCtx.Oformat().Flags()&ffmpeg.AVFmtNofile == 0 {
 		if e.fmtCtx.Pb() != nil {
-			if _, err := ffmpeg.AVIOClose(e.fmtCtx.Pb()); err != nil {
-				return fmt.Errorf("failed to close output file: %w", err)
+			if _, err := ffmpeg.AVIOClose(e.fmtCtx.Pb()); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("failed to close output file: %w", err)
 			}
 			e.fmtCtx.SetPb(nil)
 		}
@@ -217,7 +221,7 @@ func (e *Encoder) Close() error {
 	ffmpeg.AVFormatFreeContext(e.fmtCtx)
 	e.fmtCtx = nil // nil fmtCtx marks the encoder closed, so a second Close is a no-op
 
-	return nil
+	return firstErr
 }
 
 // meterLevelFloorDB is the silence floor for the live audio level reported to the

@@ -1236,7 +1236,10 @@ func refPreGain(measuredI, targetI, targetTP float64) (preGainDB, reDerivedCeili
 // bit-identical results to the former calculateLimiterCeiling + calculatePreGain
 // pair (preserved here as refLimiterCeiling / refPreGain) across a grid of
 // (measuredI, measuredTP, targetI, targetTP), including the minLimiterCeilingDB
-// clamp boundary where the ceiling re-derivation fires.
+// clamp boundary where the ceiling re-derivation fires. One deliberate
+// deviation from the former pair: when limiting is not needed the merged
+// helper zeroes the pre-gain pair (the old helpers leaked it), so the oracle
+// composition below applies the same zeroing.
 func TestDeriveLimiterAndPreGainEquivalence(t *testing.T) {
 	measuredIs := []float64{-55.0, -43.2, -40.0, -36.6, -33.5, -24.9, -20.0, -16.0, -12.0}
 	measuredTPs := []float64{-30.0, -20.0, -18.6, -15.0, -10.0, -6.0, -5.0, -3.0, -1.0}
@@ -1249,6 +1252,9 @@ func TestDeriveLimiterAndPreGainEquivalence(t *testing.T) {
 				for _, tTP := range targetTPs {
 					wantCeiling, wantNeeded, wantClamped := refLimiterCeiling(mI, mTP, tI, tTP)
 					wantPreGainDB, wantReDerived := refPreGain(mI, tI, tTP)
+					if !wantNeeded {
+						wantPreGainDB, wantReDerived = 0.0, 0.0
+					}
 
 					got := deriveLimiterAndPreGain(mI, mTP, tI, tTP)
 
@@ -1319,6 +1325,48 @@ func TestDeriveLimiterAndPreGainPinned(t *testing.T) {
 			}
 			if math.Abs(got.reDerivedCeiling-tt.want.reDerivedCeiling) > tol {
 				t.Errorf("reDerivedCeiling = %v, want %v", got.reDerivedCeiling, tt.want.reDerivedCeiling)
+			}
+		})
+	}
+}
+
+// TestDeriveLimiterAndPreGainNotNeededZero pins the invariant that needed ==
+// false implies a fully zero derivation: preGainDB and reDerivedCeiling never
+// leak into diagnostics when the limiter is disabled. The key case is a very
+// quiet file at a very low true peak, where idealCeiling < minLimiterCeilingDB
+// (the pre-gain block fires) yet projectedTP <= targetTP (no limiting).
+func TestDeriveLimiterAndPreGainNotNeededZero(t *testing.T) {
+	tests := []struct {
+		name             string
+		mI, mTP, tI, tTP float64
+	}{
+		{
+			// gain 27.2, idealCeiling -29.2 < -24.0, projectedTP -2.8 <= -2.0
+			name: "ideal ceiling below minimum, no limiting",
+			mI:   -43.2, mTP: -30.0, tI: -16.0, tTP: -2.0,
+		},
+		{
+			// gain 28.0, idealCeiling -30.0 < -24.0, projectedTP exactly -2.0
+			// (values chosen exact in float64 so the boundary holds bit-wise)
+			name: "ideal ceiling below minimum, projected TP at target boundary",
+			mI:   -44.0, mTP: -30.0, tI: -16.0, tTP: -2.0,
+		},
+		{
+			// gain 4.0, idealCeiling -6.0 >= -24.0, projectedTP -6.0 <= -2.0
+			name: "quiet peaks, no pre-gain path",
+			mI:   -20.0, mTP: -10.0, tI: -16.0, tTP: -2.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := deriveLimiterAndPreGain(tt.mI, tt.mTP, tt.tI, tt.tTP)
+			if got.needed {
+				t.Fatalf("needed = true, want false (case must exercise the not-needed branch)")
+			}
+			if got != (limiterDerivation{}) {
+				t.Errorf("deriveLimiterAndPreGain(%.2f, %.2f, %.2f, %.2f) = %+v, want zero limiterDerivation",
+					tt.mI, tt.mTP, tt.tI, tt.tTP, got)
 			}
 		})
 	}

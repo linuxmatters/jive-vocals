@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -91,14 +93,17 @@ func defaultWorkerPoolDeps() workerPoolDeps {
 }
 
 // launchWorkerPool starts runWorkerPool in a goroutine and returns a channel
-// closed once the pool has fully unwound. Callers block on the channel after
-// cancelling the context so all workers' deferred temp cleanup runs before the
-// process exits, giving the no-residue-on-cancel guarantee. Keeping the launch
-// and join in one helper makes the wiring unit-testable apart from main().
-func launchWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, deps workerPoolDeps) <-chan struct{} {
-	done := make(chan struct{})
+// that carries the pool's non-cancellation failure count and is closed once the
+// pool has fully unwound. Callers block on the channel after cancelling the
+// context so all workers' deferred temp cleanup runs before the process exits,
+// giving the no-residue-on-cancel guarantee. The channel is buffered (capacity
+// 1) so the send never blocks the goroutine even if the caller only waits for
+// the close. Keeping the launch and join in one helper makes the wiring
+// unit-testable apart from main().
+func launchWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, deps workerPoolDeps) <-chan int {
+	done := make(chan int, 1)
 	go func() {
-		runWorkerPool(env, diagnostics, reportWarnings, deps)
+		done <- runWorkerPool(env, diagnostics, reportWarnings, deps)
 		close(done)
 	}()
 	return done
@@ -168,7 +173,12 @@ func runBoundedPool(env poolEnv, afterWait func(), body func(i int, inputPath st
 // diagnostics gates the bulk diagnostic artefacts (the .jsonl sidecars and the
 // spectrogram PNGs). When false the always-on set (.flac/.md/.json) still
 // writes; only the opt-in sidecars are skipped.
-func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, deps workerPoolDeps) {
+//
+// Returns the number of files whose ProcessAudio failed with a genuine error.
+// Errors wrapping context.Canceled are excluded, so a user-initiated cancel
+// reports zero failures; a real failure that landed before the cancel still
+// counts.
+func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, deps workerPoolDeps) int {
 	// Spectrogram renders run in background goroutines off the file-worker critical
 	// path. specSem bounds them to the jobs budget shared across ALL files - one
 	// pool-level semaphore, never one unbounded goroutine per PNG, so ffmpeg is not
@@ -177,6 +187,10 @@ func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, 
 	specSem := make(chan struct{}, env.jobs)
 	var specWG sync.WaitGroup
 	render := processingRenderScheduler{sem: specSem, wg: &specWG}
+
+	// failedFiles counts genuine per-file failures across workers; atomic
+	// because up to env.jobs workers hit the error branch concurrently.
+	var failedFiles atomic.Int64
 
 	runBoundedPool(env,
 		// Gate program exit on the spectrogram renders: every file's per-file
@@ -207,6 +221,9 @@ func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, 
 			wlog("[POOL] Starting ProcessAudio for %s", inputPath)
 			result, err := deps.processAudio(env.ctx, inputPath, clone, ph.callback)
 			if err != nil {
+				if !errors.Is(err, context.Canceled) {
+					failedFiles.Add(1)
+				}
 				wlog("[POOL] ProcessAudio failed: %v", err)
 				env.p.Send(ui.FileCompleteMsg{
 					FileIndex:        i,
@@ -220,6 +237,8 @@ func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, 
 			// silently land in Pass 2.
 			emitProcessingReport(env, inputPath, result, ph, processingTimings{fileStart: fileStartTime, pass2: ph.passTime[processor.PassProcessing-1]}, diagnostics, reportWarnings, render)
 		})
+
+	return int(failedFiles.Load())
 }
 
 // processingRenderScheduler bundles the pool-level background spectrogram-render

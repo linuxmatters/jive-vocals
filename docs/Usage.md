@@ -110,3 +110,7 @@ The stars and the gain advice are console-only: the Markdown report stays empiri
 
 - **Before/after spectrogram PNGs**, named `<name>-LUFS-NN-processed.spectrogram-<kind>-<stage>.png`. `<kind>` is `whole`, `roomtone`, or `speech`; `<stage>` is `before` or `after`. Each before/after pair shares identical dimensions and scales for an honest side-by-side. Analysis-only emits `input` spectrograms (no "after"). The Markdown report links them in a `## Spectrograms` section.
 - **Interval sidecars** `<name>.intervals.jsonl` and `<name>.candidates.jsonl`, the raw 250 ms interval samples and the scored speech candidates. The report's inline summaries cover the common case, so these are only needed for deep analysis.
+
+## Exit Codes
+
+For scripts and batch runs: jivetalking exits 0 on success and 1 when any file fails to process or analyse. Quitting early with `q` or `Ctrl+C` exits 0. Failures writing the report, sidecars, or spectrograms print warnings but leave the exit code untouched.

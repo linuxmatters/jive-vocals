@@ -46,9 +46,9 @@ func TestRenderMarkdownSectionOrder(t *testing.T) {
 		RealTimeFactor: 12.5,
 	})
 
-	// Criterion 3: sections MUST appear in this exact order. The Spectrograms slot
-	// is empty (stub) so it contributes no heading; Interval Summary follows Regions
-	// directly.
+	// Criterion 3: sections MUST appear in this exact order. The record carries
+	// no spectrogram paths, so the Spectrograms slot contributes no heading;
+	// Interval Summary follows Regions directly.
 	order := []string{
 		"# Audio Processing Report", // Header
 		"## Processing Summary",

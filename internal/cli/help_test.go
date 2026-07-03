@@ -140,6 +140,37 @@ func TestGetFlagsHelpFirstAndDeduplicated(t *testing.T) {
 	}
 }
 
+// hiddenFlagCLI is a Kong grammar pairing a hidden flag with a visible sibling,
+// exercising the Hidden guard in getFlags.
+type hiddenFlagCLI struct {
+	Secret  bool `name:"secret" hidden:"" help:"Internal only"`
+	Visible bool `name:"visible" help:"Shown in help"`
+}
+
+// TestGetFlagsOmitsHiddenFlags confirms a hidden:"" flag is left out of the
+// rendered Flags section while its visible sibling appears.
+func TestGetFlagsOmitsHiddenFlags(t *testing.T) {
+	k, err := kong.New(&hiddenFlagCLI{}, kong.Name("jivetalking"))
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	ctx, err := k.Parse(nil)
+	if err != nil {
+		t.Fatalf("kong parse: %v", err)
+	}
+
+	var sb strings.Builder
+	writeHelpSection(&sb, "Flags:", helpFlagStyle, getFlags(ctx))
+	got := sb.String()
+
+	if strings.Contains(got, "--secret") {
+		t.Errorf("hidden flag --secret appears in help output:\n%s", got)
+	}
+	if !strings.Contains(got, "--visible") {
+		t.Errorf("visible flag --visible missing from help output:\n%s", got)
+	}
+}
+
 // TestGetArgumentsRendersPositionals confirms getArguments lists positional
 // arguments with their summary label and help text.
 func TestGetArgumentsRendersPositionals(t *testing.T) {

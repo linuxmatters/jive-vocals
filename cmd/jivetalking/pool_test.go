@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,16 +19,36 @@ import (
 
 // inflightFake stands in for the workerPoolDeps processAudio dependency to
 // observe pool concurrency without real FFmpeg. It tracks live in-flight
-// workers and the high-water mark, sleeps briefly to create overlap
-// opportunity, records each processed path exactly once, then returns an error
-// so runWorkerPool takes the FileCompleteMsg{Error} branch (no report/output
-// path needed to drive the pool end-to-end).
+// workers and the high-water mark, records each processed path exactly once,
+// then returns an error so runWorkerPool takes the FileCompleteMsg{Error}
+// branch (no report/output path needed to drive the pool end-to-end).
+//
+// Overlap is forced deterministically, not by sleeping: every worker blocks on
+// a gate channel that closes (via sync.Once) only when in-flight reaches
+// expectedBound, min(jobs, file count). The high-water mark therefore reaches
+// the bound on every run, never by scheduling luck, so callers can assert
+// maxSeen equals the bound exactly. With jobs == 1 the first worker trips the
+// gate at once and execution stays serial. A pool that could never reach the
+// bound would wedge on the gate (test timeout) instead of passing spuriously.
 type inflightFake struct {
+	expectedBound int32
+	gate          chan struct{}
+	release       sync.Once
+
 	live    atomic.Int32
 	maxSeen atomic.Int32
 
 	mu        sync.Mutex
 	processed []string
+}
+
+// newInflightFake builds an inflightFake whose gate opens once in-flight
+// workers reach expectedBound.
+func newInflightFake(expectedBound int) *inflightFake {
+	return &inflightFake{
+		expectedBound: int32(expectedBound), // #nosec G115 -- bound is min(jobs, file count) in tests, far below MaxInt32.
+		gate:          make(chan struct{}),
+	}
 }
 
 func (f *inflightFake) fn(_ context.Context, inputPath string, _ *processor.BaseFilterConfig, _ processor.ProgressCallback) (*processor.ProcessingResult, error) {
@@ -39,7 +60,10 @@ func (f *inflightFake) fn(_ context.Context, inputPath string, _ *processor.Base
 		}
 	}
 
-	time.Sleep(5 * time.Millisecond)
+	if cur >= f.expectedBound {
+		f.release.Do(func() { close(f.gate) })
+	}
+	<-f.gate
 
 	f.mu.Lock()
 	f.processed = append(f.processed, inputPath)
@@ -77,41 +101,69 @@ func (m recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m recordingModel) View() tea.View { return tea.NewView("") }
 
-// runPoolWithFake drives runWorkerPool over n synthetic file paths under a
-// headless recording program, returning the fake plus observed completion
-// counts under a headless tea.Program (no renderer, nil input).
-func runPoolWithFake(t *testing.T, jobs, n int) (*inflightFake, int, bool) {
+// makeSyntheticFiles returns n synthetic .flac paths under a fresh t.TempDir().
+// The paths never exist on disk; the fakes never open them.
+func makeSyntheticFiles(t *testing.T, n int) []string {
 	t.Helper()
-
-	fake := &inflightFake{}
 
 	dir := t.TempDir()
 	files := make([]string, n)
 	for i := range files {
 		files[i] = filepath.Join(dir, "fake-"+string(rune('a'+i))+".flac")
 	}
+	return files
+}
+
+// runPoolCapture drives runWorkerPool over files with the given processAudio
+// fake under a headless recording tea.Program (no renderer, nil input),
+// returning the observed FileCompleteMsg count, whether AllCompleteMsg fired,
+// and the pool's returned non-cancellation failure count. runWorkerPool runs
+// in a goroutine writing its count to a buffered channel; the count is read
+// only after p.Run() returns (AllCompleteMsg is runWorkerPool's last send
+// before it returns), so the read is race-free and never wedges. Any report
+// warning fails the test: no fake in this file provokes a legitimate one.
+func runPoolCapture(t *testing.T, jobs int, files []string, processAudio func(context.Context, string, *processor.BaseFilterConfig, processor.ProgressCallback) (*processor.ProcessingResult, error)) (fileComplete int, allComplete bool, failed int) {
+	t.Helper()
 
 	var mu sync.Mutex
-	fileComplete := 0
-	allComplete := false
 	model := recordingModel{mu: &mu, fileComplete: &fileComplete, allComplete: &allComplete}
 	p := tea.NewProgram(model, tea.WithoutRenderer(), tea.WithInput(nil))
 
 	base := processor.DefaultFilterConfig()
-	reportWarnings := make(chan string, n)
+	reportWarnings := make(chan string, len(files))
 
 	env := poolEnv{ctx: context.Background(), p: p, files: files, base: base, sharedLog: func(string, ...any) {}, jobs: jobs}
-	go runWorkerPool(env, false, reportWarnings, workerPoolDeps{processAudio: fake.fn})
+	failedCh := make(chan int, 1)
+	go func() {
+		failedCh <- runWorkerPool(env, false, reportWarnings, workerPoolDeps{processAudio: processAudio})
+	}()
 
 	if _, err := p.Run(); err != nil {
 		t.Fatalf("p.Run() error = %v", err)
 	}
 
+	failed = <-failedCh
 	close(reportWarnings)
+	for warning := range reportWarnings {
+		t.Errorf("unexpected report warning: %s", warning)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
-	return fake, fileComplete, allComplete
+	return fileComplete, allComplete, failed
+}
+
+// runPoolWithFake drives runWorkerPool over n synthetic file paths with an
+// inflightFake (every file errors), returning the fake, the observed
+// completion counts, and the pool's returned failure count. The fake's gate
+// bound is min(jobs, n): the pool cannot hold more than jobs workers in-flight,
+// and n files cannot supply more than n.
+func runPoolWithFake(t *testing.T, jobs, n int) (*inflightFake, int, bool, int) {
+	t.Helper()
+
+	fake := newInflightFake(min(jobs, n))
+	fileComplete, allComplete, failed := runPoolCapture(t, jobs, makeSyntheticFiles(t, n), fake.fn)
+	return fake, fileComplete, allComplete, failed
 }
 
 // TestRunWorkerPool_InFlightBoundedToOne asserts jobs == 1 holds in-flight
@@ -121,7 +173,7 @@ func runPoolWithFake(t *testing.T, jobs, n int) (*inflightFake, int, bool) {
 func TestRunWorkerPool_InFlightBoundedToOne(t *testing.T) {
 	t.Parallel()
 
-	fake, fileComplete, allComplete := runPoolWithFake(t, 1, 5)
+	fake, fileComplete, allComplete, failed := runPoolWithFake(t, 1, 5)
 
 	if got := fake.maxSeen.Load(); got != 1 {
 		t.Fatalf("max in-flight with jobs=1 = %d, want 1", got)
@@ -132,19 +184,25 @@ func TestRunWorkerPool_InFlightBoundedToOne(t *testing.T) {
 	if !allComplete {
 		t.Fatal("AllCompleteMsg did not fire")
 	}
+	// Every file failed with a genuine (non-cancellation) error, so the pool's
+	// failure count must equal the file count - the exit-code contract's
+	// all-fail case.
+	if failed != 5 {
+		t.Fatalf("runWorkerPool failure count = %d, want 5 (all files fail)", failed)
+	}
 }
 
-// TestRunWorkerPool_BoundHonouredForN asserts jobs == 3 caps in-flight workers
-// at 3 over 8 files while still reaching real concurrency (>1), proving the
-// semaphore both bounds and permits parallelism.
+// TestRunWorkerPool_BoundHonouredForN asserts jobs == 3 holds in-flight
+// workers at exactly 3 over 8 files: the semaphore caps the mark at 3, and the
+// fake's gate holds every worker until 3 are live, so the mark reaches 3 on
+// every run with no dependence on scheduling.
 func TestRunWorkerPool_BoundHonouredForN(t *testing.T) {
 	t.Parallel()
 
-	fake, fileComplete, allComplete := runPoolWithFake(t, 3, 8)
+	fake, fileComplete, allComplete, failed := runPoolWithFake(t, 3, 8)
 
-	maxSeen := fake.maxSeen.Load()
-	if maxSeen < 2 || maxSeen > 3 {
-		t.Fatalf("max in-flight with jobs=3 = %d, want in (1,3]", maxSeen)
+	if maxSeen := fake.maxSeen.Load(); maxSeen != 3 {
+		t.Fatalf("max in-flight with jobs=3 = %d, want exactly 3", maxSeen)
 	}
 	if fileComplete != 8 {
 		t.Fatalf("FileCompleteMsg count = %d, want 8", fileComplete)
@@ -152,11 +210,15 @@ func TestRunWorkerPool_BoundHonouredForN(t *testing.T) {
 	if !allComplete {
 		t.Fatal("AllCompleteMsg did not fire")
 	}
+	if failed != 8 {
+		t.Fatalf("runWorkerPool failure count = %d, want 8 (all files fail)", failed)
+	}
 }
 
 // isolationFake stands in for the workerPoolDeps processAudio dependency so
-// exactly one designated input path errors while every sibling succeeds.
-// Successful calls return a
+// exactly one designated input path errors while every sibling succeeds. An
+// empty failPath matches no input, so every file succeeds (the all-success
+// case). Successful calls return a
 // ProcessingResult whose OutputPath sits next to the (synthetic) input so the
 // pool's report write produces its .md without a report warning. One failing
 // input must leave siblings unaffected.
@@ -242,15 +304,26 @@ func TestRunWorkerPool_FailureIsolation(t *testing.T) {
 	reportWarnings := make(chan string, n)
 
 	env := poolEnv{ctx: context.Background(), p: p, files: files, base: base, sharedLog: func(string, ...any) {}, jobs: 3}
-	go runWorkerPool(env, false, reportWarnings, workerPoolDeps{processAudio: fake.fn})
+	// Capture runWorkerPool's failure count: the goroutine writes it to a
+	// buffered channel, read after p.Run() returns (the pool sends
+	// AllCompleteMsg last, so by then the count is final).
+	failedCh := make(chan int, 1)
+	go func() {
+		failedCh <- runWorkerPool(env, false, reportWarnings, workerPoolDeps{processAudio: fake.fn})
+	}()
 
 	if _, err := p.Run(); err != nil {
 		t.Fatalf("p.Run() error = %v", err)
 	}
 
+	failed := <-failedCh
 	close(reportWarnings)
 	for warning := range reportWarnings {
 		t.Errorf("unexpected report warning: %s", warning)
+	}
+
+	if failed != 1 {
+		t.Fatalf("runWorkerPool failure count = %d, want 1 (only the designated failing file)", failed)
 	}
 
 	mu.Lock()
@@ -289,7 +362,7 @@ func TestRunWorkerPool_SerialParityJobs1(t *testing.T) {
 	t.Parallel()
 
 	const n = 5
-	fake, fileComplete, allComplete := runPoolWithFake(t, 1, n)
+	fake, fileComplete, allComplete, failed := runPoolWithFake(t, 1, n)
 
 	if len(fake.processed) != n {
 		t.Fatalf("processed %d files, want %d", len(fake.processed), n)
@@ -305,6 +378,95 @@ func TestRunWorkerPool_SerialParityJobs1(t *testing.T) {
 	}
 	if len(seen) != n {
 		t.Fatalf("distinct files processed = %d, want %d", len(seen), n)
+	}
+	if fileComplete != n {
+		t.Fatalf("FileCompleteMsg count = %d, want %d", fileComplete, n)
+	}
+	if !allComplete {
+		t.Fatal("AllCompleteMsg did not fire")
+	}
+	if failed != n {
+		t.Fatalf("runWorkerPool failure count = %d, want %d (all files fail)", failed, n)
+	}
+}
+
+// TestRunWorkerPool_FailureCountZeroOnSuccess asserts runWorkerPool returns 0
+// when every file succeeds. An isolationFake with an empty failPath matches no
+// input, so all files take the success branch (output plus .md/.json written
+// into the TempDir); only genuine per-file errors may raise the count.
+func TestRunWorkerPool_FailureCountZeroOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	const n = 4
+	files := makeSyntheticFiles(t, n)
+	fake := &isolationFake{}
+	fileComplete, allComplete, failed := runPoolCapture(t, 2, files, fake.fn)
+
+	if failed != 0 {
+		t.Fatalf("runWorkerPool failure count = %d, want 0 (all files succeed)", failed)
+	}
+	if fileComplete != n {
+		t.Fatalf("FileCompleteMsg count = %d, want %d", fileComplete, n)
+	}
+	if !allComplete {
+		t.Fatal("AllCompleteMsg did not fire")
+	}
+}
+
+// cancelledFake stands in for processAudio to model a user-initiated cancel:
+// every input returns a context.Canceled-wrapped error, except an optional
+// genuinePath which fails with a plain error (a genuine failure that landed
+// before the cancel). runWorkerPool must exclude the wrapped cancellations
+// from its failure count while still counting the genuine failure.
+type cancelledFake struct {
+	genuinePath string
+}
+
+func (f *cancelledFake) fn(_ context.Context, inputPath string, _ *processor.BaseFilterConfig, _ processor.ProgressCallback) (*processor.ProcessingResult, error) {
+	if inputPath == f.genuinePath {
+		return nil, errors.New("cancelledFake: genuine failure before the cancel")
+	}
+	return nil, fmt.Errorf("cancelledFake: worker aborted: %w", context.Canceled)
+}
+
+// TestRunWorkerPool_FailureCountZeroWhenOnlyCancelled asserts a run whose only
+// per-file errors wrap context.Canceled returns 0: a user quit is not a
+// failure, so the exit code stays 0. Cancelled files still emit their
+// FileCompleteMsg{Error} and AllCompleteMsg still fires; only the count is
+// filtered.
+func TestRunWorkerPool_FailureCountZeroWhenOnlyCancelled(t *testing.T) {
+	t.Parallel()
+
+	const n = 5
+	files := makeSyntheticFiles(t, n)
+	fake := &cancelledFake{}
+	fileComplete, allComplete, failed := runPoolCapture(t, 3, files, fake.fn)
+
+	if failed != 0 {
+		t.Fatalf("runWorkerPool failure count = %d, want 0 (all errors wrap context.Canceled)", failed)
+	}
+	if fileComplete != n {
+		t.Fatalf("FileCompleteMsg count = %d, want %d (cancelled files still report)", fileComplete, n)
+	}
+	if !allComplete {
+		t.Fatal("AllCompleteMsg did not fire")
+	}
+}
+
+// TestRunWorkerPool_FailureCountGenuineFailureBeforeCancel asserts a genuine
+// failure that landed before the cancel still counts while the sibling
+// cancellations stay excluded: exactly one of the five errors is plain, so the
+// count is exactly 1.
+func TestRunWorkerPool_FailureCountGenuineFailureBeforeCancel(t *testing.T) {
+	t.Parallel()
+
+	const n = 5
+	files := makeSyntheticFiles(t, n)
+	fake := &cancelledFake{genuinePath: files[1]}
+	fileComplete, allComplete, failed := runPoolCapture(t, 3, files, fake.fn)
+
+	if failed != 1 {
+		t.Fatalf("runWorkerPool failure count = %d, want 1 (one genuine failure among cancellations)", failed)
 	}
 	if fileComplete != n {
 		t.Fatalf("FileCompleteMsg count = %d, want %d", fileComplete, n)
