@@ -142,14 +142,16 @@ func renderMetricTable(rows []metricRow) string {
 	return mdTable(headers, body)
 }
 
-// metricLabel returns the human-readable label for a key, falling back to the raw
-// key when no definition exists (a missing definition is caught by the
-// required-key test, not here).
+// metricLabel returns the human-readable label for a key. A missing definition
+// panics naming the key: every emitted key is in requiredKeys, and
+// TestRequiredKeysHaveDefinitions catches an uncatalogued key before an
+// always-on run reaches this path.
 func metricLabel(key string) string {
-	if d, ok := DefinitionFor(key); ok {
-		return d.Label
+	d, ok := DefinitionFor(key)
+	if !ok {
+		panic("report: metricLabel: no definition for key " + key)
 	}
-	return key
+	return d.Label
 }
 
 // metricDefinition returns the objective gloss with its unit appended in

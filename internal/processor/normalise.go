@@ -344,97 +344,80 @@ func measureWithLoudnorm(ctx context.Context, inputPath string, config *Effectiv
 	return measurement, nil
 }
 
-// calculateLimiterCeiling calculates the adaptive ceiling for pre-limiting in Pass 4.
-// This allows loudnorm to apply full linear gain without exceeding target TP.
+// limiterDerivation carries both results of deriveLimiterAndPreGain: the limiter
+// ceiling decision and the pre-gain deficit that raises a clamped-ceiling signal
+// so loudnorm can still apply full linear gain.
+type limiterDerivation struct {
+	ceiling          float64 // limiter ceiling in dBTP (clamped to minLimiterCeilingDB if needed)
+	needed           bool    // true if limiting is required (projected TP exceeds target)
+	clamped          bool    // true if ceiling was clamped to minimum (loudnorm may need to adjust target)
+	preGainDB        float64 // pre-gain amount in dB (positive when clamped, 0.0 otherwise)
+	reDerivedCeiling float64 // limiter ceiling re-derived from post-gain values (0.0 when not clamped)
+}
+
+// deriveLimiterAndPreGain derives the Pass-4 pre-limiter ceiling and the pre-gain
+// deficit applied when that ceiling is clamped, so loudnorm can apply full linear
+// gain without exceeding target TP. The ceiling places the post-limiter sample
+// peak the full crest budget (target_TP - target_I) above the pre-limiter
+// loudness: ceiling = target_TP - gainRequired. The downstream brickwall limiter
+// (buildBrickwallLimiter, pinned to target_TP) catches any post-adeclick overshoot.
 //
-// The ceiling is derived from the loudness targets. It places the post-limiter
-// sample peak the full crest budget B above the pre-limiter loudness:
-//
-//	B = target_TP - target_I              (the fixed crest budget)
-//	ceiling = target_TP - gainRequired    (= filtered_I + B, the full crest budget)
-//
-// The post-adeclick true-peak overshoot is caught by the downstream brickwall
-// limiter (buildBrickwallLimiter, pinned to target_TP), which is the backstop.
-//
-// FFmpeg alimiter constraint: the limit parameter accepts 0.0625 to 1.0 (linear),
-// which corresponds to -24.08 dBTP to 0 dBTP. Ceilings below this are clamped.
+// Ceilings below alimiter's engine floor (minLimiterCeilingDB) are clamped; on a
+// clamp, preGainDB raises the signal before limiting and reDerivedCeiling is the
+// ceiling re-derived from the post-gain values. Both are 0.0 when not clamped.
+// See docs/Normalisation-Tuning.md for the minLimiterCeilingDB derivation.
 //
 // Parameters:
-//   - measured_I: Measured integrated loudness from Pass 3 (LUFS)
-//   - measured_TP: Measured true peak from Pass 3 (dBTP)
-//   - target_I: Target integrated loudness (LUFS), typically -16.0
-//   - target_TP: Target true peak (dBTP), typically -1.0
-//
-// Returns:
-//   - ceiling: The limiter ceiling in dBTP (clamped to minLimiterCeilingDB if needed)
-//   - needed: True if limiting is required (projected TP exceeds target)
-//   - clamped: True if ceiling was clamped to minimum (loudnorm may need to adjust target)
-func calculateLimiterCeiling(measuredI, measuredTP, targetI, targetTP float64) (ceiling float64, needed bool, clamped bool) {
+//   - measuredI: Measured integrated loudness from Pass 3 (LUFS)
+//   - measuredTP: Measured true peak from Pass 3 (dBTP)
+//   - targetI: Target integrated loudness (LUFS), typically -16.0
+//   - targetTP: Target true peak (dBTP), typically -1.0
+func deriveLimiterAndPreGain(measuredI, measuredTP, targetI, targetTP float64) limiterDerivation {
 	gainRequired := targetI - measuredI
-	projectedTP := measuredTP + gainRequired
+
+	// Pre-gain: computed independently of the limiting decision (the former
+	// calculatePreGain took no measuredTP). When the ideal ceiling sits below
+	// alimiter's minimum, the deficit raises the signal before limiting so
+	// loudnorm can apply full linear gain, and the ceiling is re-derived from the
+	// post-gain values. Otherwise both stay 0.0.
+	idealCeiling := targetTP - gainRequired
+	var d limiterDerivation
+	if idealCeiling < minLimiterCeilingDB {
+		d.preGainDB = minLimiterCeilingDB - idealCeiling
+
+		postGainI := measuredI + d.preGainDB
+		newGainRequired := targetI - postGainI
+		d.reDerivedCeiling = targetTP - newGainRequired
+	}
 
 	// No limiting needed if linear mode already possible
+	projectedTP := measuredTP + gainRequired
 	if projectedTP <= targetTP {
-		return 0, false, false
+		return d
 	}
 
 	// Derived ceiling: targetTP - gainRequired (= filtered_I + B, the full crest budget).
-	ceiling = targetTP - gainRequired
+	d.ceiling = targetTP - gainRequired
+	d.needed = true
 
 	// Clamp to alimiter's minimum supported ceiling
-	if ceiling < minLimiterCeilingDB {
-		ceiling = minLimiterCeilingDB
-		clamped = true
+	if d.ceiling < minLimiterCeilingDB {
+		d.ceiling = minLimiterCeilingDB
+		d.clamped = true
 	}
 
-	return ceiling, true, clamped
+	return d
 }
 
-// calculatePreGain computes the pre-gain amount needed when the limiter ceiling is
-// clamped to alimiter's minimum. The deficit (preGainDB) raises the signal before
-// limiting so that loudnorm can apply full linear gain. When the ceiling is not
-// clamped, returns (0.0, 0.0).
+// buildPreLimiterPrefix constructs the Pass-3/4 pre-limiter prefix: a
+// comma-separated fragment of volume (when pre-gain is active) and the levelling
+// alimiter (when limiting is needed) that creates true-peak headroom so loudnorm
+// stays in linear mode. Returns "" when no limiting is needed.
 //
-// Parameters:
-//   - measuredI: Measured integrated loudness (LUFS)
-//   - targetI: Target integrated loudness (LUFS), typically -16.0
-//   - targetTP: Target true peak (dBTP), typically -1.0
-//
-// Returns:
-//   - preGainDB: The pre-gain amount in dB (positive when clamped, 0.0 otherwise)
-//   - reDerivedCeiling: The limiter ceiling re-derived from post-gain values (0.0 when not clamped)
-func calculatePreGain(measuredI, targetI, targetTP float64) (preGainDB, reDerivedCeiling float64) {
-	gainRequired := targetI - measuredI
-	idealCeiling := targetTP - gainRequired
-
-	// No pre-gain needed if ceiling is at or above alimiter's minimum
-	if idealCeiling >= minLimiterCeilingDB {
-		return 0.0, 0.0
-	}
-
-	// Deficit: how far below the minimum the ideal ceiling sits
-	preGainDB = minLimiterCeilingDB - idealCeiling
-
-	// Re-derive ceiling from post-gain values
-	postGainI := measuredI + preGainDB
-	newGainRequired := targetI - postGainI
-	reDerivedCeiling = targetTP - newGainRequired
-
-	return preGainDB, reDerivedCeiling
-}
-
-// buildPreLimiterPrefix constructs the filter prefix for pre-limiting in Pass 3/4.
-// Returns a comma-separated filter string fragment containing volume (when pre-gain
-// is active) and alimiter (when limiting is needed), or "" when no limiting is needed.
-//
-// Parameters for transparent peak limiting (this is the levellingLimiter: the
-// prefix limiter that creates true-peak headroom so loudnorm stays in linear mode):
-//   - attack=5ms: Gentle attack preserves transient shape
-//   - release=100ms: Smooth recovery eliminates pumping
-//   - asc=1, asc_level=0.8: program-dependent release shaper, dormant on typical
-//     material - only engages under heavy sustained limiting; kept as a safety-net
-//   - level_in/level_out=1: Unity gain (no makeup)
-//   - latency=1: Enable lookahead for better transient handling
+// The alimiter runs a gentle 5 ms attack / 100 ms release for transparent peak
+// limiting at unity gain with lookahead. asc=1:asc_level=0.8 is a program-dependent
+// release shaper kept as a safety net: it stays dormant on typical material and
+// engages only under heavy sustained limiting.
 //
 // Parameters:
 //   - preGainDB: Pre-gain amount in dB (positive when clamped, 0.0 otherwise)
@@ -465,11 +448,11 @@ func buildPreLimiterPrefix(preGainDB, ceiling float64, needsLimiting bool) strin
 
 // buildBrickwallLimiter builds the final-stage source-rate brickwall limiter (the
 // peakLimiter: it owns true-peak delivery). alimiter limits SAMPLE peak, so
-// ceilingDBTP is the sample-peak ceiling: the
-// caller sets it below the loudnorm true-peak target by the inter-sample
-// allowance (brickwallTruePeakHeadroomDB) so oversampled true peak still lands
-// under the target. This helper is a pure dBTP→string converter and applies no
-// headroom itself.
+// ceilingDBTP is the sample-peak ceiling: the caller sets it below the loudnorm
+// true-peak target by the inter-sample allowance (brickwallTruePeakHeadroomDB) so
+// oversampled true peak still lands under the target. This helper is a pure
+// dBTP→string converter and applies no headroom itself.
+// See docs/Normalisation-Tuning.md for the brickwallTruePeakHeadroomDB derivation.
 func buildBrickwallLimiter(ceilingDBTP float64) string {
 	limit := Decibels(ceilingDBTP).LinearAmplitude().Float64()
 	return fmt.Sprintf(
@@ -537,24 +520,22 @@ type loudnormApplicationExecutionResult struct {
 
 func planLimiterForLoudnorm(output *OutputMeasurements, config *EffectiveFilterConfig) limiterPlan {
 	loudnorm := config.Loudnorm
-	ceilingDB, needed, clamped := calculateLimiterCeiling(
+	d := deriveLimiterAndPreGain(
 		output.Loudness.OutputI, output.Loudness.OutputTP,
 		loudnorm.TargetI, loudnorm.TargetTP,
 	)
-	preGainDB, reDerivedCeiling := calculatePreGain(
-		output.Loudness.OutputI, loudnorm.TargetI, loudnorm.TargetTP,
-	)
-	if clamped {
-		ceilingDB = reDerivedCeiling
+	ceilingDB := d.ceiling
+	if d.clamped {
+		ceilingDB = d.reDerivedCeiling
 	}
 
 	return limiterPlan{
-		preGainDB:   preGainDB,
+		preGainDB:   d.preGainDB,
 		ceilingDB:   ceilingDB,
-		needed:      needed,
-		clamped:     clamped,
+		needed:      d.needed,
+		clamped:     d.clamped,
 		gainDB:      loudnorm.TargetI - output.Loudness.OutputI,
-		pass3Prefix: buildPreLimiterPrefix(preGainDB, ceilingDB, needed),
+		pass3Prefix: buildPreLimiterPrefix(d.preGainDB, ceilingDB, d.needed),
 		filteredTP:  output.Loudness.OutputTP,
 	}
 }
@@ -576,8 +557,7 @@ func planLimiterForLoudnorm(output *OutputMeasurements, config *EffectiveFilterC
 // value as targetTP into calculateLinearModeTarget, the measuredTP and measuredI
 // terms cancel and maxLinearTargetI collapses to TargetI + measurementCushionDB
 // (≥ TargetI), so desiredI == TargetI <= maxLinearTargetI holds for every file.
-// Every file reaches full −16.0 LUFS in linear mode without a corpus-tuned relax
-// constant, the deterministic generalisation across any producer's audio.
+// See docs/Normalisation-Tuning.md for the corpus derivation.
 // NEVER use this for the brickwall ceiling.
 func loudnormInternalTargetTP(loudnorm LoudnormConfig, measuredTP, measuredI float64) float64 {
 	return measuredTP + (loudnorm.TargetI - measuredI) + linearSafetyMargin + measurementCushionDB
@@ -612,12 +592,9 @@ func calculateLinearModeTarget(measuredI, measuredTP, desiredI, targetTP float64
 	// Formula: measured_TP + (target_I - measured_I) <= target_TP
 	// Solving for target_I: target_I <= target_TP - measured_TP + measured_I
 	//
-	// We subtract a small safety margin (linearSafetyMargin, 0.1 dB, a package
-	// const so loudnormInternalTargetTP folds the same value into its per-file
-	// internal TP) to account for:
-	// - Floating point precision differences between Go and FFmpeg's internal calculations
-	// - Potential rounding in filter parameter passing
-	// - Any measurement variance during processing
+	// Subtract linearSafetyMargin; loudnormInternalTargetTP folds the same value
+	// into its per-file internal TP.
+	// See docs/Normalisation-Tuning.md for the corpus derivation.
 	maxLinearTargetI := targetTP - measuredTP + measuredI - linearSafetyMargin
 
 	// Check if desired target is achievable in linear mode (with safety margin)
@@ -847,16 +824,13 @@ func applyNormalisationWithDeps(
 	// carries.
 	progress.measuringDoneNormalisingStart(limiter)
 
-	// Calculate effective target I that ensures linear mode (no dynamic fallback)
-	// Pass 3 measured through the same prefix chain as Pass 4, so
-	// measurement.InputI and measurement.InputTP already reflect the
-	// post-limiter signal. No effectiveMeasuredI/effectiveTP adjustment needed.
-	// Guard loudnorm against ITS OWN per-file internal TP target, not the brickwall
-	// ceiling. The downstream brickwall (pinned to loudnorm.TargetTP) owns real
-	// true-peak delivery. loudnormInternalTargetTP derives the internal TP from this
-	// file's measured TP/I, so the measuredTP/measuredI terms cancel in the guard and
-	// maxLinearTargetI collapses to TargetI + measurementCushionDB: the cap is inert
-	// by construction and every file reaches full −16.0 LUFS in linear mode.
+	// Calculate effective target I that ensures linear mode (no dynamic fallback).
+	// Pass 3 measured through the same prefix chain as Pass 4, so measurement.InputI
+	// and measurement.InputTP already reflect the post-limiter signal. Guard loudnorm
+	// against ITS OWN per-file internal TP target (loudnormInternalTargetTP), not the
+	// brickwall ceiling: the downstream brickwall (pinned to loudnorm.TargetTP) owns
+	// real true-peak delivery, and the internal-TP derivation makes the cap inert (see
+	// loudnormInternalTargetTP).
 	effectiveTargetI, _, linearPossible := calculateLinearModeTarget(
 		measurement.InputI,
 		measurement.InputTP,
@@ -1246,24 +1220,18 @@ func buildLoudnormFilterSpec(config *EffectiveFilterConfig, measurement *Loudnor
 	// print_format=json: Outputs JSON with normalization_type, target_offset, output_i/tp/lra
 	//
 	// Pass 3 measures through the same volume+alimiter prefix, so measurement.InputI
-	// and measurement.InputTP already reflect the post-limiter signal. No manual
-	// effectiveMeasuredI/effectiveMeasuredTP adjustment needed.
-	// loudnorm targets its INTERNAL per-file TP (the projected post-gain peak plus a
-	// fixed measurement cushion, loudnormInternalTargetTP), not the delivered ceiling.
-	// The downstream brickwall (built below from the un-relaxed loudnorm.TargetTP)
-	// owns the real ceiling, so loudnorm can drive to full −16.0 LUFS without its own
-	// limiter fighting the last fraction of a dB.
+	// and measurement.InputTP already reflect the post-limiter signal. loudnorm targets
+	// its INTERNAL per-file TP (loudnormInternalTargetTP), not the delivered ceiling;
+	// the downstream brickwall (built below from the un-relaxed loudnorm.TargetTP) owns
+	// the real ceiling, so loudnorm can drive to full −16.0 LUFS.
 	//
 	// The emitted TP= is clamped to FFmpeg's accepted range [loudnormTPMinDB,
-	// loudnormTPMaxDB] = [-9, 0]. On-corpus the prefix limiter holds projectedPeak
-	// ≤ TargetTP, so internalTP ≈ -0.7 (never near the upper clamp) and passes
-	// through UNCHANGED, clamping to [-9, 0] (NOT to TargetTP) preserves byte
-	// parity. The lower clamp only catches genuinely quiet off-corpus recordings
-	// whose peak is already below -9 dBTP, where loudnorm's internal limiter is
-	// inert anyway, so the clamp changes no on-corpus output. The linear-mode guard
-	// above keeps the UNCLAMPED value so "reach -16 in linear mode" still holds for
-	// those quiet files. emittedTP (and the brickwall ceiling below) come from
-	// loudnormTPTargets.
+	// loudnormTPMaxDB] = [-9, 0] (NOT to TargetTP). The lower clamp only catches
+	// genuinely quiet recordings whose peak is already below -9 dBTP, where
+	// loudnorm's internal limiter is inert. The linear-mode guard above keeps the
+	// UNCLAMPED value so "reach -16 in linear mode" still holds for those quiet
+	// files. emittedTP (and the brickwall ceiling below) come from loudnormTPTargets.
+	// See docs/Normalisation-Tuning.md for the loudnormTP bounds.
 	loudnormFilter := fmt.Sprintf(
 		"loudnorm=I=%.2f:TP=%.2f:LRA=%.1f:measured_I=%.2f:measured_TP=%.2f:measured_LRA=%.2f:measured_thresh=%.2f:offset=%.2f:dual_mono=%s:linear=%s:print_format=json",
 		loudnorm.TargetI, // %.2f for precision on adjusted targets

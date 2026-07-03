@@ -375,10 +375,12 @@ var Definitions = map[string]Definition{
 	},
 }
 
-// requiredKeys is the set of RunRecord field names the loudness, dynamics, and
-// spectral sections emit and that MUST have a definition. The renderers and the
-// completeness test assert every key here resolves in Definitions; a missing
-// entry fails the test.
+// requiredKeys is the set of RunRecord field names the report sections emit
+// (loudness, dynamics, spectral, noise, regions, gate statistics, interval
+// summary) and that MUST have a definition. Every key routed through metricLabel
+// or unitMetricFormat now panics on a missing definition, so the completeness
+// test asserts every key here resolves in Definitions to catch a gap in CI
+// before an always-on run fails.
 var requiredKeys = []string{
 	// Loudness
 	"integrated_lufs",
@@ -419,6 +421,43 @@ var requiredKeys = []string{
 	"slope",
 	"decrease",
 	"rolloff_hz",
+
+	// Noise (input-only noise domain)
+	"floor_dbfs",
+	"floor_source",
+	"floor_prescan_dbfs",
+	"floor_astats_dbfs",
+	"room_tone_detect_level_dbfs",
+	"voice_activated",
+	"floored_fraction",
+	"reduction_headroom_db",
+
+	// Regions: gate statistics + elected profile bounds
+	"voiced_low_percentile_dbfs",
+	"noise_high_percentile_dbfs",
+	"gate_separation_db",
+	"measured_floor_dbfs",
+	"start_s",
+	"duration_s",
+	"spectral_centroid_hz",
+	"spectral_flatness",
+	"spectral_kurtosis",
+	"voicing_density",
+	"speech_band_body_rms_dbfs",
+	"speech_band_sib_rms_dbfs",
+	"score",
+	"crest_factor_db",
+
+	// Interval summary (per-250ms RMS distribution + gap)
+	"interval_count",
+	"largest_gap_db",
+	"rms_dist_min_dbfs",
+	"rms_dist_p10_dbfs",
+	"rms_dist_p25_dbfs",
+	"rms_dist_p50_dbfs",
+	"rms_dist_p75_dbfs",
+	"rms_dist_p90_dbfs",
+	"rms_dist_max_dbfs",
 }
 
 // DefinitionFor returns the objective definition for a RunRecord field name and

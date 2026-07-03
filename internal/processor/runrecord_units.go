@@ -134,13 +134,17 @@ func (p *noiseProfileRecord) Profile() *NoiseProfile {
 // SpectralMetrics's own mean/centroid_hz/entropy tags) so the schema is unchanged
 // after the embed. Field order and tags mirror the former flat struct exactly.
 type noiseProfileJSON struct {
-	Start              time.Duration `json:"start"`
-	Duration           time.Duration `json:"duration"`
-	MeasuredNoiseFloor float64       `json:"measured_floor_dbfs"`
-	PeakLevel          float64       `json:"peak_level_dbfs"`
-	CrestFactor        float64       `json:"crest_factor_db"`
-	Entropy            float64       `json:"entropy"`
-	ExtractionWarning  string        `json:"extraction_warning,omitempty"`
+	Start    time.Duration `json:"start"`
+	Duration time.Duration `json:"duration"`
+	// MeasuredNoiseFloor mirrors NoiseProfile.MeasuredNoiseFloor: seeded as astats
+	// RMS, then overwritten by detectVoiceActivity with the momentary-LUFS percentile
+	// floor. The measured_floor_dbfs key names dBFS but the elected value is on the
+	// momentary-LUFS axis.
+	MeasuredNoiseFloor float64 `json:"measured_floor_dbfs"`
+	PeakLevel          float64 `json:"peak_level_dbfs"`
+	CrestFactor        float64 `json:"crest_factor_db"`
+	Entropy            float64 `json:"entropy"`
+	ExtractionWarning  string  `json:"extraction_warning,omitempty"`
 
 	SpectralMean     float64 `json:"spectral_mean"`
 	SpectralVariance float64 `json:"spectral_variance"`
