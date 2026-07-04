@@ -134,18 +134,18 @@ func useCustomAfftdnProfile(measurements *AudioMeasurements) bool {
 // white noise model for the measured custom band-noise shape. anlmdn and the fixed
 // afftdn nr are untouched.
 func tuneNoiseReduction(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) {
-	if config == nil || measurements == nil {
-		return
-	}
-
 	if measurements.Noise.VoiceActivated {
 		config.NoiseReduction.AfftdnEnabled = false
-		diagnostics.AfftdnEnabled = false
-		diagnostics.AfftdnDisableReason = "voice_activated"
+		if diagnostics != nil {
+			diagnostics.AfftdnEnabled = false
+			diagnostics.AfftdnDisableReason = "voice_activated"
+		}
 		return
 	}
 
-	diagnostics.AfftdnEnabled = config.NoiseReduction.AfftdnEnabled
+	if diagnostics != nil {
+		diagnostics.AfftdnEnabled = config.NoiseReduction.AfftdnEnabled
+	}
 
 	// Guard: a zero floor means unmeasured. Leave the defaults (afftdn on,
 	// track_noise on, nf unset) as a safe fallback.
@@ -156,7 +156,9 @@ func tuneNoiseReduction(config *EffectiveFilterConfig, diagnostics *AdaptiveDiag
 	floor := max(afftdnNoiseFloorMinDB, min(afftdnNoiseFloorMaxDB, measurements.Noise.Floor))
 	config.NoiseReduction.AfftdnNoiseFloor = floor
 	config.NoiseReduction.AfftdnTrackNoise = false
-	diagnostics.AfftdnNoiseFloorDB = floor
+	if diagnostics != nil {
+		diagnostics.AfftdnNoiseFloorDB = floor
+	}
 
 	// Measured custom noise profile: when the room-tone band spectrum is
 	// trustworthy, emit the measured spectral shape (nt=custom:bn) instead of
@@ -169,7 +171,9 @@ func tuneNoiseReduction(config *EffectiveFilterConfig, diagnostics *AdaptiveDiag
 			config.NoiseReduction.AfftdnBandNoise = bn
 		}
 	}
-	diagnostics.AfftdnNoiseType = config.NoiseReduction.AfftdnNoiseType
+	if diagnostics != nil {
+		diagnostics.AfftdnNoiseType = config.NoiseReduction.AfftdnNoiseType
+	}
 }
 
 // sanitiseConfig ensures no NaN or Inf values remain after adaptive tuning.

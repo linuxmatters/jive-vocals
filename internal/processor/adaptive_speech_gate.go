@@ -155,7 +155,7 @@ func tuneSpeechGate(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnost
 	config.SpeechGate.Attack = speechGateAttackMS
 
 	// 4. Release: fixed 200 ms with the hold folded in (see speechGateReleaseFixedMS).
-	config.SpeechGate.Release = calculateSpeechGateRelease()
+	config.SpeechGate.Release = speechGateReleaseFixedMS
 
 	// 5. Range: fixed moderate depth, reduced to a gentler fixed depth on a narrow
 	// gap. depthDB is a positive attenuation depth, so negate it for the config's
@@ -273,15 +273,6 @@ func calculateSpeechGateRatio(lra float64) float64 {
 		return speechGateRatioGentle // Wide dynamics - preserve expression
 	}
 	return speechGateRatioMod // Cap at 2.0:1 - soft expander, never a hard gate
-}
-
-// calculateSpeechGateRelease returns the fixed release time. agate has no hold
-// parameter, so the hold is folded into the release: a longer release holds the
-// gate open through the short intra-syllable dips inside speech so it does not
-// pump, while staying short enough to close cleanly at word ends. A single fixed
-// value (~200 ms), not a stacked flux/ZCR/LRA sum.
-func calculateSpeechGateRelease() float64 {
-	return speechGateReleaseFixedMS
 }
 
 // calculateSpeechGateRangeDB returns the gate attenuation depth in dB. It emits a

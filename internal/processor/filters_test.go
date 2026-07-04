@@ -1421,13 +1421,12 @@ func TestAnalysisSegmentSharedAcrossPasses(t *testing.T) {
 
 	pass4Config := defaultNormalisationTestConfig()
 	measurement := &LoudnormMeasurement{
-		InputI:       -24.0,
-		InputTP:      -5.0,
-		InputLRA:     6.0,
-		InputThresh:  -34.0,
-		TargetOffset: -0.5,
+		InputI:      -24.0,
+		InputTP:     -5.0,
+		InputLRA:    6.0,
+		InputThresh: -34.0,
 	}
-	pass4Spec := buildLoudnormFilterSpec(pass4Config, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 48000, "")
+	pass4Spec := buildLoudnormFilterSpec(pass4Config, measurement, -0.5, limiterPlan{ceilingDB: -1.0}, 48000, "")
 
 	pass2Astats := findFilterElement(pass2Spec, "astats=")
 	pass4Astats := findFilterElement(pass4Spec, "astats=")

@@ -3,7 +3,6 @@ package processor
 import (
 	"encoding/json"
 	"reflect"
-	"strconv"
 	"time"
 )
 
@@ -248,7 +247,7 @@ type normalisationRecord struct {
 func (n normalisationRecord) MarshalJSON() ([]byte, error) {
 	return n.marshalWithTransform(func(m map[string]any) {
 		durationKeySeconds(m, "region_measurement_ns", "region_measurement_s")
-		m["loudnorm_measured"] = loudnormMeasuredNumeric(n.src.LoudnormStats)
+		m["loudnorm_measured"] = loudnormMeasuredNumeric(n.src.LoudnormParsed)
 	})
 }
 
@@ -261,39 +260,35 @@ func (n *normalisationRecord) Result() *NormalisationResult {
 	return n.src
 }
 
-// loudnormMeasuredNumeric converts FFmpeg's string-keyed LoudnormStats into the
-// §8.4 numeric sub-block: each measurement string is parsed to float64 under a
-// unit-suffixed key, and normalization_type stays a string (it is categorical,
-// not a measurement). A field whose string fails to parse is omitted (the reader
-// sees a missing key, never a fabricated 0). Returns nil for nil stats so the
-// caller emits null.
-func loudnormMeasuredNumeric(stats *LoudnormStats) map[string]any {
-	if stats == nil {
+// loudnormMeasuredNumeric converts the parsed loudnorm values into the §8.4
+// numeric sub-block: each parsed measurement is written under a unit-suffixed
+// key, and normalization_type stays a string (it is categorical, not a
+// measurement). A field whose source string failed to parse is omitted (the
+// reader sees a missing key, never a fabricated 0). Returns nil for nil values
+// so the caller emits null.
+func loudnormMeasuredNumeric(measured *LoudnormMeasured) map[string]any {
+	if measured == nil {
 		return nil
 	}
 	out := map[string]any{}
-	putParsedFloat(out, "input_integrated_lufs", stats.InputI)
-	putParsedFloat(out, "input_true_peak_dbtp", stats.InputTP)
-	putParsedFloat(out, "input_lra_lu", stats.InputLRA)
-	putParsedFloat(out, "input_thresh_lufs", stats.InputThresh)
-	putParsedFloat(out, "output_integrated_lufs", stats.OutputI)
-	putParsedFloat(out, "output_true_peak_dbtp", stats.OutputTP)
-	putParsedFloat(out, "output_lra_lu", stats.OutputLRA)
-	putParsedFloat(out, "output_thresh_lufs", stats.OutputThresh)
-	putParsedFloat(out, "target_offset_db", stats.TargetOffset)
-	if stats.NormalizationType != "" {
-		out["normalization_type"] = stats.NormalizationType
+	putLoudnormValue(out, "input_integrated_lufs", measured.InputI)
+	putLoudnormValue(out, "input_true_peak_dbtp", measured.InputTP)
+	putLoudnormValue(out, "input_lra_lu", measured.InputLRA)
+	putLoudnormValue(out, "input_thresh_lufs", measured.InputThresh)
+	putLoudnormValue(out, "output_integrated_lufs", measured.OutputI)
+	putLoudnormValue(out, "output_true_peak_dbtp", measured.OutputTP)
+	putLoudnormValue(out, "output_lra_lu", measured.OutputLRA)
+	putLoudnormValue(out, "output_thresh_lufs", measured.OutputThresh)
+	putLoudnormValue(out, "target_offset_db", measured.TargetOffset)
+	if measured.NormalizationType != "" {
+		out["normalization_type"] = measured.NormalizationType
 	}
 	return out
 }
 
-// putParsedFloat parses a loudnorm string value to float64 and stores it under
-// key, leaving the key absent on parse failure (graceful: omit, never crash or
-// fabricate). Mirrors the existing strconv.ParseFloat usage in normalise.go.
-func putParsedFloat(out map[string]any, key, value string) {
-	f, err := strconv.ParseFloat(value, 64)
-	if err != nil {
+func putLoudnormValue(out map[string]any, key string, value LoudnormValue) {
+	if !value.OK {
 		return
 	}
-	out[key] = f
+	out[key] = value.Value
 }

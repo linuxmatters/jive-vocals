@@ -219,11 +219,10 @@ func TestMeasureWithLoudnormStatsFileYieldsFiniteMeasurement(t *testing.T) {
 	}
 
 	values := map[string]float64{
-		"InputI":       measurement.InputI,
-		"InputTP":      measurement.InputTP,
-		"InputLRA":     measurement.InputLRA,
-		"InputThresh":  measurement.InputThresh,
-		"TargetOffset": measurement.TargetOffset,
+		"InputI":      measurement.InputI,
+		"InputTP":     measurement.InputTP,
+		"InputLRA":    measurement.InputLRA,
+		"InputThresh": measurement.InputThresh,
 	}
 	for name, value := range values {
 		if math.IsNaN(value) || math.IsInf(value, 0) {
@@ -390,11 +389,10 @@ func loudnormMeasurementFromFixture(t *testing.T, body string) *LoudnormMeasurem
 	}
 
 	return &LoudnormMeasurement{
-		InputI:       parseFloat("input_i", stats.InputI),
-		InputTP:      parseFloat("input_tp", stats.InputTP),
-		InputLRA:     parseFloat("input_lra", stats.InputLRA),
-		InputThresh:  parseFloat("input_thresh", stats.InputThresh),
-		TargetOffset: parseFloat("target_offset", stats.TargetOffset),
+		InputI:      parseFloat("input_i", stats.InputI),
+		InputTP:     parseFloat("input_tp", stats.InputTP),
+		InputLRA:    parseFloat("input_lra", stats.InputLRA),
+		InputThresh: parseFloat("input_thresh", stats.InputThresh),
 	}
 }
 
@@ -466,11 +464,10 @@ func loudnormApplicationTestConfig() *EffectiveFilterConfig {
 
 func loudnormApplicationTestMeasurement() *LoudnormMeasurement {
 	return &LoudnormMeasurement{
-		InputI:       -23.0,
-		InputTP:      -4.0,
-		InputLRA:     5.0,
-		InputThresh:  -33.0,
-		TargetOffset: 0.0,
+		InputI:      -23.0,
+		InputTP:     -4.0,
+		InputLRA:    5.0,
+		InputThresh: -33.0,
 	}
 }
 
@@ -1712,11 +1709,10 @@ func TestBuildLoudnormFilterSpec_PreGain(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			config := defaultNormalisationTestConfig()
 			measurement := &LoudnormMeasurement{
-				InputI:       tt.inputI,
-				InputTP:      tt.inputTP,
-				InputLRA:     tt.inputLRA,
-				InputThresh:  tt.inputThresh,
-				TargetOffset: tt.targetOffset,
+				InputI:      tt.inputI,
+				InputTP:     tt.inputTP,
+				InputLRA:    tt.inputLRA,
+				InputThresh: tt.inputThresh,
 			}
 
 			// Pre-compute values (the caller's responsibility)
@@ -1730,7 +1726,7 @@ func TestBuildLoudnormFilterSpec_PreGain(t *testing.T) {
 				ceiling = reDerivedCeiling
 			}
 
-			filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, limiterPlan{preGainDB: preGainDB, ceilingDB: ceiling, needed: needsLimiting}, 48000, "")
+			filterSpec := buildLoudnormFilterSpec(config, measurement, tt.targetOffset, limiterPlan{preGainDB: preGainDB, ceilingDB: ceiling, needed: needsLimiting}, 48000, "")
 
 			// (a)/(b): Check volume filter presence
 			hasVolume := strings.Contains(filterSpec, "volume=")
@@ -1803,14 +1799,14 @@ func TestBuildLoudnormFilterSpec_DoesNotMutateConfig(t *testing.T) {
 	config.Resample.FrameSize = 2048
 
 	measurement := &LoudnormMeasurement{
-		InputI:       -24.0,
-		InputTP:      -5.0,
-		InputLRA:     6.0,
-		InputThresh:  -34.0,
-		TargetOffset: -0.5,
+		InputI:      -24.0,
+		InputTP:     -5.0,
+		InputLRA:    6.0,
+		InputThresh: -34.0,
 	}
+	const offset = -0.5
 
-	filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 48000, "")
+	filterSpec := buildLoudnormFilterSpec(config, measurement, offset, limiterPlan{ceilingDB: -1.0}, 48000, "")
 
 	if config.Resample.Enabled {
 		t.Error("buildLoudnormFilterSpec mutated config.Resample.Enabled")
@@ -1824,17 +1820,17 @@ func TestBuildLoudnormFilterSpec_DoesNotMutateConfig(t *testing.T) {
 
 func TestBuildLoudnormFilterSpec_Adeclick(t *testing.T) {
 	measurement := &LoudnormMeasurement{
-		InputI:       -24.0,
-		InputTP:      -5.0,
-		InputLRA:     6.0,
-		InputThresh:  -34.0,
-		TargetOffset: -0.5,
+		InputI:      -24.0,
+		InputTP:     -5.0,
+		InputLRA:    6.0,
+		InputThresh: -34.0,
 	}
+	const offset = -0.5
 
 	t.Run("uses Pass 4 adeclick helper", func(t *testing.T) {
 		config := defaultNormalisationTestConfig()
 
-		filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 48000, "")
+		filterSpec := buildLoudnormFilterSpec(config, measurement, offset, limiterPlan{ceilingDB: -1.0}, 48000, "")
 
 		const want = "adeclick=t=1.7:w=55:o=50:m=s"
 		if !strings.Contains(filterSpec, want) {
@@ -1846,7 +1842,7 @@ func TestBuildLoudnormFilterSpec_Adeclick(t *testing.T) {
 		config := defaultNormalisationTestConfig()
 		config.Adeclick.Enabled = false
 
-		filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 48000, "")
+		filterSpec := buildLoudnormFilterSpec(config, measurement, offset, limiterPlan{ceilingDB: -1.0}, 48000, "")
 
 		if strings.Contains(filterSpec, "adeclick=") {
 			t.Errorf("buildLoudnormFilterSpec() emitted disabled adeclick\nfilterSpec: %s", filterSpec)
@@ -1856,12 +1852,12 @@ func TestBuildLoudnormFilterSpec_Adeclick(t *testing.T) {
 
 func TestBuildLoudnormFilterSpecSourceRateResample(t *testing.T) {
 	measurement := &LoudnormMeasurement{
-		InputI:       -24.0,
-		InputTP:      -5.0,
-		InputLRA:     6.0,
-		InputThresh:  -34.0,
-		TargetOffset: -0.5,
+		InputI:      -24.0,
+		InputTP:     -5.0,
+		InputLRA:    6.0,
+		InputThresh: -34.0,
 	}
+	const offset = -0.5
 
 	// Pins source-rate derivation against a NON-48000 rate so a future refactor
 	// that hardcodes 48000 (instead of deriving from metadata) or drops the
@@ -1870,7 +1866,7 @@ func TestBuildLoudnormFilterSpecSourceRateResample(t *testing.T) {
 	t.Run("derives resample rate and orders it between loudnorm and adeclick", func(t *testing.T) {
 		config := defaultNormalisationTestConfig()
 
-		filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 96000, "")
+		filterSpec := buildLoudnormFilterSpec(config, measurement, offset, limiterPlan{ceilingDB: -1.0}, 96000, "")
 
 		const wantResample = "aresample=96000"
 		if !strings.Contains(filterSpec, wantResample) {
@@ -1896,7 +1892,7 @@ func TestBuildLoudnormFilterSpecSourceRateResample(t *testing.T) {
 	t.Run("omits resample when source rate is zero", func(t *testing.T) {
 		config := defaultNormalisationTestConfig()
 
-		filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 0, "")
+		filterSpec := buildLoudnormFilterSpec(config, measurement, offset, limiterPlan{ceilingDB: -1.0}, 0, "")
 
 		if strings.Contains(filterSpec, "aresample=") {
 			t.Fatalf("buildLoudnormFilterSpec() emitted aresample for zero source rate\nfilterSpec: %s", filterSpec)
@@ -1909,16 +1905,16 @@ func TestBuildLoudnormFilterSpecSourceRateResample(t *testing.T) {
 
 func TestBuildLoudnormFilterSpecIgnoresNonNormalisationFields(t *testing.T) {
 	measurement := &LoudnormMeasurement{
-		InputI:       -24.0,
-		InputTP:      -5.0,
-		InputLRA:     6.0,
-		InputThresh:  -34.0,
-		TargetOffset: -0.5,
+		InputI:      -24.0,
+		InputTP:     -5.0,
+		InputLRA:    6.0,
+		InputThresh: -34.0,
 	}
+	const offset = -0.5
 
 	base := defaultNormalisationTestConfig()
 	assertNoStaleEffectiveConfigFields(t)
-	controlSpec := buildLoudnormFilterSpec(base, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 48000, "")
+	controlSpec := buildLoudnormFilterSpec(base, measurement, offset, limiterPlan{ceilingDB: -1.0}, 48000, "")
 
 	withUnrelatedFilterFields := *base
 	withUnrelatedFilterFields.FilterOrder = []FilterID{FilterAnalysis}
@@ -1926,7 +1922,7 @@ func TestBuildLoudnormFilterSpecIgnoresNonNormalisationFields(t *testing.T) {
 	withUnrelatedFilterFields.SpeechGate.Ratio = 4.0
 	withUnrelatedFilterFields.LevellingCompressor.Threshold = -30.0
 
-	gotSpec := buildLoudnormFilterSpec(&withUnrelatedFilterFields, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 48000, "")
+	gotSpec := buildLoudnormFilterSpec(&withUnrelatedFilterFields, measurement, offset, limiterPlan{ceilingDB: -1.0}, 48000, "")
 	if gotSpec != controlSpec {
 		t.Fatalf("buildLoudnormFilterSpec() changed when unrelated filter fields changed\ncontrol: %s\ngot:     %s", controlSpec, gotSpec)
 	}
@@ -2121,11 +2117,10 @@ func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 			config := defaultNormalisationTestConfig()
 			config.Loudnorm.TargetI = effectiveTargetI
 			measurement := &LoudnormMeasurement{
-				InputI:       tt.measuredI,
-				InputTP:      tt.measuredTP,
-				InputLRA:     8.0,
-				InputThresh:  tt.measuredI - 10.0,
-				TargetOffset: -2.5,
+				InputI:      tt.measuredI,
+				InputTP:     tt.measuredTP,
+				InputLRA:    8.0,
+				InputThresh: tt.measuredI - 10.0,
 			}
 
 			// Pre-compute values (the caller's responsibility)
@@ -2139,7 +2134,7 @@ func TestClampedTargetPropagation_Arithmetic(t *testing.T) {
 				bCeiling = bReDerived
 			}
 
-			filterSpec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, limiterPlan{preGainDB: preGainDB, ceilingDB: bCeiling, needed: bNeeded}, 48000, "")
+			filterSpec := buildLoudnormFilterSpec(config, measurement, -2.5, limiterPlan{preGainDB: preGainDB, ceilingDB: bCeiling, needed: bNeeded}, 48000, "")
 			if !bClamped {
 				t.Error("expected pre-computation to report clamped")
 			}
@@ -2309,6 +2304,7 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 		outputI        float64
 		outputTP       float64
 		measurement    LoudnormMeasurement
+		offset         float64
 		wantPass3      string
 		wantPass4      string
 		wantPass4Start string
@@ -2318,12 +2314,12 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 			outputI:  -20.0,
 			outputTP: -10.0,
 			measurement: LoudnormMeasurement{
-				InputI:       -20.0,
-				InputTP:      -10.0,
-				InputLRA:     5.0,
-				InputThresh:  -30.0,
-				TargetOffset: 0.0,
+				InputI:      -20.0,
+				InputTP:     -10.0,
+				InputLRA:    5.0,
+				InputThresh: -30.0,
 			},
+			offset:         0.0,
 			wantPass3:      "",
 			wantPass4Start: "loudnorm=",
 			wantPass4:      "loudnorm=I=-16.00:TP=-5.70:LRA=20.0:measured_I=-20.00:measured_TP=-10.00:measured_LRA=5.00:measured_thresh=-30.00:offset=0.00:dual_mono=true:linear=true:print_format=json,aresample=48000,adeclick=t=1.7:w=55:o=50:m=s,alimiter=limit=0.803526:attack=1:release=50:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
@@ -2333,12 +2329,12 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 			outputI:  -24.9,
 			outputTP: -5.0,
 			measurement: LoudnormMeasurement{
-				InputI:       -24.9,
-				InputTP:      -5.0,
-				InputLRA:     6.0,
-				InputThresh:  -35.0,
-				TargetOffset: -0.5,
+				InputI:      -24.9,
+				InputTP:     -5.0,
+				InputLRA:    6.0,
+				InputThresh: -35.0,
 			},
+			offset:         -0.5,
 			wantPass3:      "alimiter=limit=0.319890:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8",
 			wantPass4Start: "alimiter=limit=0.319890:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=",
 			wantPass4:      "alimiter=limit=0.319890:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=I=-16.00:TP=0.00:LRA=20.0:measured_I=-24.90:measured_TP=-5.00:measured_LRA=6.00:measured_thresh=-35.00:offset=-0.50:dual_mono=true:linear=true:print_format=json,aresample=48000,adeclick=t=1.7:w=55:o=50:m=s,alimiter=limit=0.803526:attack=1:release=50:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential. internalTP +4.20 clamped to FFmpeg's [-9, 0] range
@@ -2348,12 +2344,12 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 			outputI:  -43.2,
 			outputTP: -18.6,
 			measurement: LoudnormMeasurement{
-				InputI:       -36.5,
-				InputTP:      -24.0,
-				InputLRA:     8.0,
-				InputThresh:  -46.5,
-				TargetOffset: -2.5,
+				InputI:      -36.5,
+				InputTP:     -24.0,
+				InputLRA:    8.0,
+				InputThresh: -46.5,
 			},
+			offset:         -2.5,
 			wantPass3:      "volume=4.2dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8",
 			wantPass4Start: "volume=4.2dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=",
 			wantPass4:      "volume=4.2dB,alimiter=limit=0.063096:attack=5:release=100:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,loudnorm=I=-16.00:TP=-3.20:LRA=20.0:measured_I=-36.50:measured_TP=-24.00:measured_LRA=8.00:measured_thresh=-46.50:offset=-2.50:dual_mono=true:linear=true:print_format=json,aresample=48000,adeclick=t=1.7:w=55:o=50:m=s,alimiter=limit=0.803526:attack=1:release=50:level_in=1:level_out=1:level=0:latency=1:asc=1:asc_level=0.8,astats=metadata=1:measure_perchannel=all,aspectralstats=win_size=2048:win_func=hann:measure=all,ebur128=metadata=1:peak=sample+true:dualmono=true,aformat=sample_rates=44100:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096", // #nosec G101 -- FFmpeg filter fixture, not a credential.
@@ -2378,7 +2374,7 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 			gotPass4 := buildLoudnormFilterSpec(
 				config,
 				&tt.measurement,
-				tt.measurement.TargetOffset,
+				tt.offset,
 				limiter,
 				48000,
 				"",

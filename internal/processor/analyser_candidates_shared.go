@@ -44,41 +44,7 @@ func refineToSubregion(
 		return region, false
 	}
 
-	// Calculate window size in intervals
-	windowIntervals := int(windowDuration / goldenIntervalSize)
-	minimumIntervals := int(windowMinimum / goldenIntervalSize)
-
-	// Need at least minimum window worth of intervals
-	if len(candidateIntervals) < minimumIntervals {
-		return region, false
-	}
-
-	// If we have fewer intervals than target window, use what we have
-	if len(candidateIntervals) < windowIntervals {
-		windowIntervals = len(candidateIntervals)
-	}
-
-	// Slide window across intervals, finding the position with the best score
-	bestStartIdx := 0
-	bestScore := score(candidateIntervals[:windowIntervals])
-
-	for startIdx := 1; startIdx <= len(candidateIntervals)-windowIntervals; startIdx++ {
-		windowScore := score(candidateIntervals[startIdx : startIdx+windowIntervals])
-		if isBetter(windowScore, bestScore) {
-			bestScore = windowScore
-			bestStartIdx = startIdx
-		}
-	}
-
-	// Calculate refined region bounds from the best window position
-	refinedStart := candidateIntervals[bestStartIdx].Timestamp
-	refinedDuration := time.Duration(windowIntervals) * goldenIntervalSize
-
-	return refineRegion{
-		Start:    refinedStart,
-		End:      refinedStart + refinedDuration,
-		Duration: refinedDuration,
-	}, true
+	return refineToSubregionFromIntervals(region, candidateIntervals, windowDuration, windowMinimum, score, isBetter)
 }
 
 // getIntervalsInRange returns intervals that fall within the given time range.
@@ -155,6 +121,72 @@ func accumulateIntervalMetrics(regionIntervals []IntervalSample) intervalAccumul
 	}
 
 	return acc
+}
+
+func regionSampleFromAccumulator(acc intervalAccumulatedMetrics, n float64) RegionSample {
+	avgRMS := acc.rmsSum / n
+	return RegionSample{
+		RMSLevel:    avgRMS,
+		PeakLevel:   acc.peakMax,
+		CrestFactor: acc.peakMax - avgRMS,
+		Spectral:    acc.spectralSum.average(n),
+
+		MomentaryLUFS: acc.momentarySum / n,
+		ShortTermLUFS: acc.shortTermSum / n,
+		TruePeak:      acc.truePeakMax,
+		SamplePeak:    acc.samplePeakMax,
+	}
+}
+
+func refineToSubregionFromIntervals(
+	region refineRegion,
+	candidateIntervals []IntervalSample,
+	windowDuration, windowMinimum time.Duration,
+	score func([]IntervalSample) float64,
+	isBetter func(candidate, current float64) bool,
+) (refined refineRegion, ok bool) {
+	if region.Duration <= windowDuration {
+		return region, false
+	}
+	if len(candidateIntervals) == 0 {
+		return region, false
+	}
+
+	// Calculate window size in intervals
+	windowIntervals := int(windowDuration / goldenIntervalSize)
+	minimumIntervals := int(windowMinimum / goldenIntervalSize)
+
+	// Need at least minimum window worth of intervals
+	if len(candidateIntervals) < minimumIntervals {
+		return region, false
+	}
+
+	// If we have fewer intervals than target window, use what we have
+	if len(candidateIntervals) < windowIntervals {
+		windowIntervals = len(candidateIntervals)
+	}
+
+	// Slide window across intervals, finding the position with the best score
+	bestStartIdx := 0
+	bestScore := score(candidateIntervals[:windowIntervals])
+
+	for startIdx := 1; startIdx <= len(candidateIntervals)-windowIntervals; startIdx++ {
+		windowScore := score(candidateIntervals[startIdx : startIdx+windowIntervals])
+		if isBetter(windowScore, bestScore) {
+			bestScore = windowScore
+			bestStartIdx = startIdx
+		}
+	}
+
+	// Calculate refined region bounds from the best window position
+	refinedStart := candidateIntervals[bestStartIdx].Timestamp
+	refinedDuration := time.Duration(windowIntervals) * goldenIntervalSize
+
+	return refineRegion{
+		Start:    refinedStart,
+		End:      refinedStart + refinedDuration,
+		Duration: refinedDuration,
+	}, true
 }
 
 // scoreIntervalWindow calculates a quality score for a contiguous window of intervals.
@@ -323,6 +355,10 @@ func levelVariance(regionIntervals []IntervalSample, axis levelAxis) float64 {
 func measureSpeechCandidateFromIntervals(region SpeechRegion, intervals []IntervalSample) *SpeechCandidateMetrics {
 	// Extract intervals within the candidate region
 	regionIntervals := getIntervalsInRange(intervals, region.Start, region.End)
+	return measureSpeechCandidateFromRegionIntervals(region, regionIntervals)
+}
+
+func measureSpeechCandidateFromRegionIntervals(region SpeechRegion, regionIntervals []IntervalSample) *SpeechCandidateMetrics {
 	if len(regionIntervals) == 0 {
 		return nil
 	}
@@ -331,8 +367,6 @@ func measureSpeechCandidateFromIntervals(region SpeechRegion, intervals []Interv
 	acc := accumulateIntervalMetrics(regionIntervals)
 
 	n := float64(len(regionIntervals))
-	avgRMS := acc.rmsSum / n
-	avgSpectral := acc.spectralSum.average(n)
 
 	// Calculate voicing density for stability assessment
 	voicedCount := 0
@@ -344,18 +378,8 @@ func measureSpeechCandidateFromIntervals(region SpeechRegion, intervals []Interv
 	voicingDensity := float64(voicedCount) / n
 
 	return &SpeechCandidateMetrics{
-		Region: region,
-		RegionSample: RegionSample{
-			RMSLevel:    avgRMS,
-			PeakLevel:   acc.peakMax,
-			CrestFactor: acc.peakMax - avgRMS,
-			Spectral:    avgSpectral,
-
-			MomentaryLUFS: acc.momentarySum / n,
-			ShortTermLUFS: acc.shortTermSum / n,
-			TruePeak:      acc.truePeakMax,
-			SamplePeak:    acc.samplePeakMax,
-		},
+		Region:       region,
+		RegionSample: regionSampleFromAccumulator(acc, n),
 
 		// Stability metrics
 		VoicingDensity: voicingDensity,

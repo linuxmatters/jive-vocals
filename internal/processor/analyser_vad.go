@@ -797,17 +797,6 @@ func setVADRoomToneSample(measurements *AudioMeasurements, region *RoomToneRegio
 
 	acc := accumulateIntervalMetrics(regionIntervals)
 	n := float64(len(regionIntervals))
-	avgRMS := acc.rmsSum / n
-
-	measurements.Regions.ElectedRoomToneSample = &RegionSample{
-		RMSLevel:    avgRMS,
-		PeakLevel:   acc.peakMax,
-		CrestFactor: acc.peakMax - avgRMS,
-		Spectral:    acc.spectralSum.average(n),
-
-		MomentaryLUFS: acc.momentarySum / n,
-		ShortTermLUFS: acc.shortTermSum / n,
-		TruePeak:      acc.truePeakMax,
-		SamplePeak:    acc.samplePeakMax,
-	}
+	sample := regionSampleFromAccumulator(acc, n)
+	measurements.Regions.ElectedRoomToneSample = &sample
 }
