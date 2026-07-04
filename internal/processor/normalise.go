@@ -200,14 +200,13 @@ type LoudnormMeasurement struct {
 //   - measurement: Loudnorm measurements for second pass
 //   - err: Error if measurement failed
 func measureWithLoudnorm(ctx context.Context, inputPath string, config *EffectiveFilterConfig, filterPrefix string, progressCallback ProgressCallback, deps loudnormDeps) (*LoudnormMeasurement, error) {
-	// Open input file
 	reader, metadata, err := audio.OpenAudioFile(inputPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open input: %w", err)
 	}
 	defer reader.Close()
 
-	// Calculate total samples for progress reporting
+	// Total samples drive the progress fraction below.
 	totalSamples := int64(metadata.Duration * float64(metadata.SampleRate))
 	var samplesProcessed int64
 	var frameCount int
@@ -243,7 +242,6 @@ func measureWithLoudnorm(ctx context.Context, inputPath string, config *Effectiv
 		filterSpec = filterPrefix + "," + filterSpec
 	}
 
-	// Create filter graph
 	filterGraph, bufferSrcCtx, bufferSinkCtx, err := deps.setupFilterGraph(
 		reader.DecoderContext(),
 		filterSpec,
@@ -829,7 +827,6 @@ func executeAndPublishLoudnormApplication(
 		return failPublish(encoder, loopErr)
 	}
 
-	// Flush encoder
 	if err := encoder.Flush(); err != nil {
 		return failPublish(encoder, fmt.Errorf("failed to flush encoder: %w", err))
 	}
@@ -895,7 +892,6 @@ func newLoudnormApplicationFrameLoop(
 			// Extract validation measurements using Pass 2's function
 			extractOutputFrameMetadata(filteredFrame.Metadata(), acc)
 
-			// Encode frame
 			if err := encoder.WriteFrame(filteredFrame); err != nil {
 				return fmt.Errorf("encoding failed: %w", err)
 			}

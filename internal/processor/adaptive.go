@@ -23,9 +23,10 @@ func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) (*Ef
 	tuneBandlimitLowPass(effectiveConfig, diagnostics, measurements) // Unconditional 20.5 kHz band-limit
 
 	// NoiseReduction (anlmdn + afftdn): anlmdn is fixed from spike validation and
-	// afftdn nr is fixed at 12 to avoid warble. afftdn has two adaptations: it is
-	// dropped on voice-activated captures, and otherwise its nf tracks the measured
-	// noise floor with track_noise off.
+	// afftdn nr is fixed at 12 to avoid warble. afftdn has three adaptations: it is
+	// dropped on voice-activated captures; otherwise its nf tracks the measured
+	// noise floor with track_noise off; and on a trustworthy room-tone region it
+	// runs a measured custom band-noise shape instead of the flat white model.
 	tuneNoiseReduction(effectiveConfig, diagnostics, measurements)
 
 	tuneSpeechGate(effectiveConfig, diagnostics, measurements) // Soft expander gate cleaning inter-speech gaps
@@ -125,11 +126,13 @@ func useCustomAfftdnProfile(measurements *AudioMeasurements) bool {
 }
 
 // tuneNoiseReduction adapts the afftdn FFT denoise tail to Pass 1 measurements.
-// Two behaviours: drop afftdn on voice-activated captures (the gated capture floor
-// is already 0 dB silence, so spectral denoise has nothing useful to do and only
-// risks warble), and otherwise pin afftdn's nf to the measured noise floor with
-// track_noise off so it holds a static floor rather than adapting frame to frame.
-// anlmdn and the fixed afftdn nr are untouched.
+// Three behaviours: drop afftdn on voice-activated captures (the gated capture
+// floor is already 0 dB silence, so spectral denoise has nothing useful to do and
+// only risks warble); otherwise pin afftdn's nf to the measured noise floor with
+// track_noise off so it holds a static floor rather than adapting frame to frame;
+// and on a trustworthy room-tone region (useCustomAfftdnProfile) swap the flat
+// white noise model for the measured custom band-noise shape. anlmdn and the fixed
+// afftdn nr are untouched.
 func tuneNoiseReduction(config *EffectiveFilterConfig, diagnostics *AdaptiveDiagnostics, measurements *AudioMeasurements) {
 	if config == nil || measurements == nil {
 		return
