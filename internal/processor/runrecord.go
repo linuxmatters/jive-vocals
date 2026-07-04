@@ -15,12 +15,11 @@ import (
 const schemaVersion = 1
 
 // RunRecord is the §8.1 top-level run record: one serialisable JSON document per
-// file per run. It is a thin assembly point that embeds the cleaned domain
-// structs BY REFERENCE from a ProcessingResult (§9.2) - no value copy, so the
-// record never drifts from its source. Absent stages and processing blocks are
-// nil-pointer + omitempty, so an analysis-only (Pass-1-only) record drops
-// `filtered`/`final`/`filters`/`normalisation` rather than null-filling them
-// (§9.1 call 3).
+// file per run. It owns a by-value snapshot of the processing result, so later
+// mutations of live processing state cannot change a written artefact. Absent
+// stages and processing blocks are nil-pointer + omitempty, so an analysis-only
+// (Pass-1-only) record drops `filtered`/`final`/`filters`/`normalisation` rather
+// than null-filling them (§9.1 call 3).
 type RunRecord struct {
 	SchemaVersion int            `json:"schema_version"`
 	Run           RunProvenance  `json:"run"`
@@ -30,7 +29,7 @@ type RunRecord struct {
 	Noise         *NoiseMetrics  `json:"noise,omitempty"`
 	Regions       *RegionsBlock  `json:"regions,omitempty"`
 	Filters       *FiltersBlock  `json:"filters,omitempty"`
-	// Normalisation wraps the source *NormalisationResult so the record presents
+	// Normalisation wraps a snapshot *NormalisationResult so the record presents
 	// region_measurement_s (seconds) and the §8.4 numeric loudnorm_measured block
 	// (see normalisationRecord); the source struct is untouched.
 	Normalisation *normalisationRecord `json:"normalisation,omitempty"`
@@ -90,8 +89,8 @@ type LoudnessDomain struct {
 	Stages      LoudnessStages `json:"stages"`
 }
 
-// LoudnessStages holds the three loudness snapshots by reference. filtered/final
-// are nil in analysis-only mode and drop via omitempty.
+// LoudnessStages holds the three loudness snapshots. filtered/final are nil in
+// analysis-only mode and drop via omitempty.
 type LoudnessStages struct {
 	Input    *InputLoudnessMetrics  `json:"input,omitempty"`
 	Filtered *OutputLoudnessMetrics `json:"filtered,omitempty"`
@@ -103,7 +102,7 @@ type DynamicsDomain struct {
 	Stages DynamicsStages `json:"stages"`
 }
 
-// DynamicsStages holds the three dynamics snapshots by reference.
+// DynamicsStages holds the three dynamics snapshots.
 type DynamicsStages struct {
 	Input    *DynamicsMetrics `json:"input,omitempty"`
 	Filtered *DynamicsMetrics `json:"filtered,omitempty"`
@@ -117,7 +116,7 @@ type SpectralDomain struct {
 	Stages SpectralStages `json:"stages"`
 }
 
-// SpectralStages holds the three spectral snapshots by reference.
+// SpectralStages holds the three spectral snapshots.
 type SpectralStages struct {
 	Input    *SpectralMetrics `json:"input,omitempty"`
 	Filtered *SpectralMetrics `json:"filtered,omitempty"`
@@ -163,10 +162,10 @@ type RMSDistribution struct {
 
 // RegionsBlock is the §8.1 `regions` block in its nested shape: room-tone and
 // speech, each carrying the elected profile, a candidate summary (count + elected
-// score), and the per-stage before/after samples. Assembly-side type only - it
-// points into the live ProcessingResult data BY REFERENCE (§9.2), never copying
-// values. The full candidate arrays and interval series are NOT inline; they live
-// in the .candidates.jsonl / .intervals.jsonl sidecars.
+// score), and the per-stage before/after samples. Assembly-side type only. It
+// stores record-owned value copies, never pointers into ProcessingResult. The full
+// candidate arrays and interval series are NOT inline; they live in the
+// .candidates.jsonl / .intervals.jsonl sidecars.
 type RegionsBlock struct {
 	RoomTone       RoomToneRegionRecord `json:"room_tone"`
 	Speech         SpeechRegionRecord   `json:"speech"`
@@ -186,10 +185,9 @@ type GateStatistics struct {
 
 // RoomToneRegionRecord is the §8.1 `regions.room_tone` nested block: the elected
 // room-tone profile, a candidate summary (full array → sidecar), and the
-// per-stage region samples. All fields reference the live RegionMetrics / output
-// measurements.
+// per-stage region samples.
 type RoomToneRegionRecord struct {
-	// Elected wraps the source *NoiseProfile so its time bounds emit as _s floats
+	// Elected wraps a snapshot *NoiseProfile so its time bounds emit as _s floats
 	// (§8.4); nil + omitempty drops it when no profile was elected.
 	Elected           *noiseProfileRecord `json:"elected,omitempty"`
 	CandidatesSummary *CandidatesSummary  `json:"candidates_summary,omitempty"`
@@ -208,7 +206,7 @@ func (r RoomToneRegionRecord) ElectedProfile() *NoiseProfile {
 // speech profile, a candidate summary (full array → sidecar), and the per-stage
 // region samples.
 type SpeechRegionRecord struct {
-	// Elected wraps the source *SpeechCandidateMetrics so its region time bounds
+	// Elected wraps a snapshot *SpeechCandidateMetrics so its region time bounds
 	// emit as _s floats (§8.4); nil + omitempty drops it when no speech profile was
 	// elected.
 	Elected           *speechProfileRecord `json:"elected,omitempty"`
@@ -235,8 +233,8 @@ type CandidatesSummary struct {
 
 // RegionSamples is the §8.1 `regions.<kind>.samples` block: the bare
 // before/after region measurement per stage (§8.2 last row, slimmer schema). All
-// three are pointers with omitempty - analysis-only drops filtered/final, and a
-// missing input drops too.
+// three point to record-owned copies with omitempty - analysis-only drops
+// filtered/final, and a missing input drops too.
 type RegionSamples struct {
 	Input    *RegionSample `json:"input,omitempty"`
 	Filtered *RegionSample `json:"filtered,omitempty"`
@@ -244,44 +242,33 @@ type RegionSamples struct {
 }
 
 // NewRunRecord assembles the full §8.1 record from a completed ProcessingResult.
-// All measurement blocks are taken BY REFERENCE from the result's pointer fields
-// (§9.2): no deep copy, so the record cannot drift from its source. The only
-// value transform is the gate linear→dB conversion in the filters block, which
-// is representation-only and does not touch the DSP-consumed config.
+// It snapshots live processing data by value, including nested report wrappers.
+// The only value transform is the gate linear→dB conversion in the filters block,
+// which is representation-only and does not touch the DSP-consumed config.
 func NewRunRecord(result *ProcessingResult) *RunRecord {
 	rec := newPass1Record(result.Measurements)
 
 	if fm := result.FilteredMeasurements; fm != nil {
-		rec.Loudness.Stages.Filtered = &fm.Loudness
-		rec.Dynamics.Stages.Filtered = &fm.Dynamics
-		rec.Spectral.Stages.Filtered = &fm.Spectral
-		// Pass 2 before/after region samples, referenced not copied.
+		rec.Loudness.Stages.Filtered = cloneOutputLoudnessMetrics(&fm.Loudness)
+		rec.Dynamics.Stages.Filtered = cloneDynamicsMetrics(&fm.Dynamics)
+		rec.Spectral.Stages.Filtered = cloneSpectralMetrics(&fm.Spectral)
 		if rec.Regions != nil {
-			rec.Regions.RoomTone.Samples.Filtered = fm.RoomToneSample
-			rec.Regions.Speech.Samples.Filtered = fm.SpeechSample
+			rec.Regions.RoomTone.Samples.Filtered = cloneRegionSample(fm.RoomToneSample)
+			rec.Regions.Speech.Samples.Filtered = cloneRegionSample(fm.SpeechSample)
 		}
 	}
 
 	if result.NormResult != nil {
 		if fm := result.NormResult.FinalMeasurements; fm != nil {
-			rec.Loudness.Stages.Final = &fm.Loudness
-			rec.Dynamics.Stages.Final = &fm.Dynamics
-			rec.Spectral.Stages.Final = &fm.Spectral
-			// Pass 4 before/after region samples, referenced not copied.
+			rec.Loudness.Stages.Final = cloneOutputLoudnessMetrics(&fm.Loudness)
+			rec.Dynamics.Stages.Final = cloneDynamicsMetrics(&fm.Dynamics)
+			rec.Spectral.Stages.Final = cloneSpectralMetrics(&fm.Spectral)
 			if rec.Regions != nil {
-				rec.Regions.RoomTone.Samples.Final = fm.RoomToneSample
-				rec.Regions.Speech.Samples.Final = fm.SpeechSample
+				rec.Regions.RoomTone.Samples.Final = cloneRegionSample(fm.RoomToneSample)
+				rec.Regions.Speech.Samples.Final = cloneRegionSample(fm.SpeechSample)
 			}
 		}
-		// Parse loudnorm stats to typed floats once for the report, precomputing the
-		// target deviation. buildNormalisationResult sets this on the production path;
-		// fill it here when absent (e.g. a result assembled directly) so the report
-		// formats typed numbers and never re-parses the strings. The typed values are
-		// json:"-", so this does not touch the run-record JSON schema.
-		if result.NormResult.LoudnormParsed == nil {
-			result.NormResult.LoudnormParsed = parseLoudnormMeasured(result.NormResult.LoudnormStats, result.NormResult.EffectiveTargetI)
-		}
-		rec.Normalisation = &normalisationRecord{src: result.NormResult}
+		rec.Normalisation = &normalisationRecord{src: cloneNormalisationResult(result.NormResult)}
 	}
 
 	if result.Config != nil {
@@ -310,7 +297,7 @@ func NewAnalysisRunRecord(inputFile string, m *AudioMeasurements) *RunRecord {
 }
 
 // newPass1Record builds the input-stage record shared by both constructors. All
-// input blocks are referenced off the supplied AudioMeasurements (no copy).
+// input blocks are copied from the supplied AudioMeasurements.
 func newPass1Record(m *AudioMeasurements) *RunRecord {
 	rec := &RunRecord{
 		SchemaVersion: schemaVersion,
@@ -326,10 +313,10 @@ func newPass1Record(m *AudioMeasurements) *RunRecord {
 		return rec
 	}
 
-	rec.Loudness.Stages.Input = &m.Loudness
-	rec.Dynamics.Stages.Input = &m.Dynamics
-	rec.Spectral.Stages.Input = &m.Spectral
-	rec.Noise = &m.Noise
+	rec.Loudness.Stages.Input = cloneInputLoudnessMetrics(&m.Loudness)
+	rec.Dynamics.Stages.Input = cloneDynamicsMetrics(&m.Dynamics)
+	rec.Spectral.Stages.Input = cloneSpectralMetrics(&m.Spectral)
+	rec.Noise = cloneNoiseMetrics(&m.Noise)
 	rec.Regions = newRegionsBlock(&m.Regions)
 	rec.IntervalSummary = newIntervalSummary(m.Regions.IntervalSamples)
 	rec.Run.DurationS = m.Duration
@@ -338,16 +325,14 @@ func newPass1Record(m *AudioMeasurements) *RunRecord {
 }
 
 // newRegionsBlock restructures the flat RegionMetrics into the §8.1 nested
-// regions shape (§9.4). Every field references the live RegionMetrics data
-// (§9.2): elected profiles, candidate arrays, and interval samples are taken by
-// reference, no value copy. The input region sample is wired per kind:
+// regions shape (§9.4). The input region sample is wired per kind:
 //   - speech: SpeechProfile embeds RegionSample (it is *SpeechCandidateMetrics),
 //     so the input sample is &SpeechProfile.RegionSample.
 //   - room-tone: the elected profile is a NoiseProfile, a slimmer struct with no
 //     RegionSample. The elected room-tone region's RegionSample is captured at
 //     election onto RegionMetrics.ElectedRoomToneSample (analyser.go), so the input
-//     sample is that pointer when present, nil (omitempty) otherwise. The filtered
-//     and final room-tone samples still wire from OutputMeasurements.RoomToneSample.
+//     sample is a copy of that pointer when present, nil (omitempty) otherwise.
+//     The filtered and final room-tone samples wire from OutputMeasurements.
 //     Room tone carries no candidates_summary; only speech does.
 func newRegionsBlock(r *RegionMetrics) *RegionsBlock {
 	block := &RegionsBlock{
@@ -365,20 +350,19 @@ func newRegionsBlock(r *RegionMetrics) *RegionsBlock {
 	// Wrap the elected profiles so their time bounds emit as _s floats (§8.4); a
 	// missing profile leaves the wrapper pointer nil so omitempty drops `elected`.
 	if r.NoiseProfile != nil {
-		block.RoomTone.Elected = &noiseProfileRecord{src: r.NoiseProfile}
+		block.RoomTone.Elected = &noiseProfileRecord{src: cloneNoiseProfile(r.NoiseProfile)}
 	}
 	if r.SpeechProfile != nil {
-		block.Speech.Elected = &speechProfileRecord{src: r.SpeechProfile}
+		block.Speech.Elected = &speechProfileRecord{src: cloneSpeechCandidateMetrics(r.SpeechProfile)}
 	}
 
-	// Speech input sample: the elected profile embeds RegionSample by reference.
-	if r.SpeechProfile != nil {
-		block.Speech.Samples.Input = &r.SpeechProfile.RegionSample
+	if block.Speech.Elected != nil {
+		block.Speech.Samples.Input = cloneRegionSample(&block.Speech.Elected.src.RegionSample)
 	}
 
 	// Room-tone input sample: the elected candidate's RegionSample captured at
 	// election (the NoiseProfile itself has no RegionSample).
-	block.RoomTone.Samples.Input = r.ElectedRoomToneSample
+	block.RoomTone.Samples.Input = cloneRegionSample(r.ElectedRoomToneSample)
 
 	return block
 }
@@ -399,6 +383,111 @@ func newSpeechCandidatesSummary(r *RegionMetrics) *CandidatesSummary {
 	return s
 }
 
+func cloneInputLoudnessMetrics(src *InputLoudnessMetrics) *InputLoudnessMetrics {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneOutputLoudnessMetrics(src *OutputLoudnessMetrics) *OutputLoudnessMetrics {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneDynamicsMetrics(src *DynamicsMetrics) *DynamicsMetrics {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneSpectralMetrics(src *SpectralMetrics) *SpectralMetrics {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneNoiseMetrics(src *NoiseMetrics) *NoiseMetrics {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneNoiseProfile(src *NoiseProfile) *NoiseProfile {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	dst.BandNoise = append([]float64(nil), src.BandNoise...)
+	return &dst
+}
+
+func cloneRegionSample(src *RegionSample) *RegionSample {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneSpeechCandidateMetrics(src *SpeechCandidateMetrics) *SpeechCandidateMetrics {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneOutputMeasurements(src *OutputMeasurements) *OutputMeasurements {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	dst.RoomToneSample = cloneRegionSample(src.RoomToneSample)
+	dst.SpeechSample = cloneRegionSample(src.SpeechSample)
+	return &dst
+}
+
+func cloneLoudnormStats(src *LoudnormStats) *LoudnormStats {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneLoudnormMeasured(src *LoudnormMeasured) *LoudnormMeasured {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneNormalisationResult(src *NormalisationResult) *NormalisationResult {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	dst.LoudnormStats = cloneLoudnormStats(src.LoudnormStats)
+	dst.LoudnormParsed = cloneLoudnormMeasured(src.LoudnormParsed)
+	if dst.LoudnormParsed == nil {
+		dst.LoudnormParsed = parseLoudnormMeasured(dst.LoudnormStats, dst.EffectiveTargetI)
+	}
+	dst.FinalMeasurements = cloneOutputMeasurements(src.FinalMeasurements)
+	return &dst
+}
+
 // targetILUFS is the EBU R128 integrated-loudness target carried as a bare
 // reference value in the record (§8.3), not a verdict.
 const targetILUFS = -16.0
@@ -412,13 +501,19 @@ const targetILUFS = -16.0
 // already correct units.
 func newFiltersBlock(cfg *EffectiveFilterConfig, diag *AdaptiveDiagnostics) *FiltersBlock {
 	local := *cfg // shallow copy; isolates the gate dB conversion from the DSP config
+	local.FilterOrder = cloneFilterOrder(cfg.FilterOrder)
 	if local.SpeechGate.Threshold > 0 {
 		local.SpeechGate.Threshold = LinearToDb(local.SpeechGate.Threshold)
 	}
 	if local.SpeechGate.Range > 0 {
 		local.SpeechGate.Range = LinearToDb(local.SpeechGate.Range)
 	}
-	return &FiltersBlock{EffectiveFilterConfig: local, Diagnostics: diag}
+	var localDiag *AdaptiveDiagnostics
+	if diag != nil {
+		diagCopy := *diag
+		localDiag = &diagCopy
+	}
+	return &FiltersBlock{EffectiveFilterConfig: local, Diagnostics: localDiag}
 }
 
 // MarshalRunRecord serialises a RunRecord to indented JSON with non-finite
