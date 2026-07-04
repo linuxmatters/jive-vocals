@@ -13,8 +13,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/linuxmatters/jivetalking/internal/processor"
-	"github.com/linuxmatters/jivetalking/internal/ui"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/ui"
 )
 
 // inflightFake stands in for the workerPoolDeps processAudio dependency to

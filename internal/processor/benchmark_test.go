@@ -45,9 +45,9 @@ func BenchmarkProcessAudioDefaultSynthetic5m(b *testing.B) {
 }
 
 func BenchmarkProcessAudioManualFixture(b *testing.B) {
-	fixturePath := os.Getenv("JIVETALKING_BENCH_FIXTURE")
+	fixturePath := os.Getenv("JIVE_VOCALS_BENCH_FIXTURE")
 	if fixturePath == "" {
-		b.Skip("set JIVETALKING_BENCH_FIXTURE to benchmark a real local fixture")
+		b.Skip("set JIVE_VOCALS_BENCH_FIXTURE to benchmark a real local fixture")
 	}
 
 	inputPath := copyBenchmarkFixture(b, fixturePath, b.TempDir())
@@ -111,7 +111,7 @@ func generateBenchmarkAudio(tb testing.TB, dir string, duration time.Duration) s
 func copyBenchmarkFixture(tb testing.TB, sourcePath, dir string) string {
 	tb.Helper()
 
-	source, err := os.Open(sourcePath) // #nosec G304,G703 -- local benchmark fixture path is explicitly supplied by JIVETALKING_BENCH_FIXTURE.
+	source, err := os.Open(sourcePath) // #nosec G304,G703 -- local benchmark fixture path is explicitly supplied by JIVE_VOCALS_BENCH_FIXTURE.
 	if err != nil {
 		tb.Fatalf("failed to open benchmark fixture: %v", err)
 	}

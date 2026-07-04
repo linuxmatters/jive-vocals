@@ -102,7 +102,7 @@ func titleColors(s string) [][3]int {
 func TestRenderTitleIsGradient(t *testing.T) {
 	title := RenderTitle()
 
-	if !strings.Contains(ansi.Strip(title), "Jivetalking") {
+	if !strings.Contains(ansi.Strip(title), "Jive Vocals") {
 		t.Fatalf("title missing wordmark: %q", title)
 	}
 
@@ -124,7 +124,7 @@ func TestRenderTitleDownsamplesNoColor(t *testing.T) {
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("NoTTY profile left escape sequences: %q", out)
 	}
-	if !strings.Contains(out, "Jivetalking") {
+	if !strings.Contains(out, "Jive Vocals") {
 		t.Errorf("NoTTY profile dropped wordmark: %q", out)
 	}
 }
@@ -143,7 +143,7 @@ func TestRenderTitleIsStable(t *testing.T) {
 }
 
 func TestStyledOutputPreservesTruecolor(t *testing.T) {
-	styled := helpFlagStyle.Render("Jivetalking")
+	styled := helpFlagStyle.Render("Jive Vocals")
 	out := renderThrough(colorprofile.TrueColor, styled)
 	if !strings.Contains(out, "38;2;") {
 		t.Errorf("TrueColor profile dropped truecolor: %q", out)

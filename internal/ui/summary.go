@@ -3,7 +3,7 @@ package ui
 import (
 	"math"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // AdaptedSummary is the presentation-only view-model behind the two filter-chain

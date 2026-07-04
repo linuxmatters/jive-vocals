@@ -113,7 +113,7 @@ func generateTestAudio(tb testing.TB, opts TestAudioOptions) string {
 	}
 
 	// Create temp file
-	tmpFile, err := os.CreateTemp(opts.Dir, "jivetalking-test-*.wav")
+	tmpFile, err := os.CreateTemp(opts.Dir, "jive-vocals-test-*.wav")
 	if err != nil {
 		tb.Fatalf("failed to create temp file: %v", err)
 	}

@@ -40,7 +40,7 @@ type SpectrogramImage struct {
 
 // DeriveSpectrogramImages is the exported wrapper over the pure
 // deriveSpectrogramImages: it returns the deterministic image list for a run so
-// the pool (cmd/jivetalking, outside this package) can attach it to the record
+// the pool (cmd/jive-vocals, outside this package) can attach it to the record
 // synchronously - pure string work, no ffmpeg. stages is one of
 // ProcessingSpectrogramStages or AnalysisSpectrogramStages.
 func DeriveSpectrogramImages(rec *RunRecord, outputStem string, stages []string) []SpectrogramImage {

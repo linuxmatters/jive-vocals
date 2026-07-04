@@ -18,7 +18,7 @@ import (
 // expressed through the same type for uniformity. Use these instead of bespoke
 // lipgloss.Color literals.
 var (
-	// ColorRed is the Jivetalking brand red (errors, titles, peak zone).
+	// ColorRed is the Jive Vocals brand red (errors, titles, peak zone).
 	ColorRed = compat.AdaptiveColor{Light: lipgloss.Color("#A40000"), Dark: lipgloss.Color("#A40000")}
 	// ColorCyanBright is the bright cyan start of the header letter gradient. Its
 	// CIELAB path to ColorSkyBlue stays vivid (no muddy midpoint).
@@ -71,7 +71,7 @@ var (
 // every TUI frame, so the work is hoisted off the 60fps path. Lazy so the first
 // call happens after terminal detection completes.
 var renderTitleOnce = sync.OnceValue(func() string {
-	letters := []rune("Jivetalking")
+	letters := []rune("Jive Vocals")
 	ramp := lipgloss.Blend1D(len(letters), ColorCyanBright, ColorSkyBlue)
 
 	var b strings.Builder
@@ -86,7 +86,7 @@ var renderTitleOnce = sync.OnceValue(func() string {
 	return b.String()
 })
 
-// RenderTitle returns the "Jivetalking 🕺" wordmark drawn as a per-letter
+// RenderTitle returns the "Jive Vocals 🕺" wordmark drawn as a per-letter
 // cyan→sky-blue Blend1D gradient (bold per letter), with the 🕺 emoji appended
 // outside the gradient so it keeps its own colours. Shared by the version banner
 // and the processing-TUI header so both render the wordmark identically.

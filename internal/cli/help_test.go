@@ -23,7 +23,7 @@ type helpTestCLI struct {
 // does (kong.New then Parse), so getFlags/getArguments see a real flag model.
 func newHelpTestContext(t *testing.T, args ...string) *kong.Context {
 	t.Helper()
-	k, err := kong.New(&helpTestCLI{}, kong.Name("jivetalking"))
+	k, err := kong.New(&helpTestCLI{}, kong.Name("jive-vocals"))
 	if err != nil {
 		t.Fatalf("kong.New: %v", err)
 	}
@@ -150,7 +150,7 @@ type hiddenFlagCLI struct {
 // TestGetFlagsOmitsHiddenFlags confirms a hidden:"" flag is left out of the
 // rendered Flags section while its visible sibling appears.
 func TestGetFlagsOmitsHiddenFlags(t *testing.T) {
-	k, err := kong.New(&hiddenFlagCLI{}, kong.Name("jivetalking"))
+	k, err := kong.New(&hiddenFlagCLI{}, kong.Name("jive-vocals"))
 	if err != nil {
 		t.Fatalf("kong.New: %v", err)
 	}

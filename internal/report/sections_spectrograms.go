@@ -3,7 +3,7 @@ package report
 import (
 	"strings"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // This file holds the Spectrograms section renderer: the kind/stage order tables

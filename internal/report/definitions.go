@@ -3,7 +3,7 @@ package report
 // Objective metric catalogue for the Markdown report.
 //
 // Source of record: docs/Spectral-Metrics-Reference.md (objective definitions,
-// units, computation, and source filter for every metric Jivetalking emits).
+// units, computation, and source filter for every metric Jive Vocals emits).
 // Glosses here are transcribed from that reference and cross-checked against the
 // audio-metrics skill SKILL.md for the precise ffmpeg computation. Map keys are
 // the exact RunRecord JSON field names (AUDIO-MEASUREMENTS.md §8.4 unit-suffix

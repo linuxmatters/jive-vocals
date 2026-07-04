@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // TestGenerateLUFSOutputPath verifies the final LUFS-tagged output path is always FLAC.

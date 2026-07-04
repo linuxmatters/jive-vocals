@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // analysisResultFor builds an AnalysisResult carrying just the Pass-1 INPUT
@@ -312,8 +312,8 @@ func TestAnalysisViewLayout(t *testing.T) {
 
 	view := ansi.Strip(m.View().Content)
 
-	if !strings.Contains(view, "Jivetalking") {
-		t.Errorf("view missing gradient title 'Jivetalking':\n%s", view)
+	if !strings.Contains(view, "Jive Vocals") {
+		t.Errorf("view missing gradient title 'Jive Vocals':\n%s", view)
 	}
 	if strings.Contains(view, "Analysis Mode") {
 		t.Errorf("view still contains dropped subtitle 'Analysis Mode':\n%s", view)

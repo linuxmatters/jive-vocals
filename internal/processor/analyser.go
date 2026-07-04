@@ -8,7 +8,7 @@ import (
 	"time"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // debugLogger is a config-borne debug logging function threaded through the

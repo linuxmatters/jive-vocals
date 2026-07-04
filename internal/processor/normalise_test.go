@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 const loudnormCaptureTestJSON = `{"input_i":"-23.0","input_tp":"-4.0","input_lra":"5.0","input_thresh":"-33.0","output_i":"-16.0","output_tp":"-2.0","output_lra":"5.0","output_thresh":"-26.0","normalization_type":"linear","target_offset":"0.0"}`

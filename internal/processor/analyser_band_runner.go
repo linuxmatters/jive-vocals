@@ -11,7 +11,7 @@ import (
 // bandMeasureSem bounds the concurrent band decodes across ALL files and both
 // band-measurement functions (measureSpeechBands, measureNoiseBands). It is a
 // pure concurrency limiter (a buffered-channel semaphore, the same pattern as
-// runWorkerPool's sem in cmd/jivetalking/pool.go), initialised once at package
+// runWorkerPool's sem in cmd/jive-vocals/pool.go), initialised once at package
 // load and only read after init, so the single large file fans its bands across
 // every core while a multi-file batch never oversubscribes FFmpeg beyond the
 // core count.

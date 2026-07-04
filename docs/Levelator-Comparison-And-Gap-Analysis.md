@@ -1,8 +1,8 @@
 # Levelator Comparison and Gap Analysis
 
-A from-scratch technical comparison between The Levelator and the current build of Jivetalking. It re-researches Levelator from primary sources, re-states Jivetalking's current pipeline from the code, and judges, fairly, where each tool leads. This is a full rewrite of the original comparison, re-researched from primary sources in June 2026.
+A from-scratch technical comparison between The Levelator and the current build of Jive Vocals. It re-researches Levelator from primary sources, re-states Jive Vocals' current pipeline from the code, and judges, fairly, where each tool leads. This is a full rewrite of the original comparison, re-researched from primary sources in June 2026.
 
-Central question for this revision: does Jivetalking's current design (the unified VAD, the four-pass pre-calculated normaliser, and true-peak levelling) close the gap on Levelator's distinctive "medium-term levelling"? The short answer is below in Section 4.3.
+Central question for this revision: does Jive Vocals' current design (the unified VAD, the four-pass pre-calculated normaliser, and true-peak levelling) close the gap on Levelator's distinctive "medium-term levelling"? The short answer is below in Section 4.3.
 
 ---
 
@@ -95,13 +95,13 @@ The Levelator is levelling-only. It has **no noise reduction, no de-essing, no g
 
 ---
 
-## 2. Jivetalking Current Capabilities
+## 2. Jive Vocals Current Capabilities
 
 This section describes the current branch, not a historical release. Code citations name the owning function and file.
 
 ### Architecture
 
-Jivetalking is a Go CLI tool using embedded FFmpeg. It transforms raw voice recordings into podcast-ready audio at -16 LUFS through a **four-pass, pre-calculated** pipeline.
+Jive Vocals is a Go CLI tool using embedded FFmpeg. It transforms raw voice recordings into podcast-ready audio at -16 LUFS through a **four-pass, pre-calculated** pipeline.
 
 | Pass | Purpose | Where |
 |------|---------|-------|
@@ -110,7 +110,7 @@ Jivetalking is a Go CLI tool using embedded FFmpeg. It transforms raw voice reco
 | 3 Measuring | Runs loudnorm in measure-only mode to capture input stats (JSON to a stats file) | `measureWithLoudnorm` in `normalise.go` |
 | 4 Normalising | Applies the pre-computed gains and the limiters | `applyLoudnormAndMeasure` in `normalise.go` |
 
-📌 KEY: like Levelator, Jivetalking has infinite look-ahead. It measures the whole file before it renders, and the gains are fixed before audio flows. Pass 3 measures, Pass 4 applies (`measureWithLoudnorm` and `applyLoudnormAndMeasure` in `normalise.go`).
+📌 KEY: like Levelator, Jive Vocals has infinite look-ahead. It measures the whole file before it renders, and the gains are fixed before audio flows. Pass 3 measures, Pass 4 applies (`measureWithLoudnorm` and `applyLoudnormAndMeasure` in `normalise.go`).
 
 ### The unified voice-activity detector (VAD)
 
@@ -122,7 +122,7 @@ Pass 1 runs one detector that produces every speech and noise output the later f
 - **Speech election.** Hysteresis-built runs with adaptive gap tolerance (2 s to 10 s) and a spectral veto (vocal-band centroid 200 Hz to 6 kHz, structured-spectrum entropy below 0.70). The elected speech region is the highest-scoring run of at least 10 s, scored SNR-primary (`findBestSpeechRegion` in `analyser_candidates_speech.go`).
 - **Gate statistics.** Voiced p10, noise p95, and their difference (GateSeparationDB) come from the same split (`deriveGateStatistics` in `analyser_vad.go`).
 
-**Voice-activated detection.** Platform-gated captures (Riverside, Zencastr) crush the gaps between phrases to digital silence. Jivetalking flags these when the floored fraction (windows at or below -115 dBFS) is at least 0.20 (`flooredFraction` and `detectVoiceActivity` in `analyser_vad.go`). A recent fix counts non-finite (NaN) momentary windows as floored, because FFmpeg's ebur128 reports digital silence as NaN on macOS arm64 and as -inf or finite-low on Linux; counting non-finite as floored makes the detection give the same answer on both platforms (`flooredFraction` in `analyser_vad.go`). When voice-activated, the FFT denoiser is dropped to avoid warble on true silence.
+**Voice-activated detection.** Platform-gated captures (Riverside, Zencastr) crush the gaps between phrases to digital silence. Jive Vocals flags these when the floored fraction (windows at or below -115 dBFS) is at least 0.20 (`flooredFraction` and `detectVoiceActivity` in `analyser_vad.go`). A recent fix counts non-finite (NaN) momentary windows as floored, because FFmpeg's ebur128 reports digital silence as NaN on macOS arm64 and as -inf or finite-low on Linux; counting non-finite as floored makes the detection give the same answer on both platforms (`flooredFraction` in `analyser_vad.go`). When voice-activated, the FFT denoiser is dropped to avoid warble on true silence.
 
 ### Noise reduction, gate, compressor, de-esser
 
@@ -153,7 +153,7 @@ volume (pre-gain, when needed) -> alimiter (levelling limiter) -> loudnorm (line
 - **Pre-gain** (`volume`) lifts very quiet recordings so the limiter ceiling stays viable; the ceiling is derived as `targetTP - gainRequired` (`deriveLimiterAndPreGain` in `normalise.go`).
 - **Two limiters, two jobs.** The prefix `alimiter` (the "levelling limiter") reduces peaks to create headroom so loudnorm can apply its full linear gain (`buildPreLimiterPrefix` in `normalise.go`). The final-stage `alimiter` is a brickwall pinned below the loudnorm target by an inter-sample headroom margin (corpus-derived 0.9 dB), and it owns true-peak delivery (`buildBrickwallLimiter` in `normalise.go`). The brickwall limits sample peak with enough margin to keep the oversampled true peak under target.
 
-📌 KEY: this is the "peak levelling" the older document lacked. Levelator stops at a -1.0 dB sample-peak ceiling [2]; Jivetalking delivers a true-peak-aware -1 dBTP using an oversampled internal limiter plus the brickwall margin.
+📌 KEY: this is the "peak levelling" the older document lacked. Levelator stops at a -1.0 dB sample-peak ceiling [2]; Jive Vocals delivers a true-peak-aware -1 dBTP using an oversampled internal limiter plus the brickwall margin.
 
 ### Target output
 
@@ -167,7 +167,7 @@ volume (pre-gain, when needed) -> alimiter (levelling limiter) -> loudnorm (line
 
 ## 3. Comparison Matrix
 
-| Dimension | Levelator | Jivetalking |
+| Dimension | Levelator | Jive Vocals |
 |-----------|-----------|-------------|
 | Processing model | Offline, multi-pass, whole-file | Offline, four-pass, whole-file |
 | Look-ahead | Infinite (multi-pass) [2] | Infinite (Pass 1 + Pass 3 pre-calc) |
@@ -193,7 +193,7 @@ volume (pre-gain, when needed) -> alimiter (levelling limiter) -> loudnorm (line
 
 ## 4. Gap Analysis
 
-### 4.1 What Jivetalking has that Levelator lacks
+### 4.1 What Jive Vocals has that Levelator lacks
 
 1. **Noise reduction.** Two-stage `anlmdn` plus adaptive `afftdn`, with a measured per-file 15-band noise profile on a clean room tone. Levelator has none [10-recv].
 2. **True-peak delivery.** Oversampled internal limiter plus a brickwall pinned with inter-sample headroom. Levelator caps sample peak only [2].
@@ -201,31 +201,31 @@ volume (pre-gain, when needed) -> alimiter (levelling limiter) -> loudnorm (line
 4. **Gating, de-essing, rumble and band-limit filtering.** None of these exist in Levelator.
 5. **Loudness standard.** -16 LUFS K-weighted, aligned with podcast and streaming norms, versus Levelator's unweighted -18 dB RMS.
 6. **Spectral analysis and speech profiling.** 15-plus metrics drive per-file tuning.
-7. **Maintained on Linux.** Levelator's Linux build is frozen at Ubuntu 7.10 and effectively dead [3-hist]. Jivetalking has no Windows build, so neither tool serves Windows with a current release.
+7. **Maintained on Linux.** Levelator's Linux build is frozen at Ubuntu 7.10 and effectively dead [3-hist]. Jive Vocals has no Windows build, so neither tool serves Windows with a current release.
 8. **Open source.** Auditable and extensible; Levelator is closed [12].
 
-### 4.2 What Levelator has that Jivetalking lacks
+### 4.2 What Levelator has that Jive Vocals lacks
 
-1. **A drag-and-drop GUI.** Levelator's accessibility drove its adoption: drop a file, get `<name>.output.wav` seconds later [15][16-recv]. Jivetalking is CLI/TUI.
-2. **Format-preserving output.** Levelator returns the input's format, rate, and channel count [5]. Jivetalking standardises to 44.1 kHz / 16-bit / mono by design, which is a deliberate choice, not a gap, but it differs from Levelator's behaviour.
+1. **A drag-and-drop GUI.** Levelator's accessibility drove its adoption: drop a file, get `<name>.output.wav` seconds later [15][16-recv]. Jive Vocals is CLI/TUI.
+2. **Format-preserving output.** Levelator returns the input's format, rate, and channel count [5]. Jive Vocals standardises to 44.1 kHz / 16-bit / mono by design, which is a deliberate choice, not a gap, but it differs from Levelator's behaviour.
 
-Levelator's time-windowed loudness map is not on this list. Section 4.3 shows it is not a capability Jivetalking lacks: the chain reaches the same evenness by design, and a discrete leveller measured worse.
+Levelator's time-windowed loudness map is not on this list. Section 4.3 shows it is not a capability Jive Vocals lacks: the chain reaches the same evenness by design, and a discrete leveller measured worse.
 
-### 4.3 Does Jivetalking close the medium-term levelling gap?
+### 4.3 Does Jive Vocals close the medium-term levelling gap?
 
-This is the crux of the revision. The honest verdict: **there is no gap to close. The gap was a mirage.** Levelator is a chain-in-a-box for people who have no chain. Jivetalking is the chain, and it already covers Levelator's real jobs. A discrete time-based leveller duplicates the compressor and loudnorm rather than filling a hole.
+This is the crux of the revision. The honest verdict: **there is no gap to close. The gap was a mirage.** Levelator is a chain-in-a-box for people who have no chain. Jive Vocals is the chain, and it already covers Levelator's real jobs. A discrete time-based leveller duplicates the compressor and loudnorm rather than filling a hole.
 
 **Tested and rejected.** We built a discrete time-based leveller and measured it across three full-corpus sweeps. Every iteration came out neutral-to-harmful: it never improved a consistency metric, it mostly widened them, and it lifted the noise floor. A well-built speech chain leaves no room for a slow leveller to do useful work, so the stage was dropped.
 
 **Why the architecture already covers it:**
 
 - **Levelling and compression are one mechanism at different timescales.** A low-ratio, long-release compressor is a leveller. Broadcast and podcast chains carry no separate "macro leveller" box. Medium-term evenness comes from the compressor's ratio and release plus the integrated loudness target. The levelling compressor is FFmpeg `acompressor` in RMS mode, ratio 3.0, attack 10 ms, release 200 ms, soft knee 4.0, threshold pinned to the elected speech RMS plus 9 dB (`tuneLevellingCompressor` and `tuneLevellingCompressorThreshold` in `adaptive_levelling_compressor.go`). The 200 ms release holds gain reduction across intra-phrase dips and evens the loud-to-quiet swing of a delivery.
-- **Levelator's headline job does not apply here.** Levelator's main trick was balancing different speakers at different levels on one track. Jivetalking processes one presenter per file to a -16 LUFS integrated target, so inter-speaker balance is solved by the architecture before any leveller could run. That was Levelator's main reason to exist.
+- **Levelator's headline job does not apply here.** Levelator's main trick was balancing different speakers at different levels on one track. Jive Vocals processes one presenter per file to a -16 LUFS integrated target, so inter-speaker balance is solved by the architecture before any leveller could run. That was Levelator's main reason to exist.
 - **The absolute target is loudnorm's job.** Linear-mode loudnorm reaches -16 LUFS integrated from a full-file measurement, computed before the render (`buildLoudnormFilterSpec` in `normalise.go`). Short and medium dynamics are the compressor's job. Between them the two stages cover the work a loudness map was invented to do.
 
 **The one genuine residual:** slow intra-speaker drift over a long session (a presenter drifting 3 to 4 dB across half an hour). The chain does not explicitly flatten that. Two points hold. The corpus sweep found no such benefit to capture. And if the drift ever mattered, the correct fix is a longer compressor release, not a separate gain-automation stage stacked on top. Stacking one on top fights the compressor and lifts the floor, which is what the sweeps showed.
 
-**Net:** Jivetalking leads on output quality and feature coverage, including the true-peak levelling and the pre-calculated normaliser. On medium-term levelling there is no deficit. Adding a Levelator-style stage measured worse across the corpus, because the chain already does the job.
+**Net:** Jive Vocals leads on output quality and feature coverage, including the true-peak levelling and the pre-calculated normaliser. On medium-term levelling there is no deficit. Adding a Levelator-style stage measured worse across the corpus, because the chain already does the job.
 
 ---
 
@@ -233,13 +233,13 @@ This is the crux of the revision. The honest verdict: **there is no gap to close
 
 ### High priority
 
-1. **Drag-and-drop GUI wrapper.** A thin wrapper (file watcher or small native app) that runs `jivetalking` on dropped files would match Levelator's accessibility, which was the real driver of its adoption. Feasibility: high; no core change.
+1. **Drag-and-drop GUI wrapper.** A thin wrapper (file watcher or small native app) that runs `jive-vocals` on dropped files would match Levelator's accessibility, which was the real driver of its adoption. Feasibility: high; no core change.
 
 ### Medium priority
 
-2. **Document the pipeline as an "Algorithms" page.** Levelator's algorithm page is still cited 18 years on. Jivetalking has the material in AGENTS.md, Pipeline.md, and Normalisation-Tuning.md; a public-facing version would build the same trust.
+2. **Document the pipeline as an "Algorithms" page.** Levelator's algorithm page is still cited 18 years on. Jive Vocals has the material in AGENTS.md, Pipeline.md, and Normalisation-Tuning.md; a public-facing version would build the same trust.
 
-3. **Position against the real Levelator status.** Levelator survives only on macOS, and its Linux build is dead. Jivetalking's maintained Linux build is a concrete advantage to state plainly for Levelator refugees on Linux. Neither tool has a current Windows release.
+3. **Position against the real Levelator status.** Levelator survives only on macOS, and its Linux build is dead. Jive Vocals' maintained Linux build is a concrete advantage to state plainly for Levelator refugees on Linux. Neither tool has a current Windows release.
 
 ### Low priority
 
@@ -261,12 +261,12 @@ It solved a real problem (uneven spoken-word levels), it was free, and it was si
 
 Not a clean death. The Conversations Network shut down in 2012 [13], the 32-bit macOS build died on Catalina in 2019 [19], and a 64-bit Mac App Store version revived it in 2020 and continues as 3.0.3 today [1]. Windows and Linux were left behind at 2010-era builds [3-hist]. The lesson stands but sharpened: closed source plus single-platform maintenance stranded most of the user base, even though the macOS line survived.
 
-### Lessons for Jivetalking
+### Lessons for Jive Vocals
 
 1. **Simplicity drove adoption.** Keep the "it just works" default. The GUI wrapper (Recommendation 2) is the highest-leverage usability move.
-2. **Open source is the insurance Levelator never had.** Its Linux and Windows users had no recourse. Jivetalking's open licence and maintained Linux and macOS builds remove that risk for those platforms.
+2. **Open source is the insurance Levelator never had.** Its Linux and Windows users had no recourse. Jive Vocals' open licence and maintained Linux and macOS builds remove that risk for those platforms.
 3. **The medium term was already won, not still the prize.** Levelator's time-windowed levelling looked irreplaceable, but a well-built chain reaches the same evenness through its compressor and integrated target. A discrete loudness-map stage, tested across three corpus sweeps, only damaged the audio. There was nothing left to finish.
-4. **Target a real standard.** Jivetalking's -16 LUFS is the correct modern choice over an unweighted in-house RMS target.
+4. **Target a real standard.** Jive Vocals' -16 LUFS is the correct modern choice over an unweighted in-house RMS target.
 
 ---
 
@@ -294,10 +294,10 @@ Not a clean death. The Conversations Network shut down in 2012 [13], the 32-bit 
 [20] Alternatives to Levelator, Podcasting Hacks: https://podcastinghacks.com/alternatives-to-levelator/ - confirms Catalina break; Auphonic as successor.
 [bs1770] ITU-R BS.1770 (true-peak): https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.1770-5-202311-I!!PDF-E.pdf - K-weighting and 4x-oversampled true peak; basis for sample-peak vs true-peak.
 
-### Jivetalking code (current branch)
+### Jive Vocals code (current branch)
 
 Citations are inline as function and file. Primary files: `internal/processor/analyser_vad.go` (VAD), `internal/processor/analyser_candidates_speech.go` (speech election), `internal/processor/adaptive.go`, `adaptive_levelling_compressor.go`, `adaptive_speech_gate.go` (adaptation), `internal/processor/normalise.go` (Pass 3/4), `internal/processor/filters.go` (chain), `internal/processor/processor.go` (orchestration), plus `AGENTS.md`, `docs/Pipeline.md`, `docs/Normalisation-Tuning.md`.
 
 ---
 
-*Report compiled June 2026 from a fresh primary-source re-research of Levelator and a code-level reading of the current Jivetalking branch (unified VAD on the momentary-LUFS axis with the cross-platform NaN floored-fraction fix, four-pass pre-calculated normaliser, and true-peak brickwall levelling).*
+*Report compiled June 2026 from a fresh primary-source re-research of Levelator and a code-level reading of the current Jive Vocals branch (unified VAD on the momentary-LUFS axis with the cross-platform NaN floored-fraction fix, four-pass pre-calculated normaliser, and true-peak brickwall levelling).*

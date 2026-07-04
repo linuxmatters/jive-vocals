@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // breakOnError is the lenient error policy: swallow the error so the caller's

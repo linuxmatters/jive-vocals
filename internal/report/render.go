@@ -3,7 +3,7 @@ package report
 import (
 	"strings"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // RenderMarkdown renders a run record to a Markdown report string. timings is

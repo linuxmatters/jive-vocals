@@ -2,9 +2,9 @@
 # afftdn-spike.sh - Validate FFmpeg afftdn noise reduction in isolation
 #
 # Tests whether afftdn actually removes noise when given a known room tone sample.
-# Uses the same room tone windows identified by Jivetalking's Pass 1 analysis.
+# Uses the same room tone windows identified by Jive Vocals' Pass 1 analysis.
 #
-# This spike isolates afftdn from Jivetalking's filter chain to determine if:
+# This spike isolates afftdn from Jive Vocals' filter chain to determine if:
 # 1. afftdn works at all with our parameters
 # 2. The noise profile from room tone samples is being learned correctly
 # 3. Noise reduction is measurable in before/after comparisons
@@ -19,7 +19,7 @@ TESTDATA_DIR="testdata"
 OUTPUT_DIR="testdata/afftdn-spike"
 DURATION="${1:-900}"
 
-# Presenter configurations (from Jivetalking logs for LMP-72)
+# Presenter configurations (from Jive Vocals logs for LMP-72)
 # Format: "name|room_tone_start|room_tone_end|room_tone_rms|trough"
 # room_tone_end = room_tone_start + duration (10s windows)
 # Measurements from source audio analysis
@@ -43,7 +43,7 @@ declare -a PRESENTERS=(
 # - rf=-60/-70 unlocks 4-5dB more reduction
 # - fo parameter might help with tonal noise (mains hum)
 declare -a CONFIGS=(
-    # Baseline (current Jivetalking-like)
+    # Baseline (current Jive Vocals-like)
     "baseline|6|2|-38|0.7|1.0|0|0"
     # Previous best - good reduction, decent centroid preservation
     "tuned|12|0|-70|0.5|1.2|10|0"

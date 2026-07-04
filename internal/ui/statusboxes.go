@@ -7,7 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/linuxmatters/jivetalking/internal/cli"
+	"github.com/linuxmatters/jive-vocals/internal/cli"
 )
 
 // Filter-chain status boxes (Filter Chain + Analysis), drawn to the right of the

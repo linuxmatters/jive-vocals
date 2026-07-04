@@ -8,7 +8,7 @@ Only the latest release is supported. Security fixes are released as patch versi
 
 **Do not open a public issue for security vulnerabilities.**
 
-[Report vulnerabilities privately](https://github.com/linuxmatters/jivetalking/security/advisories/new). Include:
+[Report vulnerabilities privately](https://github.com/linuxmatters/jive-vocals/security/advisories/new). Include:
 
 - Steps to reproduce
 - Affected versions

@@ -17,7 +17,7 @@ import (
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
 	"github.com/linuxmatters/ffmpeg-statigo/av"
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // frozenSpectrogramSpec is the single, frozen showspectrumpic parameter string for
@@ -128,7 +128,7 @@ func generateSpectrogram(ctx context.Context, inputPath string, bounds *regionBo
 }
 
 // RenderSpectrogramImage renders one SpectrogramImage from a run to disk. It is
-// the exported per-image entry the pool (cmd/jivetalking) calls in a background
+// the exported per-image entry the pool (cmd/jive-vocals) calls in a background
 // goroutine, keeping the source/bounds/dest resolution INSIDE this package, which
 // owns the record, the kind/stage constants, and the elected-region bounds.
 //

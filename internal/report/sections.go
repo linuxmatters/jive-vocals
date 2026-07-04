@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // This file holds the per-domain section renderers: Header, Processing Summary,
@@ -20,7 +20,7 @@ import (
 // Header
 // =============================================================================
 
-// renderHeader renders the run provenance block: input file, jivetalking
+// renderHeader renders the run provenance block: input file, jive-vocals
 // version, resolved executable path, processed-at, audio duration, sample rate,
 // and channel layout. Reads only rec.Run.
 func renderHeader(rec *processor.RunRecord) string {

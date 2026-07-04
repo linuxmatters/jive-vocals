@@ -14,7 +14,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // Timings carries run metadata the RunRecord does not hold: pass durations and
