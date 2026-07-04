@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	"github.com/linuxmatters/jivetalking/internal/cli"
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/cli"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // TestSpeedFraction verifies the badge fraction un-scales Pass 1's capped progress

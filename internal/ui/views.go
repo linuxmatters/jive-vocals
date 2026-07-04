@@ -11,8 +11,8 @@ import (
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/lipgloss/v2"
-	"github.com/linuxmatters/jivetalking/internal/cli"
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/cli"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // renderProcessingView renders the header and file queue as one unscrolled
@@ -549,7 +549,7 @@ const gainBarWidth = 5
 // (bright-cyan→blue→green→amber→red), so the fill edge sits at the zone colour.
 // Empty cells render dim. Styling goes through lipgloss so it auto-strips on a
 // non-TTY pipe, leaving the bare ▰▱ runes (which still convey fill in mono).
-// Exported so the analysis-only console path (cmd/jivetalking) reuses one source
+// Exported so the analysis-only console path (cmd/jive-vocals) reuses one source
 // of truth.
 func GainBar(inputTP float64) string {
 	position := gainGlyphPosition(inputTP)
@@ -858,7 +858,7 @@ func renderDoneBox(file FileProgress) string {
 }
 
 // QualityStars renders an n-of-5 star bar as filled ★ followed by empty ☆,
-// clamped to [0,5]. Exported so the analysis-only console path (cmd/jivetalking)
+// clamped to [0,5]. Exported so the analysis-only console path (cmd/jive-vocals)
 // renders the same Recording star bar as the TUI without duplicating the glyphs.
 func QualityStars(n int) string {
 	n = max(0, min(5, n))

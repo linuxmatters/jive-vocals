@@ -5,7 +5,7 @@ import (
 	"context"
 	"math"
 
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // afftdnBandCentresHz are the 15 FIXED band centre frequencies (Hz) afftdn uses

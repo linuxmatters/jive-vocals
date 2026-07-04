@@ -1,16 +1,18 @@
-# Jivetalking 🕺
+# Jive Vocals 🕺
+
+> Formerly known as Jivetalking.
 
 Raw microphone recordings into broadcast-ready audio in one command. No configuration, and no surprises.
 
 ```bash
-jivetalking LMP-81s-mark.flac LMP-81s-martin.flac LMP-81s-popey.flac
+jive-vocals LMP-81s-mark.flac LMP-81s-martin.flac LMP-81s-popey.flac
 ```
 
 Your files emerge at -16 LUFS / -1 dBTP, the loudness standard for spoken-word podcasts, with room rumble, background hiss, clicks, and harsh sibilance sorted automatically. Multiple files process in parallel, each with its own TUI progress row. Everything needed is embedded in the binary. This is not how audio tools usually work, and that is rather the point.
 
 ## Example Output
 
-<div align="center"><img alt="Jivetalking Demo" src=".github/jivetalking.gif" width="620" /></div>
+<div align="center"><img alt="Jive Vocals Demo" src=".github/jive-vocals.gif" width="620" /></div>
 
 ---
 
@@ -23,7 +25,7 @@ Record → Process → Edit → Export
   │         │         │
   │         │         └─ Import to Audacity, top/tail, edit
   │         │
-  │         └─ $ jivetalking *.flac (-16 LUFS, matched levels)
+  │         └─ $ jive-vocals *.flac (-16 LUFS, matched levels)
   │
   └─ Each presenter records separately, exports FLAC
 ```
@@ -39,38 +41,38 @@ Single binary. Zero external dependencies. FFmpeg is embedded via ffmpeg-statigo
 Install with [bin](https://github.com/marcosnils/bin), a GitHub-aware binary manager:
 
 ```bash
-bin install github.com/linuxmatters/jivetalking
+bin install github.com/linuxmatters/jive-vocals
 ```
 
 This picks the correct platform and architecture, drops the binary into `~/.local/bin/`, and handles updates via `bin update`. No root required, no path wrangling.
 
 ### Manual Download
 
-Fetch from the [releases page](https://github.com/linuxmatters/jivetalking/releases):
+Fetch from the [releases page](https://github.com/linuxmatters/jive-vocals/releases):
 
 ```bash
 # Linux amd64
-chmod +x jivetalking-linux-amd64
-mv jivetalking-linux-amd64 ~/.local/bin/jivetalking
+chmod +x jive-vocals-linux-amd64
+mv jive-vocals-linux-amd64 ~/.local/bin/jive-vocals
 
 # Linux arm64
-chmod +x jivetalking-linux-arm64
-mv jivetalking-linux-arm64 ~/.local/bin/jivetalking
+chmod +x jive-vocals-linux-arm64
+mv jive-vocals-linux-arm64 ~/.local/bin/jive-vocals
 
 # macOS Intel
-chmod +x jivetalking-darwin-amd64
-mv jivetalking-darwin-amd64 ~/.local/bin/jivetalking
+chmod +x jive-vocals-darwin-amd64
+mv jive-vocals-darwin-amd64 ~/.local/bin/jive-vocals
 
 # macOS Apple Silicon
-chmod +x jivetalking-darwin-arm64
-mv jivetalking-darwin-arm64 ~/.local/bin/jivetalking
+chmod +x jive-vocals-darwin-arm64
+mv jive-vocals-darwin-arm64 ~/.local/bin/jive-vocals
 ```
 
 ---
 
 ## The Four-Pass Pipeline
 
-Jivetalking treats audio processing as measurement science, not guesswork. It analyses your recording first, then adapts every filter to match. A dark-voiced narrator gets gentler de-essing, pre-compressed audio gets lighter compression, and a noisy home office gets different treatment than a clean studio.
+Jive Vocals treats audio processing as measurement science, not guesswork. It analyses your recording first, then adapts every filter to match. A dark-voiced narrator gets gentler de-essing, pre-compressed audio gets lighter compression, and a noisy home office gets different treatment than a clean studio.
 
 Four passes carry a raw recording to a broadcast-ready master:
 
@@ -94,7 +96,7 @@ For the full walkthrough, see **[docs/Pipeline.md](docs/Pipeline.md)**: what eac
 When a file finishes, the completion box shows two star ratings: **Recording** (your source capture, the one that varies) and **Processed** (the output against the -16 LUFS target, almost always five stars). The pair tells the story: a two-star capture taken to a five-star master.
 
 ```
-Jivetalking 🕺
+Jive Vocals 🕺
 
 ╭──────────────────────────────────────────╮
 │ Processing 3 files, 3 complete, 0 failed │
@@ -139,7 +141,7 @@ See **[docs/Usage.md](docs/Usage.md#quality-ratings)** for the three axes behind
 ## Usage
 
 ```bash
-jivetalking [flags] <files...>
+jive-vocals [flags] <files...>
 ```
 
 ### Flags
@@ -148,7 +150,7 @@ jivetalking [flags] <files...>
 |------|-------------|
 | `-v, --version` | Show version and exit |
 | `-a, --analysis-only` | Run analysis only (Pass 1), display results, skip processing |
-| `-d, --debug` | Enable debug logging to `jivetalking-debug.log` |
+| `-d, --debug` | Enable debug logging to `jive-vocals-debug.log` |
 | `--diagnostics` | Write extra diagnostic artefacts: before/after spectrogram PNGs plus `.intervals.jsonl`/`.candidates.jsonl` sidecars. Adds extra FFmpeg passes. Off by default |
 
 
@@ -156,19 +158,19 @@ jivetalking [flags] <files...>
 
 ```bash
 # Process multiple presenters in parallel (worker count tracks file count)
-jivetalking presenter1.flac presenter2.flac presenter3.flac
+jive-vocals presenter1.flac presenter2.flac presenter3.flac
 
 # Inspect recordings without processing
-jivetalking -a presenter1.flac presenter2.flac
+jive-vocals -a presenter1.flac presenter2.flac
 
 # Debug a problematic recording
-jivetalking -d troublesome-recording.flac
+jive-vocals -d troublesome-recording.flac
 
 # Process all FLAC files in directory
-jivetalking *.flac
+jive-vocals *.flac
 
 # Emit before/after spectrograms and interval sidecars
-jivetalking --diagnostics presenter1.flac
+jive-vocals --diagnostics presenter1.flac
 ```
 
 Processing always writes a Markdown report next to each processed output. For example, `recording-LUFS-16-processed.flac` gets `recording-LUFS-16-processed.md`. The report is empirical: every measurement and the exact adapted filter parameters, with objective metric definitions and no quality verdicts. Analysis-only runs write `<input>-analysis.md` instead.
@@ -212,9 +214,9 @@ The full source layout, architecture, and contribution standards live in [AGENTS
 
 ### Design Documentation
 
-- [Usage Guide](docs/Usage.md): driving Jivetalking in depth: quality ratings, analysis-only mode, and diagnostics
+- [Usage Guide](docs/Usage.md): driving Jive Vocals in depth: quality ratings, analysis-only mode, and diagnostics
 - [Audio Pipeline](docs/Pipeline.md): how and why the processing pipeline is built and tuned, with a diagram
-- [The hardware that taught me](docs/Inspiration.md): the influences and heritage behind jivetalking's processing approach
-- [Levelator Comparison](docs/Levelator-Comparison-And-Gap-Analysis.md): how Jivetalking compares to The Levelator, with capabilities and gaps
+- [The hardware that taught me](docs/Inspiration.md): the influences and heritage behind Jive Vocals' processing approach
+- [Levelator Comparison](docs/Levelator-Comparison-And-Gap-Analysis.md): how Jive Vocals compares to The Levelator, with capabilities and gaps
 - [Spectral Metrics Reference](docs/Spectral-Metrics-Reference.md): how measurements drive adaptation
 - [Normalisation Tuning](docs/Normalisation-Tuning.md): why the loudnorm and limiter constants hold their corpus-derived values

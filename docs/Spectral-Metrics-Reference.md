@@ -1,14 +1,14 @@
 # Audio Metrics Reference
 
-Objective definitions of the audio metrics Jivetalking measures and emits. Each entry states what the metric measures, how ffmpeg computes it, its units, scale, and source filter. Definitions only: no perceptual interpretation, no quality judgement, no threshold-to-meaning mapping.
+Objective definitions of the audio metrics Jive Vocals measures and emits. Each entry states what the metric measures, how ffmpeg computes it, its units, scale, and source filter. Definitions only: no perceptual interpretation, no quality judgement, no threshold-to-meaning mapping.
 
 Derived from the `audio-metrics` skill. Verified against FFmpeg filter docs (https://ffmpeg.org/ffmpeg-filters.html) and source on `release/8.1` and `master` (`libavfilter/af_aspectralstats.c`, `af_astats.c`, `af_loudnorm.c`, `doc/filters.texi`). Where a derivation is medium-confidence, the entry marks it `medium`.
 
-Jivetalking captures these metrics across its four-pass pipeline: `astats` + `aspectralstats` + `ebur128` in Pass 1 analysis, region remeasures in Pass 2/4, and `loudnorm` in Pass 3/4. The canonical run-record JSON key names are the struct tags in `internal/processor/runrecord.go`; those tags are the single source of truth for the key strings, which are an internal, still-settling contract. This reference defines the metrics; it does not restate the JSON keys.
+Jive Vocals captures these metrics across its four-pass pipeline: `astats` + `aspectralstats` + `ebur128` in Pass 1 analysis, region remeasures in Pass 2/4, and `loudnorm` in Pass 3/4. The canonical run-record JSON key names are the struct tags in `internal/processor/runrecord.go`; those tags are the single source of truth for the key strings, which are an internal, still-settling contract. This reference defines the metrics; it does not restate the JSON keys.
 
 ## aspectralstats - per-frame spectral statistics
 
-Statistics run over the half-spectrum magnitude array `magnitude[n] = hypotf(re, im)` of length `size = win_size/2`; FFT output is pre-scaled by `1/win_size`; `scale = max_freq/size` with `max_freq = sample_rate/2`. Metadata keys emit per channel as `lavfi.aspectralstats.<N>.<key>`. Jivetalking averages these per scope (whole-file, per-250 ms interval, per elected region).
+Statistics run over the half-spectrum magnitude array `magnitude[n] = hypotf(re, im)` of length `size = win_size/2`; FFT output is pre-scaled by `1/win_size`; `scale = max_freq/size` with `max_freq = sample_rate/2`. Metadata keys emit per channel as `lavfi.aspectralstats.<N>.<key>`. Jive Vocals averages these per scope (whole-file, per-250 ms interval, per elected region).
 
 | Metric | Measures | ffmpeg computation | Units | Range/scale | Confidence |
 | --- | --- | --- | --- | --- | --- |
@@ -48,16 +48,16 @@ Samples are normalised to `[-1, 1]`; `LINEAR_TO_DB(x) = 20*log10(x)`. Metadata k
 | Flat factor | Run-length flatness at the min/max levels | `20*log10( (min_runs+max_runs)/(min_count+max_count) )` | dB-scaled | >= 0 | medium |
 | Peak count | Number of occasions (not samples) the signal hit Min or Max level | `min_count + max_count` | count (integer) | >= 0 | high |
 | DC offset | Mean sample amplitude (displacement from zero) | `Sum x / N` | linear amplitude | signed | high |
-| Min level / Max level | Smallest / largest signed sample | raw sample extremes; Jivetalking converts to dBFS | dBFS (after conversion) | <= 0 | high |
+| Min level / Max level | Smallest / largest signed sample | raw sample extremes; Jive Vocals converts to dBFS | dBFS (after conversion) | <= 0 | high |
 | Zero-crossings rate | Fraction of sample pairs that change sign | `zero_crossings / N` | dimensionless ratio | 0 .. 1 | high |
 | Entropy | astats signal entropy of the sample distribution | per-channel sample-value entropy | dimensionless | 0 .. 1 | medium |
 | Bit depth | Effective bit depth from the sample data | per `af_astats.c` bit-depth estimate | bits | integer | high |
 
-Source quirk (low impact): per-channel metadata `Crest_factor` numerator uses raw `min`/`max` while the console-log path uses normalised `nmin`/`nmax`; they agree for float/double formats. Both paths are peak/RMS linear ratios, never dB. Jivetalking stores `CrestFactor` converted linear -> dB; see the crest-factor disambiguation below.
+Source quirk (low impact): per-channel metadata `Crest_factor` numerator uses raw `min`/`max` while the console-log path uses normalised `nmin`/`nmax`; they agree for float/double formats. Both paths are peak/RMS linear ratios, never dB. Jive Vocals stores `CrestFactor` converted linear -> dB; see the crest-factor disambiguation below.
 
 ## ebur128 - loudness
 
-Logged values are labelled `M`, `S`, `I`, `LRA`, `TPK`/`FTPK`. Read-only metadata exports `integrated`, `range`, `lra_low`, `lra_high`, `true_peak`. Loudness uses K-weighting plus mean-square per ITU-R BS.1770; true peak uses libswresample oversampling. Jivetalking runs `ebur128(peak=sample+true)`, so both sample peak and oversampled true peak are captured.
+Logged values are labelled `M`, `S`, `I`, `LRA`, `TPK`/`FTPK`. Read-only metadata exports `integrated`, `range`, `lra_low`, `lra_high`, `true_peak`. Loudness uses K-weighting plus mean-square per ITU-R BS.1770; true peak uses libswresample oversampling. Jive Vocals runs `ebur128(peak=sample+true)`, so both sample peak and oversampled true peak are captured.
 
 | Metric | Measures | Computation / window | Units | Range/scale | Confidence |
 | --- | --- | --- | --- | --- | --- |
@@ -72,7 +72,7 @@ Gating (BS.1770-2 onward, adopted by EBU R128 / Tech 3341): absolute gate -70 LU
 
 ## loudnorm - EBU R128 normalisation (FFmpeg 8.1)
 
-JSON stats print at filter teardown when `print_format=json`. Two measurement states: `r128_in` (raw input) and `r128_out` (output after processing). Output is exactly these 10 keys; no gain/offset field exists in 8.1 (any blog or master claim of extra fields does not apply). 8.1 is byte-identical to master for options, struct, JSON, and decision regions. Jivetalking parses these strings in Pass 3, then applies loudnorm in linear mode in Pass 4.
+JSON stats print at filter teardown when `print_format=json`. Two measurement states: `r128_in` (raw input) and `r128_out` (output after processing). Output is exactly these 10 keys; no gain/offset field exists in 8.1 (any blog or master claim of extra fields does not apply). 8.1 is byte-identical to master for options, struct, JSON, and decision regions. Jive Vocals parses these strings in Pass 3, then applies loudnorm in linear mode in Pass 4.
 
 | Field | Measures | I/O/Control | Units | Range/scale | Confidence |
 | --- | --- | --- | --- | --- | --- |
@@ -99,7 +99,7 @@ Method: K-weighted loudness per ITU-R BS.1770 / EBU R128 via the bundled `ebur12
 
 ## Disambiguations
 
-- Spectral crest vs crest factor: `aspectralstats.crest` = `max(magnitude)/mean(magnitude)` over the frequency-domain magnitude spectrum (per-frame spectral peakiness). `astats` Crest factor = `peak_sample/RMS` in the time domain. Different domains; both are linear dimensionless ratios >= 1, never dB. Jivetalking stores the time-domain `astats` value converted linear -> dB. Do not conflate.
+- Spectral crest vs crest factor: `aspectralstats.crest` = `max(magnitude)/mean(magnitude)` over the frequency-domain magnitude spectrum (per-frame spectral peakiness). `astats` Crest factor = `peak_sample/RMS` in the time domain. Different domains; both are linear dimensionless ratios >= 1, never dB. Jive Vocals stores the time-domain `astats` value converted linear -> dB. Do not conflate.
 - Kurtosis baseline: `aspectralstats.kurtosis` is Pearson kurtosis (4th-power moment / `Sum mag * spread^4`). No `-3` and no `-0` subtraction. It is not excess kurtosis.
 - Flatness scale: a 0-1 linear ratio (geometric mean / arithmetic mean of magnitudes), not dB. `1.0` = flat spectrum, toward `0` = peaky.
 - Entropy scale/basis: `aspectralstats.entropy` is `-Sum(mag*ln(mag+eps)) / ln(N)`, natural log, normalised by `ln(N)` with `N` = bins. Magnitudes are raw (not a PMF), so this is not a conventional 0-1 normalised entropy and is not bounded to `[0,1]`. This is distinct from the `astats` signal entropy, which runs over the time-domain sample distribution.
@@ -108,7 +108,7 @@ Method: K-weighted loudness per ITU-R BS.1770 / EBU R128 via the bundled `ebur12
 
 ## Standards and platform targets
 
-External reference targets, not interpretation. Each row marks whether it is a formal standard or a platform norm. Jivetalking targets -16 LUFS with a -1.0 dBTP ceiling by default.
+External reference targets, not interpretation. Each row marks whether it is a formal standard or a platform norm. Jive Vocals targets -16 LUFS with a -1.0 dBTP ceiling by default.
 
 | Target | Exact value | Tolerance / extras | Publisher | Classification |
 | --- | --- | --- | --- | --- |

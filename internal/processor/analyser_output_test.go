@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // measureOutputRoomToneRegion analyses the elected room tone region in the output file

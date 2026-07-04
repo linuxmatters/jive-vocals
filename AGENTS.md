@@ -23,9 +23,9 @@ Go CLI tool for podcast audio preprocessing using embedded FFmpeg. Transforms ra
 ## Architecture
 
 ```
-cmd/jivetalking/main.go          # CLI entry, Kong flags, resolveJobs(), ctx + cancel(), starts TUI; runAnalysisOnly() / runAnalysisOnlyWithDeps(); exits 1 when any file fails (cancellation exits 0)
-cmd/jivetalking/pool.go          # runWorkerPool() - bounded concurrent multi-file processing; returns the non-cancellation failure count
-cmd/jivetalking/analysispool.go  # runAnalysisPool() - bounded concurrent multi-file analysis (mirrors pool.go)
+cmd/jive-vocals/main.go          # CLI entry, Kong flags, resolveJobs(), ctx + cancel(), starts TUI; runAnalysisOnly() / runAnalysisOnlyWithDeps(); exits 1 when any file fails (cancellation exits 0)
+cmd/jive-vocals/pool.go          # runWorkerPool() - bounded concurrent multi-file processing; returns the non-cancellation failure count
+cmd/jive-vocals/analysispool.go  # runAnalysisPool() - bounded concurrent multi-file analysis (mirrors pool.go)
 internal/
 ├── audio/reader.go         # FFmpeg demuxer/decoder wrapper (Reader, Metadata, OpenAudioFile)
 ├── processor/
@@ -127,7 +127,7 @@ Pass 4: volume (pre-gain, when clamped) → alimiter (levelling limiter, peak re
 - Run `just test` before committing
 - **Never use `testdata/` files in Go tests.** `go test` must be hermetic: exercise pure functions, in-memory `RunRecord`s and fixtures, and registry/filter lookups that need no audio file. Do not add tests that decode or process `testdata/` audio files - synthetically generated audio written to `t.TempDir()` (e.g. `generateTestAudio`) is permitted - and do not add `findProbeAudioFile`/`findPoolTestAudio`/`copyFixtureTo`/`requireTestdata`-style helpers. Reasons:
   - **CI has no `testdata/`.** The audio files (`LMP-*.flac`, `fixture-5m.flac`) are gitignored, so any test that decodes or processes them fails or skips in CI.
-  - **They are slow.** Pushing real audio through the pipeline (and rendering spectrograms) drove `cmd/jivetalking`'s `go test` to ~130s; `go test` must stay fast.
+  - **They are slow.** Pushing real audio through the pipeline (and rendering spectrograms) drove `cmd/jive-vocals`'s `go test` to ~130s; `go test` must stay fast.
 - Audio-dependent checks belong in the gitignored manual validation harness under `testdata/validation-*/bin/` (shell scripts run by hand, e.g. `spectrogram-validate.sh`), never in the Go suite
 
 ## TUI message protocol
@@ -192,7 +192,7 @@ When working on audio analysis code (especially `internal/processor/analyser.go`
 - Consult `docs/Spectral-Metrics-Reference.md` (aligned with the `audio-metrics` skill) for what each metric is - definition, ffmpeg computation, units, range, source filter - when reading or producing audio measurements. It is an objective reference, not a source of thresholds or quality verdicts
 - Threshold values and scoring constants live in the code, justified against the validation corpus per the "no theatre - meaningful, exercised adaptation or a fixed correct value" principle and the bit-exact validation sweeps; do not derive them from documented "good ranges"
 
-For how and why the pipeline is built and tuned the way it is, in plain audio terms, see `docs/Pipeline.md`. For the influences behind the approach, see `docs/Inspiration.md` - the classic audio devices that shaped jivetalking's quality bar, named honestly as inspiration, not as circuits being reproduced.
+For how and why the pipeline is built and tuned the way it is, in plain audio terms, see `docs/Pipeline.md`. For the influences behind the approach, see `docs/Inspiration.md` - the classic audio devices that shaped Jive Vocals' quality bar, named honestly as inspiration, not as circuits being reproduced.
 
 ## Release workflow
 

@@ -9,9 +9,9 @@ import (
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/linuxmatters/jivetalking/internal/cli"
-	"github.com/linuxmatters/jivetalking/internal/processor"
-	"github.com/linuxmatters/jivetalking/internal/report"
+	"github.com/linuxmatters/jive-vocals/internal/cli"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/report"
 )
 
 // analysisFileState tracks analysis progress and results for a single file

@@ -1,4 +1,4 @@
-module github.com/linuxmatters/jivetalking
+module github.com/linuxmatters/jive-vocals
 
 go 1.26
 

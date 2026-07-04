@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 
-	"github.com/linuxmatters/jivetalking/internal/audio"
-	"github.com/linuxmatters/jivetalking/internal/processor"
-	"github.com/linuxmatters/jivetalking/internal/ui"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/ui"
 )
 
 // analysisSlot is one file's analysis output. The pool pre-allocates a

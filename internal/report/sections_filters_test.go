@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // processingRecord builds a full processing record via the real assembly path

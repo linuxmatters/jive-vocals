@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
-const fullbenchFixtureEnv = "JIVETALKING_BENCH_FIXTURE"
+const fullbenchFixtureEnv = "JIVE_VOCALS_BENCH_FIXTURE"
 
 type fullbenchAdaptedSetup struct {
 	Config       *EffectiveFilterConfig
@@ -86,7 +86,7 @@ func resolveFullbenchFixtureFromEnv(tb testing.TB) (string, bool) {
 		return "", false
 	}
 
-	if _, err := os.Stat(fixturePath); err != nil { // #nosec G703 -- local benchmark fixture path is explicitly supplied by JIVETALKING_BENCH_FIXTURE.
+	if _, err := os.Stat(fixturePath); err != nil { // #nosec G703 -- local benchmark fixture path is explicitly supplied by JIVE_VOCALS_BENCH_FIXTURE.
 		if os.IsNotExist(err) {
 			tb.Skipf("%s is set but benchmark fixture is absent: %s", fullbenchFixtureEnv, fixturePath)
 		}

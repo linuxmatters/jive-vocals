@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // fullLoudnessRecord builds an in-memory record with all three loudness stages
@@ -17,7 +17,7 @@ func fullLoudnessRecord() *processor.RunRecord {
 		Run: processor.RunProvenance{
 			InputFile:    "EP83-mark.flac",
 			Version:      "0.6.0",
-			Executable:   "/usr/local/bin/jivetalking",
+			Executable:   "/usr/local/bin/jive-vocals",
 			ProcessedAt:  "2026-06-11T17:20:55+01:00",
 			DurationS:    125.5,
 			SampleRateHz: 44100,

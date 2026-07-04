@@ -1,4 +1,4 @@
-// Package ui provides the Bubbletea terminal user interface for jivetalking
+// Package ui provides the Bubbletea terminal user interface for jive-vocals
 package ui
 
 import (
@@ -11,8 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/harmonica"
-	"github.com/linuxmatters/jivetalking/internal/cli"
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/cli"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // meterWidth is the cell width of the audio level meter. The progress bar caps

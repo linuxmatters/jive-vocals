@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // openTestFilterGraph generates synthetic audio in t.TempDir() and builds a

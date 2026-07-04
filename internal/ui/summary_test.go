@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // TestNewAdaptedSummaryFromConfig builds the summary from in-memory processor

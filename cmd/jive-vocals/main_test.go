@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/audio"
-	"github.com/linuxmatters/jivetalking/internal/processor"
-	"github.com/linuxmatters/jivetalking/internal/report"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/report"
 )
 
 func TestOpenDebugLog_DisabledReturnsNilWithoutCreatingFile(t *testing.T) {

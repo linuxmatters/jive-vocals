@@ -216,17 +216,17 @@ jobs:
         run: |
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building jivetalking $VERSION for ${{ matrix.os }}/${{ matrix.arch }}"
+          echo "Building jive-vocals $VERSION for ${{ matrix.os }}/${{ matrix.arch }}"
       - name: Build binary
         env:
           CGO_ENABLED: 1
         run: |
-          go build -ldflags="-X main.version=${{ steps.version.outputs.version }}" -o jivetalking-${{ matrix.os }}-${{ matrix.arch }} ./cmd/jivetalking
+          go build -ldflags="-X main.version=${{ steps.version.outputs.version }}" -o jive-vocals-${{ matrix.os }}-${{ matrix.arch }} ./cmd/jive-vocals
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: jivetalking-${{ matrix.os }}-${{ matrix.arch }}
-          path: jivetalking-${{ matrix.os }}-${{ matrix.arch }}
+          name: jive-vocals-${{ matrix.os }}-${{ matrix.arch }}
+          path: jive-vocals-${{ matrix.os }}-${{ matrix.arch }}
 
   release:
     name: Release 📦
@@ -263,12 +263,12 @@ jobs:
 
           ```bash
           # Linux (amd64)
-          chmod +x jivetalking-linux-amd64
-          sudo mv jivetalking-linux-amd64 /usr/local/bin/jivetalking
+          chmod +x jive-vocals-linux-amd64
+          sudo mv jive-vocals-linux-amd64 /usr/local/bin/jive-vocals
 
           # macOS (Apple Silicon)
-          chmod +x jivetalking-darwin-arm64
-          sudo mv jivetalking-darwin-arm64 /usr/local/bin/jivetalking
+          chmod +x jive-vocals-darwin-arm64
+          sudo mv jive-vocals-darwin-arm64 /usr/local/bin/jive-vocals
           ```
 
           ## Checksums
@@ -281,7 +281,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: artifacts
-          pattern: jivetalking-*
+          pattern: jive-vocals-*
           merge-multiple: false
       - name: Create release
         uses: softprops/action-gh-release@v3
@@ -289,8 +289,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          name: Jivetalking ${{ steps.version.outputs.version }}
+          name: Jive Vocals ${{ steps.version.outputs.version }}
           body_path: CHANGELOG.md
           draft: false
           prerelease: false
-          files: artifacts/jivetalking-*/jivetalking-*
+          files: artifacts/jive-vocals-*/jive-vocals-*

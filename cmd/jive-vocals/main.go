@@ -17,11 +17,11 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/charmbracelet/colorprofile"
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
-	"github.com/linuxmatters/jivetalking/internal/cli"
-	"github.com/linuxmatters/jivetalking/internal/processor"
-	"github.com/linuxmatters/jivetalking/internal/report"
-	"github.com/linuxmatters/jivetalking/internal/ui"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/cli"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/report"
+	"github.com/linuxmatters/jive-vocals/internal/ui"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -29,7 +29,7 @@ import (
 // release builds carry the git tag (e.g. "0.1.0").
 var version = "dev"
 
-const debugLogPath = "jivetalking-debug.log"
+const debugLogPath = "jive-vocals-debug.log"
 
 // createDebugLogFile is a package var over os.Create so tests can substitute a
 // fake and exercise openDebugLog without touching the filesystem.
@@ -38,7 +38,7 @@ var createDebugLogFile = os.Create
 // CLI defines the command-line interface parsed by kong.
 type CLI struct {
 	Version      bool     `short:"v" help:"Show version information"`
-	Debug        bool     `short:"d" help:"Enable debug logging to jivetalking-debug.log"`
+	Debug        bool     `short:"d" help:"Enable debug logging to jive-vocals-debug.log"`
 	AnalysisOnly bool     `short:"a" help:"Run analysis only (Pass 1), display results, skip processing"`
 	Diagnostics  bool     `name:"diagnostics" help:"Write bulk diagnostic artefacts for sweeps and quality comparison: the .intervals.jsonl and .candidates.jsonl sidecars plus before/after spectrogram PNGs (whole-file and elected room-tone/speech regions). Adds extra FFmpeg passes. Off by default." default:"false"`
 	Files        []string `arg:"" name:"files" help:"Audio files to process" type:"existingfile" optional:""`
@@ -65,7 +65,7 @@ func main() {
 	cliArgs := &CLI{}
 	ctx := kong.Parse(
 		cliArgs,
-		kong.Name("jivetalking"),
+		kong.Name("jive-vocals"),
 		kong.Description("Professional podcast audio pre-processor"),
 		kong.UsageOnError(),
 		kong.Vars{

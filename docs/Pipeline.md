@@ -1,13 +1,13 @@
 # Pipeline
 
-How Jivetalking turns a raw voice recording into a broadcast-ready file at
+How Jive Vocals turns a raw voice recording into a broadcast-ready file at
 -16 LUFS / -1 dBTP, and why each stage is built and tuned the way it is. Written
 for an audio engineer or a curious podcast creator: it explains the *what* and
 the *why* in plain audio terms, not the FFmpeg source line by line.
 
 ## The big picture: four passes
 
-Jivetalking processes one file in four passes, with a short derivation step
+Jive Vocals processes one file in four passes, with a short derivation step
 between the first two. It measures first, decides second, treats third, measures
 the result, and sets the loudness last.
 
@@ -326,7 +326,7 @@ the silence, not of the speech.
 
 ## Adaptive tuning in plain audio terms
 
-Jivetalking adapts only where a per-file measurement makes a real difference.
+Jive Vocals adapts only where a per-file measurement makes a real difference.
 Everything else is fixed at a value that is correct for spoken word. There is no
 adaptation for its own sake.
 
@@ -369,7 +369,7 @@ across real voices.
 
 A compressor threshold set from the whole file is misleading: long silences and
 the occasional loud peak drag a full-file average around, so the same threshold
-engages differently on a quiet recording than on a loud one. Instead, Jivetalking
+engages differently on a quiet recording than on a loud one. Instead, Jive Vocals
 sets the threshold to the **measured speech RMS plus 9 dB**.
 
 Anchoring to the speech level means the compressor engages on the upper part of
@@ -410,7 +410,7 @@ than a generic flat one.
 
 ## Normalisation (Pass 3/4): reaching -16 LUFS honestly
 
-The last job is loudness. Jivetalking targets -16 LUFS integrated and -1 dBTP
+The last job is loudness. Jive Vocals targets -16 LUFS integrated and -1 dBTP
 true peak, the common podcast spec. It uses FFmpeg's `loudnorm` in **linear
 mode**, which applies one consistent gain to the whole file rather than
 adaptively re-EQing and re-levelling it. Linear mode is the transparent choice:

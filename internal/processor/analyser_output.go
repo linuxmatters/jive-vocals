@@ -7,7 +7,7 @@ import (
 	"time"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // outputRegionAnalysisFilterFormat is the fmt.Sprintf format string for the

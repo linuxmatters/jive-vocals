@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // TestRunAnalysisPool_CancellationAbortsPromptly drives runAnalysisPool with a

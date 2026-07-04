@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // updateGolden regenerates the checked-in golden files instead of asserting

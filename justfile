@@ -1,4 +1,4 @@
-# Jivetalking - Just Commands
+# Jive Vocals - Just Commands
 
 # Import presenter integration tests if testdata/justfile exists (not in git)
 import? 'testdata/justfile'
@@ -75,16 +75,16 @@ setup:
         echo "Don't forget to commit: git commit -m 'chore: update ffmpeg-statigo to $TAG'"
     fi
 
-# Build jivetalking
+# Build jive-vocals
 build: _check-submodule
     #!/usr/bin/env bash
     VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
-    echo "Building jivetalking version: $VERSION"
-    CGO_ENABLED=1 go build -ldflags="-X main.version=$VERSION" -o jivetalking ./cmd/jivetalking
+    echo "Building jive-vocals version: $VERSION"
+    CGO_ENABLED=1 go build -ldflags="-X main.version=$VERSION" -o jive-vocals ./cmd/jive-vocals
 
 # Clean build artifacts and generated reports/data (.log, .json run-records, .jsonl sidecars)
 clean:
-    @rm -fv jivetalking 2>/dev/null || true
+    @rm -fv jive-vocals 2>/dev/null || true
     @rm -fv testdata/*-processed.* 2>/dev/null || true
     @rm -fv testdata/*-analysis.* 2>/dev/null || true
     @rm -fv testdata/LMP-*-stashed.* 2>/dev/null || true
@@ -95,17 +95,17 @@ clean:
 test: _check-submodule
     go test ./...
 
-# Install jivetalking to ~/.local/bin
+# Install jive-vocals to ~/.local/bin
 install: build
     @mkdir -p ~/.local/bin 2>/dev/null || true
-    @mv ./jivetalking ~/.local/bin/jivetalking
-    @echo "Installed jivetalking to ~/.local/bin/jivetalking"
+    @mv ./jive-vocals ~/.local/bin/jive-vocals
+    @echo "Installed jive-vocals to ~/.local/bin/jive-vocals"
     @echo "Make sure ~/.local/bin is in your PATH"
 
 # Make a VHS tape recording
 vhs: build
     @rm -f testdata/LMP-81s-*-processed.flac
-    @vhs ./jivetalking.tape
+    @vhs ./jive-vocals.tape
 
 # Show current version (from git tags or "dev" if no tags)
 version:

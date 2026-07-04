@@ -12,7 +12,7 @@ import (
 	"time"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
-	"github.com/linuxmatters/jivetalking/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
 // normaliseDuration returns the total audio length in seconds from the Pass 1
@@ -167,7 +167,7 @@ func parseLoudnormStatsFile(path string) (*LoudnormStats, error) {
 // loudnormDeps injects the loudnorm passes' FFmpeg-touching collaborators
 // (graph setup, frame loop, encoder construction, output rename) so tests can
 // substitute fakes without mutating package state, following the
-// analysisOnlyDeps pattern in cmd/jivetalking/main.go. Production callers use
+// analysisOnlyDeps pattern in cmd/jive-vocals/main.go. Production callers use
 // defaultLoudnormDeps().
 type loudnormDeps struct {
 	runFilterGraph   func(context.Context, *audio.Reader, *ffmpeg.AVFilterContext, *ffmpeg.AVFilterContext, FrameLoopConfig) error

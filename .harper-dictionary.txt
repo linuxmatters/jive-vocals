@@ -1,5 +1,4 @@
-jivetalking
-Jivetalking
+jive-vocals
 Levelator
 VAD
 RMS

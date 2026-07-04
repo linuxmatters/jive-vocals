@@ -11,9 +11,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/linuxmatters/jivetalking/internal/processor"
-	"github.com/linuxmatters/jivetalking/internal/report"
-	"github.com/linuxmatters/jivetalking/internal/ui"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/report"
+	"github.com/linuxmatters/jive-vocals/internal/ui"
 )
 
 // sendWarning delivers a non-fatal warning to the reportWarnings channel without

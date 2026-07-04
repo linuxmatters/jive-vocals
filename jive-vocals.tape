@@ -55,9 +55,9 @@
 #   Hide                            Hide the subsequent commands from the output
 #   Show                            Show the subsequent commands in the output
 
-Output .github/jivetalking.gif
+Output .github/jive-vocals.gif
 
-Require ./jivetalking
+Require ./jive-vocals
 
 Set Shell "fish"
 Set FontSize 14
@@ -69,5 +69,5 @@ Set WindowBarSize 32
 Set TypingSpeed 27ms
 Set Theme catppuccin-mocha
 
-Type "./jivetalking testdata/LMP-81s-*.flac" Sleep 250ms Enter
+Type "./jive-vocals testdata/LMP-81s-*.flac" Sleep 250ms Enter
 Sleep 20s

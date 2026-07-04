@@ -1,6 +1,6 @@
-# Jivetalking - Presenter Integration Tests
+# Jive Vocals - Presenter Integration Tests
 # Local audio files (not in git). Imported into the root justfile, so recipes run
-# from the repo root where ./jivetalking lives.
+# from the repo root where ./jive-vocals lives.
 
 # source_directory() returns the directory of THIS file
 testdata := source_directory()
@@ -24,7 +24,7 @@ diag := if diagnostics == "" { "" } else { "--diagnostics" }
 # Run the expensive integration tests (decode testdata/ audio + race detector;
 # excluded from `just test`). Needs the gitignored testdata/ audio present.
 test-integration:
-    go test -tags integration -race ./cmd/jivetalking/ ./internal/processor/
+    go test -tags integration -race ./cmd/jive-vocals/ ./internal/processor/
 
 # End-to-end spectrogram validation (runs the binary: gating, .md links, FLAC bit-exact)
 validate-spectrograms:
@@ -32,12 +32,12 @@ validate-spectrograms:
 
 # Analyse one presenter for the current episode
 _analyse-one presenter:
-    @./jivetalking -a {{ diag }} {{ testdata }}/LMP-{{ ep }}-{{ presenter }}.flac
+    @./jive-vocals -a {{ diag }} {{ testdata }}/LMP-{{ ep }}-{{ presenter }}.flac
 
 # Process one presenter for the current episode
 _process-one presenter:
     @rm -f {{ testdata }}/LMP-{{ ep }}-{{ presenter }}-*-processed.*
-    @./jivetalking --debug {{ diag }} {{ testdata }}/LMP-{{ ep }}-{{ presenter }}.flac
+    @./jive-vocals --debug {{ diag }} {{ testdata }}/LMP-{{ ep }}-{{ presenter }}.flac
 
 # Analyse Mark's audio for the current episode
 analyse-mark: (_analyse-one "mark")
@@ -62,7 +62,7 @@ analyse-presenters:
         exit 0
     fi
     echo "=== Analysing Episode {{ ep }} ==="
-    ./jivetalking -a {{ diag }} "${files[@]}"
+    ./jive-vocals -a {{ diag }} "${files[@]}"
 
 # Analyse all presenters for every episode in batch mode
 analyse-all:
@@ -96,7 +96,7 @@ process-presenters:
         exit 0
     fi
     echo "=== Processing Episode {{ ep }} ==="
-    ./jivetalking --debug {{ diag }} "${files[@]}"
+    ./jive-vocals --debug {{ diag }} "${files[@]}"
 
 # Process all presenters for every episode in batch mode
 process-all:
@@ -111,7 +111,7 @@ process-corpus ver="":
     #!/usr/bin/env bash
     set -euo pipefail
     # Collects artefacts into testdata/corpus-<label>/out/ for later LLM A/B analysis.
-    #   `just process-corpus`        -> source build (./jivetalking), label "source", --diagnostics
+    #   `just process-corpus`        -> source build (./jive-vocals), label "source", --diagnostics
     #   `just process-corpus 0.5.0`  -> fetch release 0.5.0, no report flag
     #   `just process-corpus 0.6.0`  -> fetch release 0.6.0, --diagnostics
     # Floor 0.5.1 (inclusive). Needs util-linux `script` (GNU/util-linux flags
@@ -150,18 +150,18 @@ process-corpus ver="":
     if [[ -z "$ver" ]]; then
         # Source path: just build (never go build; needs CGO + ldflags).
         just build
-        BIN="./jivetalking"
+        BIN="./jive-vocals"
     else
         # Release path: download host asset, chmod, verify --version, cache.
         GOOS="$(go env GOOS)"
         GOARCH="$(go env GOARCH)"
-        BIN="{{ testdata }}/corpus-$ver/bin/jivetalking"
+        BIN="{{ testdata }}/corpus-$ver/bin/jive-vocals"
         mkdir -p "$(dirname "$BIN")"
         if [[ -x "$BIN" ]] && "$BIN" --version 2>&1 | grep -q "$ver"; then
             echo "cached binary already reports $ver: $BIN"
         else
-            gh release download "$ver" -R linuxmatters/jivetalking \
-                --pattern "jivetalking-$GOOS-$GOARCH" \
+            gh release download "$ver" -R linuxmatters/jive-vocals \
+                --pattern "jive-vocals-$GOOS-$GOARCH" \
                 --output "$BIN" \
                 --clobber
             chmod +x "$BIN"

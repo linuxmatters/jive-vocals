@@ -3,7 +3,7 @@ package ui
 import (
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // ProgressMsg represents a progress update from the processor

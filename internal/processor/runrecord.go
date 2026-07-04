@@ -52,15 +52,15 @@ type RunRecord struct {
 // RunProvenance is the §8.1 `run` block: identity + provenance for the run.
 type RunProvenance struct {
 	InputFile    string  `json:"input_file"`
-	Version      string  `json:"version"`      // jivetalking version string (same value --version prints; "dev" for local builds)
-	Executable   string  `json:"executable"`   // Absolute, symlink-resolved path of the running jivetalking binary
+	Version      string  `json:"version"`      // jive-vocals version string (same value --version prints; "dev" for local builds)
+	Executable   string  `json:"executable"`   // Absolute, symlink-resolved path of the running jive-vocals binary
 	ProcessedAt  string  `json:"processed_at"` // RFC3339 timestamp captured at record build
 	DurationS    float64 `json:"duration_s"`
 	SampleRateHz int     `json:"sample_rate_hz"`
 	Channels     int     `json:"channels"`
 }
 
-// RunVersion is the jivetalking version string injected via ldflags at build
+// RunVersion is the jive-vocals version string injected via ldflags at build
 // time. main.go sets it to the same value --version prints before any record is
 // built (mirroring how the package-level run provenance is populated); it stays
 // empty for callers that do not set it (e.g. tests).

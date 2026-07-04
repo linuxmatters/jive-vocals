@@ -33,7 +33,6 @@
             jq
             just
             mediainfo
-            vhs
           ];
         };
       }

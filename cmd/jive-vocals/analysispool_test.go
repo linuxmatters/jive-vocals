@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/linuxmatters/jivetalking/internal/audio"
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/audio"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // analysisIndexFromPath parses the trailing integer of a synthetic "fileN" path

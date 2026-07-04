@@ -9,8 +9,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/linuxmatters/jivetalking/internal/cli"
-	"github.com/linuxmatters/jivetalking/internal/processor"
+	"github.com/linuxmatters/jive-vocals/internal/cli"
+	"github.com/linuxmatters/jive-vocals/internal/processor"
 )
 
 // TestHeaderHasNoSubtitle confirms the redundant "Processing N file(s)"
@@ -21,7 +21,7 @@ func TestHeaderHasNoSubtitle(t *testing.T) {
 	header := cli.RenderTitle()
 	plain := ansi.Strip(header)
 
-	if !strings.Contains(plain, "Jivetalking") {
+	if !strings.Contains(plain, "Jive Vocals") {
 		t.Errorf("header missing title: %q", header)
 	}
 	if strings.Contains(plain, "file(s)") {
@@ -65,7 +65,7 @@ func TestProcessingViewSectionOrder(t *testing.T) {
 		t.Errorf("processing view still contains subtitle: %q", view)
 	}
 
-	titleIdx := strings.Index(view, "Jivetalking")
+	titleIdx := strings.Index(view, "Jive Vocals")
 	boxIdx := strings.Index(view, "complete")
 	queueIdx := strings.Index(view, "a.wav")
 
@@ -125,7 +125,7 @@ func TestFinalSummaryReturnsCompletionContent(t *testing.T) {
 	summary := ansi.Strip(FinalSummary(m))
 
 	// Title and overall-progress status box appear, matching the live view.
-	if !strings.Contains(summary, "Jivetalking") {
+	if !strings.Contains(summary, "Jive Vocals") {
 		t.Errorf("summary missing title: %q", summary)
 	}
 	if !strings.Contains(summary, "2 files") || !strings.Contains(summary, "complete") {
