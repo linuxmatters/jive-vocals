@@ -281,7 +281,7 @@ func NewRunRecord(result *ProcessingResult) *RunRecord {
 		if result.NormResult.LoudnormParsed == nil {
 			result.NormResult.LoudnormParsed = parseLoudnormMeasured(result.NormResult.LoudnormStats, result.NormResult.EffectiveTargetI)
 		}
-		rec.Normalisation = &normalisationRecord{recordWrapper[NormalisationResult]{src: result.NormResult}}
+		rec.Normalisation = &normalisationRecord{src: result.NormResult}
 	}
 
 	if result.Config != nil {
@@ -365,10 +365,10 @@ func newRegionsBlock(r *RegionMetrics) *RegionsBlock {
 	// Wrap the elected profiles so their time bounds emit as _s floats (§8.4); a
 	// missing profile leaves the wrapper pointer nil so omitempty drops `elected`.
 	if r.NoiseProfile != nil {
-		block.RoomTone.Elected = &noiseProfileRecord{recordWrapper[NoiseProfile]{src: r.NoiseProfile}}
+		block.RoomTone.Elected = &noiseProfileRecord{src: r.NoiseProfile}
 	}
 	if r.SpeechProfile != nil {
-		block.Speech.Elected = &speechProfileRecord{recordWrapper[SpeechCandidateMetrics]{src: r.SpeechProfile}}
+		block.Speech.Elected = &speechProfileRecord{src: r.SpeechProfile}
 	}
 
 	// Speech input sample: the elected profile embeds RegionSample by reference.
@@ -423,14 +423,11 @@ func newFiltersBlock(cfg *EffectiveFilterConfig, diag *AdaptiveDiagnostics) *Fil
 
 // MarshalRunRecord serialises a RunRecord to indented JSON with non-finite
 // float64 leaves (NaN, +Inf, -Inf) emitted as JSON null (§9.1 call 4).
-// encoding/json errors on non-finite floats, so the record cannot be
-// marshalled then post-processed as a string. Instead the assembled record is
-// reflected into a generic tree (honouring json tags, omitempty, embedding, and
-// `-`) with non-finite float64 replaced by nil, then that tree is marshalled.
-// The sweep only nulls non-finite leaves; it never reorders or re-tags fields.
+// The record is projected into typed JSON DTOs before marshalling, so schema
+// fields and unit conversions stay compile-time visible instead of being
+// assembled through reflection or map key rewrites.
 func MarshalRunRecord(r *RunRecord) ([]byte, error) {
-	tree := sanitiseValue(reflect.ValueOf(r))
-	return json.MarshalIndent(tree, "", "  ")
+	return json.MarshalIndent(newRunRecordJSON(r), "", "  ")
 }
 
 // jsonMarshalerType is the reflect.Type of json.Marshaler, used to detect

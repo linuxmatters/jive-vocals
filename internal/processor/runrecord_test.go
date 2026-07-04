@@ -178,6 +178,39 @@ func TestRunRecord_NonFiniteFloatSerialisesAsNull(t *testing.T) {
 	if loud["true_peak_dbtp"] != nil {
 		t.Errorf("+Inf true_peak_dbtp = %v, want null", loud["true_peak_dbtp"])
 	}
+
+	result := populatedProcessingResult()
+	result.Measurements.Regions.NoiseProfile.MeasuredNoiseFloor = math.NaN()
+	result.Measurements.Regions.SpeechProfile.RMSLevel = math.Inf(-1)
+	result.Diagnostics.SpeechGateSpeechHeadroom = math.Inf(1)
+	result.NormResult.LimiterGain = math.NaN()
+
+	rec = NewRunRecord(result)
+	raw, err = MarshalRunRecord(rec)
+	if err != nil {
+		t.Fatalf("MarshalRunRecord full record must not error on non-finite floats: %v", err)
+	}
+	if err := json.Unmarshal(raw, &tree); err != nil {
+		t.Fatalf("decode full record: %v\n%s", err, raw)
+	}
+
+	regions := tree["regions"].(map[string]any)
+	roomTone := regions["room_tone"].(map[string]any)["elected"].(map[string]any)
+	if roomTone["measured_floor_dbfs"] != nil {
+		t.Errorf("NaN room_tone.elected.measured_floor_dbfs = %v, want null", roomTone["measured_floor_dbfs"])
+	}
+	speech := regions["speech"].(map[string]any)["elected"].(map[string]any)
+	if speech["rms_level_dbfs"] != nil {
+		t.Errorf("-Inf speech.elected.rms_level_dbfs = %v, want null", speech["rms_level_dbfs"])
+	}
+	diag := tree["filters"].(map[string]any)["diagnostics"].(map[string]any)
+	if diag["speech_headroom_db"] != nil {
+		t.Errorf("+Inf filters.diagnostics.speech_headroom_db = %v, want null", diag["speech_headroom_db"])
+	}
+	norm := tree["normalisation"].(map[string]any)
+	if norm["gain_db"] != nil {
+		t.Errorf("NaN normalisation.gain_db = %v, want null", norm["gain_db"])
+	}
 }
 
 // TestRunRecord_RegionsNestedShape asserts the §8.1 nested regions structure on a
