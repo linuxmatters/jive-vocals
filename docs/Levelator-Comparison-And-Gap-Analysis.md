@@ -150,8 +150,8 @@ volume (pre-gain, when needed) -> alimiter (levelling limiter) -> loudnorm (line
 ```
 
 - **loudnorm linear mode** applies one global scalar gain to reach -16 LUFS, using the Pass 3 measured stats (`buildLoudnormFilterSpec` in `normalise.go`). Linear mode is the transparent choice: it preserves dynamics and avoids the pumping of loudnorm's dynamic mode. A per-file internal true-peak target is derived for each file so every file reaches full -16 LUFS (`loudnormInternalTargetTP` in `normalise.go`).
-- **Pre-gain** (`volume`) lifts very quiet recordings so the limiter ceiling stays viable; the ceiling is derived as `targetTP - gainRequired` (`deriveLimiterAndPreGain` in `normalise.go`).
-- **Two limiters, two jobs.** The prefix `alimiter` (the "levelling limiter") reduces peaks to create headroom so loudnorm can apply its full linear gain (`buildPreLimiterPrefix` in `normalise.go`). The final-stage `alimiter` is a brickwall pinned below the loudnorm target by an inter-sample headroom margin (corpus-derived 0.9 dB), and it owns true-peak delivery (`buildBrickwallLimiter` in `normalise.go`). The brickwall limits sample peak with enough margin to keep the oversampled true peak under target.
+- **Pre-gain** (`volume`) lifts very quiet recordings so the limiter ceiling stays viable; the ceiling is derived as `targetTP - gainRequired` (`deriveLimiterAndPreGain` in `limiter.go`).
+- **Two limiters, two jobs.** The prefix `alimiter` (the "levelling limiter") reduces peaks to create headroom so loudnorm can apply its full linear gain (`buildPreLimiterPrefix` in `limiter.go`). The final-stage `alimiter` is a brickwall pinned below the loudnorm target by an inter-sample headroom margin (corpus-derived 0.9 dB), and it owns true-peak delivery (`buildBrickwallLimiter` in `limiter.go`). The brickwall limits sample peak with enough margin to keep the oversampled true peak under target.
 
 📌 KEY: this is the "peak levelling" the older document lacked. Levelator stops at a -1.0 dB sample-peak ceiling [2]; Jive Vocals delivers a true-peak-aware -1 dBTP using an oversampled internal limiter plus the brickwall margin.
 

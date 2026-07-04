@@ -105,7 +105,7 @@ func renderLoudness(rec *processor.RunRecord) string {
 			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputTP }),
 		},
 		{
-			key: "lra_lu", format: fmtSpectral,
+			key: "lra_lu", format: fmtLU,
 			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputLRA }),
 			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputLRA }),
 			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputLRA }),

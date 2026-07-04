@@ -782,7 +782,7 @@ func (cfg *NoiseReductionConfig) buildAfftdnFilter() string {
 	}
 	// On the custom path emit nt=custom:bn=<shape>; bn carries the spectral shape
 	// while nf (below) still carries the absolute level and nr the depth. The
-	// white path keeps the bare nt=w. sanitizeNoiseReductionConfig reverts a
+	// white path keeps the bare nt=w. sanitiseNoiseReductionConfig reverts a
 	// "custom" type with no shape to "w", so bn is always present here when custom.
 	var spec string
 	if cfg.AfftdnNoiseType == "custom" && cfg.AfftdnBandNoise != "" {

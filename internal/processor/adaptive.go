@@ -34,7 +34,7 @@ func AdaptConfig(config *BaseFilterConfig, measurements *AudioMeasurements) (*Ef
 	// The limiter lives in Pass 4 and is tuned from Pass 3 measurements, not here.
 
 	// Final safety checks
-	sanitizeConfig(effectiveConfig)
+	sanitiseConfig(effectiveConfig)
 
 	return effectiveConfig, diagnostics
 }
@@ -169,32 +169,32 @@ func tuneNoiseReduction(config *EffectiveFilterConfig, diagnostics *AdaptiveDiag
 	diagnostics.AfftdnNoiseType = config.NoiseReduction.AfftdnNoiseType
 }
 
-// sanitizeConfig ensures no NaN or Inf values remain after adaptive tuning.
-func sanitizeConfig(config *EffectiveFilterConfig) {
-	sanitizeBiquadConfig(&config.RumbleHighPass, rumbleHPDefaultFreq)
-	sanitizeBiquadConfig(&config.BandlimitLowPass, bandlimitLPFreq)
-	sanitizeNoiseReductionConfig(&config.NoiseReduction)
-	sanitizeSpeechGateConfig(&config.SpeechGate)
-	sanitizeLevellingCompressorConfig(&config.LevellingCompressor)
-	sanitizeDeesserConfig(&config.Deesser)
+// sanitiseConfig ensures no NaN or Inf values remain after adaptive tuning.
+func sanitiseConfig(config *EffectiveFilterConfig) {
+	sanitiseBiquadConfig(&config.RumbleHighPass, rumbleHPDefaultFreq)
+	sanitiseBiquadConfig(&config.BandlimitLowPass, bandlimitLPFreq)
+	sanitiseNoiseReductionConfig(&config.NoiseReduction)
+	sanitiseSpeechGateConfig(&config.SpeechGate)
+	sanitiseLevellingCompressorConfig(&config.LevellingCompressor)
+	sanitiseDeesserConfig(&config.Deesser)
 }
 
-func sanitizeBiquadConfig(config *BiquadFilterConfig, defaultFreq float64) {
-	config.Frequency = sanitizeFloat(config.Frequency, defaultFreq)
-	config.Width = sanitizeFloat(config.Width, 0.707)
-	config.Mix = sanitizeFloat(config.Mix, 1.0)
+func sanitiseBiquadConfig(config *BiquadFilterConfig, defaultFreq float64) {
+	config.Frequency = sanitiseFloat(config.Frequency, defaultFreq)
+	config.Width = sanitiseFloat(config.Width, 0.707)
+	config.Mix = sanitiseFloat(config.Mix, 1.0)
 }
 
-func sanitizeNoiseReductionConfig(config *NoiseReductionConfig) {
+func sanitiseNoiseReductionConfig(config *NoiseReductionConfig) {
 	defaults := defaultNoiseReductionConfig()
-	config.Strength = sanitizeFloat(config.Strength, defaults.Strength)
-	config.PatchSec = sanitizeFloat(config.PatchSec, defaults.PatchSec)
-	config.ResearchSec = sanitizeFloat(config.ResearchSec, defaults.ResearchSec)
-	config.Smooth = sanitizeFloat(config.Smooth, defaults.Smooth)
-	config.AfftdnNoiseReduction = sanitizeFloat(config.AfftdnNoiseReduction, defaults.AfftdnNoiseReduction)
+	config.Strength = sanitiseFloat(config.Strength, defaults.Strength)
+	config.PatchSec = sanitiseFloat(config.PatchSec, defaults.PatchSec)
+	config.ResearchSec = sanitiseFloat(config.ResearchSec, defaults.ResearchSec)
+	config.Smooth = sanitiseFloat(config.Smooth, defaults.Smooth)
+	config.AfftdnNoiseReduction = sanitiseFloat(config.AfftdnNoiseReduction, defaults.AfftdnNoiseReduction)
 	// AfftdnNoiseFloor must never carry NaN/Inf into the afftdn format string.
 	// The default is the unset zero value, which omits nf=.
-	config.AfftdnNoiseFloor = sanitizeFloat(config.AfftdnNoiseFloor, defaults.AfftdnNoiseFloor)
+	config.AfftdnNoiseFloor = sanitiseFloat(config.AfftdnNoiseFloor, defaults.AfftdnNoiseFloor)
 	// A "custom" noise type with no band shape would emit nt=custom with no bn,
 	// which afftdn rejects; revert to white so the builder stays well-formed.
 	if config.AfftdnNoiseType == "custom" && config.AfftdnBandNoise == "" {
@@ -202,33 +202,33 @@ func sanitizeNoiseReductionConfig(config *NoiseReductionConfig) {
 	}
 }
 
-func sanitizeSpeechGateConfig(config *SpeechGateConfig) {
+func sanitiseSpeechGateConfig(config *SpeechGateConfig) {
 	defaults := defaultSpeechGateConfig()
 	if math.IsNaN(config.Threshold) || math.IsInf(config.Threshold, 0) || config.Threshold <= 0 {
 		config.Threshold = speechGateDefaultThreshold
 	}
-	config.Ratio = sanitizeFloat(config.Ratio, defaults.Ratio)
-	config.Attack = sanitizeFloat(config.Attack, defaults.Attack)
-	config.Release = sanitizeFloat(config.Release, defaults.Release)
-	config.Range = sanitizeFloat(config.Range, defaults.Range)
-	config.Knee = sanitizeFloat(config.Knee, defaults.Knee)
-	config.Makeup = sanitizeFloat(config.Makeup, defaults.Makeup)
+	config.Ratio = sanitiseFloat(config.Ratio, defaults.Ratio)
+	config.Attack = sanitiseFloat(config.Attack, defaults.Attack)
+	config.Release = sanitiseFloat(config.Release, defaults.Release)
+	config.Range = sanitiseFloat(config.Range, defaults.Range)
+	config.Knee = sanitiseFloat(config.Knee, defaults.Knee)
+	config.Makeup = sanitiseFloat(config.Makeup, defaults.Makeup)
 }
 
-func sanitizeLevellingCompressorConfig(config *LevellingCompressorConfig) {
+func sanitiseLevellingCompressorConfig(config *LevellingCompressorConfig) {
 	defaults := defaultLevellingCompressorConfig()
-	config.Ratio = sanitizeFloat(config.Ratio, defaults.Ratio)
-	config.Threshold = sanitizeFloat(config.Threshold, defaultLevellingCompressorThreshold)
-	config.Attack = sanitizeFloat(config.Attack, defaults.Attack)
-	config.Release = sanitizeFloat(config.Release, defaults.Release)
-	config.Makeup = sanitizeFloat(config.Makeup, defaults.Makeup)
-	config.Knee = sanitizeFloat(config.Knee, defaults.Knee)
-	config.Mix = sanitizeFloat(config.Mix, defaults.Mix)
+	config.Ratio = sanitiseFloat(config.Ratio, defaults.Ratio)
+	config.Threshold = sanitiseFloat(config.Threshold, defaultLevellingCompressorThreshold)
+	config.Attack = sanitiseFloat(config.Attack, defaults.Attack)
+	config.Release = sanitiseFloat(config.Release, defaults.Release)
+	config.Makeup = sanitiseFloat(config.Makeup, defaults.Makeup)
+	config.Knee = sanitiseFloat(config.Knee, defaults.Knee)
+	config.Mix = sanitiseFloat(config.Mix, defaults.Mix)
 }
 
-func sanitizeDeesserConfig(config *DeesserConfig) {
+func sanitiseDeesserConfig(config *DeesserConfig) {
 	defaults := defaultDeesserConfig()
-	config.Intensity = sanitizeFloat(config.Intensity, defaultDeessIntensity)
-	config.Amount = sanitizeFloat(config.Amount, defaults.Amount)
-	config.Frequency = sanitizeFloat(config.Frequency, defaults.Frequency)
+	config.Intensity = sanitiseFloat(config.Intensity, defaultDeessIntensity)
+	config.Amount = sanitiseFloat(config.Amount, defaults.Amount)
+	config.Frequency = sanitiseFloat(config.Frequency, defaults.Frequency)
 }

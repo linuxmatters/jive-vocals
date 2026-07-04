@@ -25,6 +25,7 @@ const (
 	fmtDB       metricFormat = iota // dB / dBFS levels: "< -120" digital-silence floor
 	fmtLUFS                         // LUFS loudness: "< -70" measurement floor
 	fmtPeakDB                       // dBTP true peak: dB scale, digital-silence floor
+	fmtLU                           // LU loudness range: 2-decimal scale beside LUFS neighbours
 	fmtSpectral                     // dimensionless / Hz spectral + astats values
 	fmtSigned                       // explicit-sign values (target offset)
 	fmtRaw                          // plain fixed-decimal floats (seconds): no scientific-notation or floor rule
@@ -100,15 +101,16 @@ func formatByRule(value float64, format metricFormat, decimals int) string {
 		return formatMetricDB(value, decimals)
 	case fmtLUFS:
 		return formatMetricLUFS(value, decimals)
+	case fmtLU:
+		return formatMetric(value, decimals)
 	case fmtSpectral:
 		return formatMetric(value, decimals)
 	case fmtSigned:
 		return formatMetricSigned(value, decimals)
 	case fmtRaw:
 		return formatFloat(value, decimals)
-	default:
-		return formatMetric(value, decimals)
 	}
+	return formatMetric(value, decimals)
 }
 
 // renderMetricTable builds a metric table: Metric | Definition | Input

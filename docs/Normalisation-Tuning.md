@@ -1,8 +1,9 @@
 # Normalisation Tuning
 
-Why the loudnorm and limiter constants in `internal/processor/normalise.go` hold
-the values they do. Each value is corpus-derived. The maths is correct; this doc
-keeps the long rationale out of the code, where it would rot.
+Why the loudnorm and limiter constants hold the values they do. The limiter
+constants live in `internal/processor/limiter.go`; the `loudnormTP` bounds live in
+`internal/processor/normalise.go`. Each value is corpus-derived. The maths is
+correct; this doc keeps the long rationale out of the code, where it would rot.
 
 The corpus references name validation sweeps run by hand against gitignored audio
 that does not ship in the repo. They are evidence summaries, not files you can open.
