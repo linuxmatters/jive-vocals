@@ -30,6 +30,7 @@ type fullbenchPass2Seed struct {
 
 type fullbenchLoudnormSetup struct {
 	Measurement       *LoudnormMeasurement
+	Offset            float64
 	EffectiveConfig   *EffectiveFilterConfig
 	Pass3FilterPrefix string
 	PreGainDB         float64
@@ -355,10 +356,10 @@ func buildFullbenchPass4AblationSpec(loudnorm *fullbenchLoudnormSetup, includeLi
 		filters = append(filters, loudnorm.Pass3FilterPrefix)
 	}
 
-	filters = append(filters, buildFullbenchLoudnormClause(loudnorm.EffectiveConfig, loudnorm.Measurement))
+	filters = append(filters, buildFullbenchLoudnormClause(loudnorm.EffectiveConfig, loudnorm.Measurement, loudnorm.Offset))
 
 	if includeOutputAnalysis {
-		if analysis := buildFullbenchPass4OutputAnalysisFilters(loudnorm.EffectiveConfig, loudnorm.Measurement); analysis != "" {
+		if analysis := buildFullbenchPass4OutputAnalysisFilters(loudnorm.EffectiveConfig, loudnorm.Measurement, loudnorm.Offset); analysis != "" {
 			filters = append(filters, analysis)
 		}
 	}
@@ -368,15 +369,15 @@ func buildFullbenchPass4AblationSpec(loudnorm *fullbenchLoudnormSetup, includeLi
 	return strings.Join(filters, ",")
 }
 
-func buildFullbenchLoudnormClause(config *EffectiveFilterConfig, measurement *LoudnormMeasurement) string {
+func buildFullbenchLoudnormClause(config *EffectiveFilterConfig, measurement *LoudnormMeasurement, offset float64) string {
 	return extractFullbenchFilterClause(
-		buildFullbenchProductionPass4SpecWithoutAdeclick(config, measurement),
+		buildFullbenchProductionPass4SpecWithoutAdeclick(config, measurement, offset),
 		"loudnorm=",
 	)
 }
 
-func buildFullbenchPass4OutputAnalysisFilters(config *EffectiveFilterConfig, measurement *LoudnormMeasurement) string {
-	clauses := strings.Split(buildFullbenchProductionPass4SpecWithoutAdeclick(config, measurement), ",")
+func buildFullbenchPass4OutputAnalysisFilters(config *EffectiveFilterConfig, measurement *LoudnormMeasurement, offset float64) string {
+	clauses := strings.Split(buildFullbenchProductionPass4SpecWithoutAdeclick(config, measurement, offset), ",")
 	analysisStart := -1
 	resampleStart := -1
 	for i, clause := range clauses {
@@ -400,10 +401,10 @@ func buildFullbenchPass4ResampleFilter(config *EffectiveFilterConfig) string {
 	return resampleConfig.buildResampleFilter()
 }
 
-func buildFullbenchProductionPass4SpecWithoutAdeclick(config *EffectiveFilterConfig, measurement *LoudnormMeasurement) string {
+func buildFullbenchProductionPass4SpecWithoutAdeclick(config *EffectiveFilterConfig, measurement *LoudnormMeasurement, offset float64) string {
 	pass4Config := *config
 	pass4Config.Adeclick.Enabled = false
-	return buildLoudnormFilterSpec(&pass4Config, measurement, measurement.TargetOffset, limiterPlan{}, 48000, "")
+	return buildLoudnormFilterSpec(&pass4Config, measurement, offset, limiterPlan{}, 48000, "")
 }
 
 func extractFullbenchFilterClause(spec, prefix string) string {
@@ -549,20 +550,20 @@ func TestFullbenchLoudnormClauseMatchesProduction(t *testing.T) {
 	config.Loudnorm.TargetLRA = 9.0
 
 	measurement := &LoudnormMeasurement{
-		InputI:       -23.25,
-		InputTP:      -4.50,
-		InputLRA:     5.75,
-		InputThresh:  -34.25,
-		TargetOffset: -0.75,
+		InputI:      -23.25,
+		InputTP:     -4.50,
+		InputLRA:    5.75,
+		InputThresh: -34.25,
 	}
+	const offset = -0.75
 
 	productionConfig := *config
 	productionConfig.Adeclick.Enabled = false
 	productionClause := extractFullbenchFilterClause(
-		buildLoudnormFilterSpec(&productionConfig, measurement, measurement.TargetOffset, limiterPlan{}, 48000, ""),
+		buildLoudnormFilterSpec(&productionConfig, measurement, offset, limiterPlan{}, 48000, ""),
 		"loudnorm=",
 	)
-	benchmarkClause := buildFullbenchLoudnormClause(config, measurement)
+	benchmarkClause := buildFullbenchLoudnormClause(config, measurement, offset)
 
 	if benchmarkClause != productionClause {
 		t.Fatalf("benchmark loudnorm clause drifted from production\nbenchmark:  %s\nproduction: %s", benchmarkClause, productionClause)
@@ -590,14 +591,14 @@ func TestFullbenchPass4AblationSpecs(t *testing.T) {
 	config.Adeclick.Enabled = true
 	config.Resample.Enabled = false
 	measurement := &LoudnormMeasurement{
-		InputI:       -24.0,
-		InputTP:      -6.0,
-		InputLRA:     7.0,
-		InputThresh:  -34.0,
-		TargetOffset: -1.0,
+		InputI:      -24.0,
+		InputTP:     -6.0,
+		InputLRA:    7.0,
+		InputThresh: -34.0,
 	}
 	loudnorm := &fullbenchLoudnormSetup{
 		Measurement:       measurement,
+		Offset:            -1.0,
 		EffectiveConfig:   config,
 		Pass3FilterPrefix: buildPreLimiterPrefix(0, -12.0, true),
 		LimiterNeeded:     true,
@@ -681,14 +682,14 @@ func TestFullbenchPass4AblationSpecs(t *testing.T) {
 func TestFullbenchPass4LimiterVariantOmitsInactivePrefix(t *testing.T) {
 	config := newFullbenchEffectiveTestConfig()
 	measurement := &LoudnormMeasurement{
-		InputI:       -20.0,
-		InputTP:      -8.0,
-		InputLRA:     5.0,
-		InputThresh:  -30.0,
-		TargetOffset: 0.0,
+		InputI:      -20.0,
+		InputTP:     -8.0,
+		InputLRA:    5.0,
+		InputThresh: -30.0,
 	}
 	loudnorm := &fullbenchLoudnormSetup{
 		Measurement:     measurement,
+		Offset:          0.0,
 		EffectiveConfig: config,
 	}
 
@@ -984,7 +985,7 @@ func setupFullbenchLoudnormMeasurement(tb testing.TB, seed *fullbenchPass2Seed) 
 		tb.Fatalf("fullbench loudnorm measurement is not usable: %.1f LUFS", measurement.InputI)
 	}
 
-	effectiveTargetI, _, linearPossible := calculateLinearModeTarget(
+	effectiveTargetI, offset, linearPossible := calculateLinearModeTarget(
 		measurement.InputI,
 		measurement.InputTP,
 		config.Loudnorm.TargetI,
@@ -995,6 +996,7 @@ func setupFullbenchLoudnormMeasurement(tb testing.TB, seed *fullbenchPass2Seed) 
 
 	return &fullbenchLoudnormSetup{
 		Measurement:       measurement,
+		Offset:            offset,
 		EffectiveConfig:   &effectiveConfig,
 		Pass3FilterPrefix: limiter.pass3Prefix,
 		PreGainDB:         limiter.preGainDB,

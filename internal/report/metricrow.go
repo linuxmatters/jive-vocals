@@ -160,10 +160,7 @@ func metricLabel(key string) string {
 // parentheses, e.g. "Gated programme loudness... (LUFS)". Unit-less metrics omit
 // the parenthetical. Every loudness/dynamics/spectral row carries this gloss.
 func metricDefinition(key string) string {
-	d, ok := DefinitionFor(key)
-	if !ok {
-		return placeholder
-	}
+	d, _ := DefinitionFor(key)
 	if d.Unit == "" {
 		return d.Gloss
 	}

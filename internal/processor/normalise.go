@@ -63,18 +63,19 @@ type LoudnormValue struct {
 // precomputed target deviation (OutputI - EffectiveTargetI). The report consumes
 // these typed values and formats them like every other section; it no longer
 // re-parses LoudnormStats strings. This is a report-facing convenience built at
-// record assembly; it is NOT serialised (the JSON record keeps the FFmpeg
-// string-keyed LoudnormStats as its parse target, see normalisationRecord).
+// record assembly; it is NOT serialised.
 type LoudnormMeasured struct {
-	InputI          LoudnormValue
-	InputTP         LoudnormValue
-	InputLRA        LoudnormValue
-	InputThresh     LoudnormValue
-	OutputI         LoudnormValue
-	OutputTP        LoudnormValue
-	OutputLRA       LoudnormValue
-	OutputThresh    LoudnormValue
-	TargetDeviation LoudnormValue
+	InputI            LoudnormValue
+	InputTP           LoudnormValue
+	InputLRA          LoudnormValue
+	InputThresh       LoudnormValue
+	OutputI           LoudnormValue
+	OutputTP          LoudnormValue
+	OutputLRA         LoudnormValue
+	OutputThresh      LoudnormValue
+	TargetOffset      LoudnormValue
+	TargetDeviation   LoudnormValue
+	NormalizationType string
 }
 
 // parseLoudnormValue parses one loudnorm stats string to a typed float, trimming
@@ -97,14 +98,16 @@ func parseLoudnormMeasured(stats *LoudnormStats, effectiveTargetI float64) *Loud
 		return nil
 	}
 	m := &LoudnormMeasured{
-		InputI:       parseLoudnormValue(stats.InputI),
-		InputTP:      parseLoudnormValue(stats.InputTP),
-		InputLRA:     parseLoudnormValue(stats.InputLRA),
-		InputThresh:  parseLoudnormValue(stats.InputThresh),
-		OutputI:      parseLoudnormValue(stats.OutputI),
-		OutputTP:     parseLoudnormValue(stats.OutputTP),
-		OutputLRA:    parseLoudnormValue(stats.OutputLRA),
-		OutputThresh: parseLoudnormValue(stats.OutputThresh),
+		InputI:            parseLoudnormValue(stats.InputI),
+		InputTP:           parseLoudnormValue(stats.InputTP),
+		InputLRA:          parseLoudnormValue(stats.InputLRA),
+		InputThresh:       parseLoudnormValue(stats.InputThresh),
+		OutputI:           parseLoudnormValue(stats.OutputI),
+		OutputTP:          parseLoudnormValue(stats.OutputTP),
+		OutputLRA:         parseLoudnormValue(stats.OutputLRA),
+		OutputThresh:      parseLoudnormValue(stats.OutputThresh),
+		TargetOffset:      parseLoudnormValue(stats.TargetOffset),
+		NormalizationType: stats.NormalizationType,
 	}
 	if m.OutputI.OK {
 		m.TargetDeviation = LoudnormValue{Value: m.OutputI.Value - effectiveTargetI, OK: true}
@@ -173,11 +176,10 @@ type loudnormOutputEncoder interface {
 // This is populated by measureWithLoudnorm() which reads the Pass 2 output file
 // and runs loudnorm without encoding to get the measurements needed for second pass.
 type LoudnormMeasurement struct {
-	InputI       float64 // Loudnorm's measured integrated loudness (LUFS)
-	InputTP      float64 // Loudnorm's measured true peak (dBTP)
-	InputLRA     float64 // Loudnorm's measured loudness range (LU)
-	InputThresh  float64 // Loudnorm's measured threshold (LUFS)
-	TargetOffset float64 // Loudnorm's calculated offset for second pass
+	InputI      float64 // Loudnorm's measured integrated loudness (LUFS)
+	InputTP     float64 // Loudnorm's measured true peak (dBTP)
+	InputLRA    float64 // Loudnorm's measured loudness range (LU)
+	InputThresh float64 // Loudnorm's measured threshold (LUFS)
 }
 
 // measureWithLoudnorm performs loudnorm's first pass (measurement mode) on the audio file.
@@ -309,9 +311,6 @@ func measureWithLoudnorm(ctx context.Context, inputPath string, config *Effectiv
 		return nil, err
 	}
 	if measurement.InputThresh, err = parseFloat("input_thresh", stats.InputThresh); err != nil {
-		return nil, err
-	}
-	if measurement.TargetOffset, err = parseFloat("target_offset", stats.TargetOffset); err != nil {
 		return nil, err
 	}
 
@@ -628,19 +627,12 @@ func applyNormalisationWithDeps(
 	// brickwall ceiling: the downstream brickwall (pinned to loudnorm.TargetTP) owns
 	// real true-peak delivery, and the internal-TP derivation makes the cap inert (see
 	// loudnormInternalTargetTP).
-	effectiveTargetI, _, linearPossible := calculateLinearModeTarget(
+	effectiveTargetI, offset, linearPossible := calculateLinearModeTarget(
 		measurement.InputI,
 		measurement.InputTP,
 		loudnorm.TargetI,
 		loudnormInternalTargetTP(loudnorm, measurement.InputTP, measurement.InputI),
 	)
-
-	// Bind the gain cap: the realised linear scalar gain is the CAPPED makeup
-	// (effectiveTargetI - measured_I), not loudnorm's own target_offset. On a
-	// high-crest stem the cap lowers effectiveTargetI below targetI, so the
-	// matching offset pins the final true peak at targetTP by construction. On a
-	// safe stem effectiveTargetI == targetI and this equals the planned makeup.
-	offset := effectiveTargetI - measurement.InputI
 
 	// Store the effective target in config for loudnorm filter construction
 	effectiveConfig := *config

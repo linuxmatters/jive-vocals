@@ -38,14 +38,14 @@ func TestMetadataModeGuard(t *testing.T) {
 	t.Run("buildLoudnormFilterSpec", func(t *testing.T) {
 		config := newTestConfig()
 		measurement := &LoudnormMeasurement{
-			InputI:       -24.0,
-			InputTP:      -5.0,
-			InputLRA:     6.0,
-			InputThresh:  -34.0,
-			TargetOffset: -0.5,
+			InputI:      -24.0,
+			InputTP:     -5.0,
+			InputLRA:    6.0,
+			InputThresh: -34.0,
 		}
+		const offset = -0.5
 
-		spec := buildLoudnormFilterSpec(config, measurement, measurement.TargetOffset, limiterPlan{ceilingDB: -1.0}, 48000, "")
+		spec := buildLoudnormFilterSpec(config, measurement, offset, limiterPlan{ceilingDB: -1.0}, 48000, "")
 		assertBothFlags(t, "buildLoudnormFilterSpec()", spec)
 	})
 

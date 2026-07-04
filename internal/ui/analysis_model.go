@@ -38,14 +38,12 @@ type AnalysisModel struct {
 	// message, so View stays a pure function of model state (no clock read at
 	// render). Mirrors FileProgress.ElapsedTime in the processing model.
 	ElapsedTime time.Duration
-	Done        bool
 
 	// Progress bar (owned by Update; rendered via ViewAs)
 	progress progress.Model
 
 	// Terminal dimensions
-	Width  int
-	Height int
+	Width int
 }
 
 // The analysis-only message set lives here beside its model; the processing-mode
@@ -99,7 +97,9 @@ func (m AnalysisModel) Init() tea.Cmd {
 
 // Update handles messages and updates the model
 func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if handled, cmd := handleCommonMsg(msg, &m.Width, &m.Height, &m.Done, &m.progress, analysisBarOverhead); handled {
+	var height int
+	var done bool
+	if handled, cmd := handleCommonMsg(msg, &m.Width, &height, &done, &m.progress, analysisBarOverhead); handled {
 		return m, cmd
 	}
 

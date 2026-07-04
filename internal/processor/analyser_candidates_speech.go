@@ -186,9 +186,18 @@ func refineToGoldenSpeechSubregion(candidate *SpeechRegion, intervals []Interval
 		return nil
 	}
 
-	refined, ok := refineToSubregion(
+	candidateIntervals := getIntervalsInRange(intervals, candidate.Start, candidate.End)
+	return refineToGoldenSpeechSubregionFromIntervals(candidate, candidateIntervals)
+}
+
+func refineToGoldenSpeechSubregionFromIntervals(candidate *SpeechRegion, candidateIntervals []IntervalSample) *SpeechRegion {
+	if candidate == nil {
+		return nil
+	}
+
+	refined, ok := refineToSubregionFromIntervals(
 		refineRegion{Start: candidate.Start, End: candidate.End, Duration: candidate.Duration},
-		intervals,
+		candidateIntervals,
 		goldenSpeechWindowDuration, goldenSpeechWindowMinimum,
 		scoreSpeechIntervalWindow,
 		func(candidate, current float64) bool { return candidate > current },
@@ -232,15 +241,17 @@ func findBestSpeechRegion(regions []SpeechRegion, intervals []IntervalSample, no
 
 	var bestCandidate *SpeechRegion
 	var bestScore float64
+	var bestCandidateIntervals []IntervalSample
 	var fallbackCandidate *SpeechRegion
 	var fallbackScore float64
+	var fallbackCandidateIntervals []IntervalSample
 	hasFallback := false
 
 	for i := range regions {
 		candidate := &regions[i]
 
-		// Measure speech characteristics from interval data
-		metrics := measureSpeechCandidateFromIntervals(*candidate, intervals)
+		regionIntervals := getIntervalsInRange(intervals, candidate.Start, candidate.End)
+		metrics := measureSpeechCandidateFromRegionIntervals(*candidate, regionIntervals)
 		if metrics == nil {
 			continue
 		}
@@ -249,7 +260,6 @@ func findBestSpeechRegion(regions []SpeechRegion, intervals []IntervalSample, no
 		// duration adequacy (saturating), and within-region level consistency
 		// (tie-break). The SNR penalty is folded into the score, so no post-hoc
 		// penalty runs here.
-		regionIntervals := getIntervalsInRange(intervals, candidate.Start, candidate.End)
 		levelVar := levelVariance(regionIntervals, axisMomentaryLUFS)
 		score := scoreSpeechCandidateGrounded(metrics, noiseFloorDB, levelVar)
 		metrics.Score = score
@@ -261,6 +271,7 @@ func findBestSpeechRegion(regions []SpeechRegion, intervals []IntervalSample, no
 			fallbackRegion := metrics.Region
 			fallbackCandidate = &fallbackRegion
 			fallbackScore = score
+			fallbackCandidateIntervals = regionIntervals
 			hasFallback = true
 		}
 
@@ -271,27 +282,28 @@ func findBestSpeechRegion(regions []SpeechRegion, intervals []IntervalSample, no
 		if score >= minViableSpeechScore && (bestCandidate == nil || score > bestScore) {
 			bestCandidate = candidate
 			bestScore = score
+			bestCandidateIntervals = regionIntervals
 		}
 	}
 
 	if bestCandidate == nil && hasFallback {
 		bestCandidate = fallbackCandidate
+		bestCandidateIntervals = fallbackCandidateIntervals
 	}
 
 	// Refine long candidates to golden sub-region
 	if bestCandidate != nil && bestCandidate.Duration > goldenSpeechWindowDuration {
 		originalRegion := *bestCandidate
-		refined := refineToGoldenSpeechSubregion(bestCandidate, intervals)
+		refined := refineToGoldenSpeechSubregionFromIntervals(bestCandidate, bestCandidateIntervals)
 
 		if refined != nil {
 			wasRefined := refined.Start != originalRegion.Start ||
 				refined.Duration != originalRegion.Duration
 
 			if wasRefined {
-				// Re-measure the refined region
-				refinedMetrics := measureSpeechCandidateFromIntervals(*refined, intervals)
+				refinedIntervals := getIntervalsInRange(bestCandidateIntervals, refined.Start, refined.End)
+				refinedMetrics := measureSpeechCandidateFromRegionIntervals(*refined, refinedIntervals)
 				if refinedMetrics != nil {
-					refinedIntervals := getIntervalsInRange(intervals, refined.Start, refined.End)
 					refinedLevelVar := levelVariance(refinedIntervals, axisMomentaryLUFS)
 					refinedMetrics.Score = scoreSpeechCandidateGrounded(refinedMetrics, noiseFloorDB, refinedLevelVar)
 

@@ -241,14 +241,10 @@ func TestAnalysisQuitOnlyOnAllComplete(t *testing.T) {
 		t.Error("failed per-file AnalysisCompleteMsg returned a quit cmd, want non-quit")
 	}
 
-	// AllCompleteMsg must quit and mark the model done.
-	updated, cmd = m.Update(AllCompleteMsg{})
-	m = updated.(AnalysisModel)
+	// AllCompleteMsg must quit the program.
+	_, cmd = m.Update(AllCompleteMsg{})
 	if !isQuitCmd(cmd) {
 		t.Error("AllCompleteMsg did not return a quit cmd, want quit")
-	}
-	if !m.Done {
-		t.Error("Done = false after AllCompleteMsg, want true")
 	}
 }
 

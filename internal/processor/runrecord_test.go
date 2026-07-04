@@ -427,7 +427,7 @@ func TestLoudnormMeasuredNumeric_GracefulParseFailure(t *testing.T) {
 	stats := &LoudnormStats{
 		InputI: "-18.5", InputTP: "not-a-number", NormalizationType: "dynamic",
 	}
-	out := loudnormMeasuredNumeric(stats)
+	out := loudnormMeasuredNumeric(parseLoudnormMeasured(stats, -16.0))
 	if _, present := out["input_true_peak_dbtp"]; present {
 		t.Error("unparseable input_tp must be omitted, not fabricated")
 	}
