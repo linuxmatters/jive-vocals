@@ -234,7 +234,7 @@ func newSpeechProfileJSON(s *SpeechCandidateMetrics) speechProfileJSON {
 // normalisationRecord wraps NormalisationResult for the record. It presents the
 // region-measurement duration as region_measurement_s (float seconds, §8.4) and
 // converts loudnorm_measured from FFmpeg's raw string keys to the §8.4 numeric
-// sub-block. The source NormalisationResult and LoudnormStats are untouched.
+// sub-block. The wrapped snapshot and LoudnormStats are read-only here.
 type normalisationRecord struct {
 	src *NormalisationResult
 }

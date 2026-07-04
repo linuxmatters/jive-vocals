@@ -122,6 +122,113 @@ func TestRunRecord_FullShape(t *testing.T) {
 	}
 }
 
+func TestRunRecord_SnapshotsProcessingData(t *testing.T) {
+	result := populatedProcessingResult()
+	result.Measurements.Regions.NoiseProfile.BandNoise = []float64{-60, -61}
+	result.Measurements.Regions.NoiseProfile.BandsMeasured = true
+	result.FilteredMeasurements.RoomToneSample = &RegionSample{RMSLevel: -55, PeakLevel: -45, CrestFactor: 10}
+	result.NormResult.FinalMeasurements.SpeechSample = &RegionSample{RMSLevel: -18, PeakLevel: -2, CrestFactor: 16}
+
+	rec := NewRunRecord(result)
+
+	result.Measurements.Loudness.InputI = -99
+	result.Measurements.Dynamics.RMSLevel = -99
+	result.Measurements.Spectral.Centroid = 999
+	result.Measurements.Noise.Floor = -99
+	result.Measurements.Regions.NoiseProfile.MeasuredNoiseFloor = -99
+	result.Measurements.Regions.NoiseProfile.BandNoise[0] = -99
+	result.Measurements.Regions.SpeechProfile.RMSLevel = -99
+	result.Measurements.Regions.ElectedRoomToneSample.RMSLevel = -99
+	result.FilteredMeasurements.Loudness.OutputI = -99
+	result.FilteredMeasurements.RoomToneSample.RMSLevel = -99
+	result.NormResult.FinalMeasurements.Loudness.OutputI = -99
+	result.NormResult.FinalMeasurements.SpeechSample.RMSLevel = -99
+	result.NormResult.LoudnormStats.InputI = "-99.0"
+	result.Config.SpeechGate.Threshold = Decibels(-1).LinearAmplitude().Float64()
+	result.Diagnostics.SpeechGateClampReason = "changed"
+
+	tree, _ := marshalRecordTree(t, rec)
+
+	stages := tree["loudness"].(map[string]any)["stages"].(map[string]any)
+	if got := stages["input"].(map[string]any)["integrated_lufs"]; got != float64(-18) {
+		t.Errorf("input integrated_lufs = %v, want snapshot -18", got)
+	}
+	if got := stages["filtered"].(map[string]any)["integrated_lufs"]; got != float64(-16) {
+		t.Errorf("filtered integrated_lufs = %v, want snapshot -16", got)
+	}
+	if got := stages["final"].(map[string]any)["integrated_lufs"]; got != float64(-16) {
+		t.Errorf("final integrated_lufs = %v, want snapshot -16", got)
+	}
+
+	dynamics := tree["dynamics"].(map[string]any)["stages"].(map[string]any)["input"].(map[string]any)
+	if got := dynamics["rms_level_dbfs"]; got != float64(-22) {
+		t.Errorf("input rms_level_dbfs = %v, want snapshot -22", got)
+	}
+	spectral := tree["spectral"].(map[string]any)["stages"].(map[string]any)["input"].(map[string]any)
+	if got := spectral["centroid_hz"]; got != float64(2000) {
+		t.Errorf("input centroid_hz = %v, want snapshot 2000", got)
+	}
+	noise := tree["noise"].(map[string]any)
+	if got := noise["floor_dbfs"]; got != float64(-60) {
+		t.Errorf("noise floor_dbfs = %v, want snapshot -60", got)
+	}
+
+	regions := tree["regions"].(map[string]any)
+	roomTone := regions["room_tone"].(map[string]any)
+	roomToneElected := roomTone["elected"].(map[string]any)
+	if got := roomToneElected["measured_floor_dbfs"]; got != float64(-60) {
+		t.Errorf("room_tone elected measured_floor_dbfs = %v, want snapshot -60", got)
+	}
+	bands := roomToneElected["band_noise_dbfs"].([]any)
+	if got := bands[0]; got != float64(-60) {
+		t.Errorf("room_tone band_noise_dbfs[0] = %v, want snapshot -60", got)
+	}
+	roomToneSamples := roomTone["samples"].(map[string]any)
+	if got := roomToneSamples["input"].(map[string]any)["rms_level_dbfs"]; got != float64(-20) {
+		t.Errorf("room_tone input rms_level_dbfs = %v, want snapshot -20", got)
+	}
+	if got := roomToneSamples["filtered"].(map[string]any)["rms_level_dbfs"]; got != float64(-55) {
+		t.Errorf("room_tone filtered rms_level_dbfs = %v, want snapshot -55", got)
+	}
+	speech := regions["speech"].(map[string]any)
+	if got := speech["elected"].(map[string]any)["rms_level_dbfs"]; got != float64(-20) {
+		t.Errorf("speech elected rms_level_dbfs = %v, want snapshot -20", got)
+	}
+	speechSamples := speech["samples"].(map[string]any)
+	if got := speechSamples["final"].(map[string]any)["rms_level_dbfs"]; got != float64(-18) {
+		t.Errorf("speech final rms_level_dbfs = %v, want snapshot -18", got)
+	}
+
+	gate := tree["filters"].(map[string]any)["speech_gate"].(map[string]any)
+	if got := gate["threshold_db"].(float64); got > -40 || got < -50 {
+		t.Errorf("speech_gate threshold_db = %v, want snapshot near -45", got)
+	}
+	diag := tree["filters"].(map[string]any)["diagnostics"].(map[string]any)
+	if got := diag["clamp_reason"]; got != "none" {
+		t.Errorf("diagnostics clamp_reason = %v, want snapshot none", got)
+	}
+	loudnorm := tree["normalisation"].(map[string]any)["loudnorm_measured"].(map[string]any)
+	if got := loudnorm["input_integrated_lufs"]; got != float64(-18.5) {
+		t.Errorf("loudnorm input_integrated_lufs = %v, want snapshot -18.5", got)
+	}
+}
+
+func TestRunRecord_DoesNotMutateNormalisationResult(t *testing.T) {
+	result := populatedProcessingResult()
+	if result.NormResult.LoudnormParsed != nil {
+		t.Fatal("test setup expected nil LoudnormParsed")
+	}
+
+	rec := NewRunRecord(result)
+
+	if result.NormResult.LoudnormParsed != nil {
+		t.Fatal("NewRunRecord must not write LoudnormParsed back to NormalisationResult")
+	}
+	if rec.Normalisation == nil || rec.Normalisation.Result().LoudnormParsed == nil {
+		t.Fatal("record normalisation snapshot missing parsed loudnorm values")
+	}
+}
+
 func TestRunRecord_AnalysisOnlyDropsProcessingBlocks(t *testing.T) {
 	rec := NewAnalysisRunRecord("/tmp/episode.flac", populatedAudioMeasurements())
 	tree, raw := marshalRecordTree(t, rec)
