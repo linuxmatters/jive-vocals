@@ -140,10 +140,11 @@ func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // Package-level styles for the analysis TUI. Their inputs are all compile-time
-// constants, so each is identical every frame; hoisting them off View and
-// renderAnalysisVerdict keeps the style allocation off the redraw, mirroring
-// views.go (fileDetailsBox, meterOffRampStyle). analysisActiveIcon is the
-// rendered "∿" glyph, a constant string, so it is hoisted whole.
+// constants, so each is identical every frame; hoisting them off the
+// value-receiver View and renderAnalysisVerdict keeps the style allocation off
+// the redraw path, mirroring views.go (fileDetailsBox, meterOffRampStyle).
+// analysisActiveIcon is the rendered "∿" glyph, a constant string, so it is
+// hoisted whole.
 var (
 	analysisStatusBox = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).

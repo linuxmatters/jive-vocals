@@ -741,11 +741,10 @@ func (cfg *EffectiveFilterConfig) buildBandlimitLowPassFilter() string {
 // anlmdn s/p/r/m values and their rationale: see the noise-reduction constant block.
 //
 // afftdn replaced the former compand residual-suppression stage. Sweeps on the
-// noisiest corpus stem showed anlmdn → afftdn matches
-// or beats anlmdn → compand on under-speech noise while keeping gaps clean with
-// less floor modulation. nr is FIXED at 12: a per-presenter sweep showed the
-// noisiest voice must be capped at ~12 to avoid warble, so adaptive nr would be
-// counter-productive.
+// noisiest corpus stem showed anlmdn → afftdn matches or beats anlmdn → compand
+// on under-speech noise while keeping gaps clean with less floor modulation. nr
+// is FIXED at 12: a per-presenter sweep showed the noisiest voice must be capped
+// at ~12 to avoid warble, so adaptive nr would be counter-productive.
 func (cfg *EffectiveFilterConfig) buildNoiseReductionFilter() string {
 	noiseReduction := cfg.NoiseReduction
 	if !noiseReduction.Enabled {
@@ -761,7 +760,7 @@ func (cfg *EffectiveFilterConfig) buildNoiseReductionFilter() string {
 	))
 
 	// afftdn FFT spectral denoise tail, validated on the noisiest corpus stem.
-	// Fixed nr=12 (not adaptive); tn=1 tracks noise so no sample region is needed.
+	// Fixed nr=12 (not adaptive); the nf/tn/nt adaptations live in tuneNoiseReduction.
 	if spec := noiseReduction.buildAfftdnFilter(); spec != "" {
 		filters = append(filters, spec)
 	}

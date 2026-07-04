@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// Limiter ceiling constants used by calculateLimiterCeiling and pre-gain deficit
-// calculation.
+// Limiter ceiling constants used by deriveLimiterAndPreGain for the ceiling
+// decision and the pre-gain deficit calculation.
 const (
 	// minLimiterCeilingDB is the practical minimum for FFmpeg's alimiter ceiling
 	// (dBTP). Engine floor, not a tuning constant.
@@ -215,5 +215,5 @@ type LimiterDiagnostics struct {
 	LimiterGain       float64 `json:"gain_db"`         // Gain required that triggered limiting (dB)
 	LimiterFilteredTP float64 `json:"filtered_dbtp"`   // Pass-2 filtered true peak (dBTP) the limiter acts on
 	PreGainDB         float64 `json:"pre_gain_db"`     // Pre-gain amount in dB (0.0 when no pre-gain applied)
-	LimiterClamped    bool    `json:"limiter_clamped"` // True when calculateLimiterCeiling clamped ceiling to minimum
+	LimiterClamped    bool    `json:"limiter_clamped"` // True when deriveLimiterAndPreGain clamped ceiling to minimum
 }

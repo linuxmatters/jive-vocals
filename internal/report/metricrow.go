@@ -25,7 +25,7 @@ const (
 	fmtDB       metricFormat = iota // dB / dBFS levels: "< -120" digital-silence floor
 	fmtLUFS                         // LUFS loudness: "< -70" measurement floor
 	fmtPeakDB                       // dBTP true peak: dB scale, digital-silence floor
-	fmtLU                           // LU loudness range: 2-decimal scale beside LUFS neighbours
+	fmtLU                           // LU loudness range: plain fixed-decimal, no floor rule (LRA never hits a measurement floor)
 	fmtSpectral                     // dimensionless / Hz spectral + astats values
 	fmtSigned                       // explicit-sign values (target offset)
 	fmtRaw                          // plain fixed-decimal floats (seconds): no scientific-notation or floor rule

@@ -9,13 +9,12 @@ import (
 )
 
 // This file holds the one round-trip test that exercises reader.go's hardest
-// code - the ReadFrame EAGAIN/EOF decode loop and the OpenAudioFile/Close
-// resource lifecycle - against a real decode. It stays hermetic: the audio is a
+// code, the ReadFrame EAGAIN/EOF decode loop and the OpenAudioFile/Close
+// resource lifecycle, against a real decode. It stays hermetic: the audio is a
 // synthetic 16-bit PCM WAV written into t.TempDir() with Go stdlib only, so
 // nothing under testdata/ is touched and CI (which ships no audio fixtures) can
-// run it. WAV/PCM is chosen because it needs no encoder: ffmpeg's built-in
-// pcm_s16le decoder drains it, so the test verifies the real decode path rather
-// than a mock.
+// run it. WAV/PCM needs no encoder: ffmpeg's built-in pcm_s16le decoder drains
+// it, so the test verifies the real decode path rather than a mock.
 
 // writeMonoWAV writes a mono 16-bit little-endian PCM WAV file holding samples
 // at sampleRate. It mirrors the canonical 44-byte RIFF/WAVE header so ffmpeg's
@@ -94,10 +93,10 @@ func writeMonoWAV(path string, samples []int16, sampleRate int) error {
 // real decode loop end to end. The error-path tests in reader_test.go cover
 // open failures and Close nil-guards but never decode a frame, so the
 // EAGAIN/EOF receive-send-flush loop and the success lifecycle (open hands
-// ownership to the Reader, Close frees it) went unexercised. This generates a
-// short synthetic WAV, opens it, drains every frame, and asserts the happy
-// path: frames are returned, EOF maps to the documented (nil, nil), metadata
-// is sane, and Close releases without panic.
+// ownership to the Reader, Close frees it) go otherwise unexercised. It
+// generates a short synthetic WAV, opens it, drains every frame, and asserts
+// the happy path: frames are returned, EOF maps to the documented (nil, nil),
+// metadata is sane, and Close releases without panic.
 func TestOpenAudioFile_RoundTripToEOF(t *testing.T) {
 	t.Parallel()
 
