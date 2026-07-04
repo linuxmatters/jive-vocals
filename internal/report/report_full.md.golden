@@ -28,7 +28,7 @@
 | --- | --- | --- | --- | --- |
 | Integrated loudness | Gated programme loudness over the whole input, BS.1770 K-weighted mean-square with two-stage gating. (LUFS) | -35.22 | -25.10 | -16.05 |
 | True peak | Inter-sample peak of the libswresample-oversampled signal. (dBTP) | -6.21 | -19.95 | -2.51 |
-| Loudness range | Statistical spread of the 3 s short-term loudness distribution (lra_high minus lra_low). (LU) | 15.0100 | 9.3000 | 7.1000 |
+| Loudness range | Statistical spread of the 3 s short-term loudness distribution (lra_high minus lra_low). (LU) | 15.01 | 9.30 | 7.10 |
 | Gating threshold | Relative gating threshold, -10 LU below the absolute-gated loudness mean. (LUFS) | -45.22 | 0.00 | 0.00 |
 | Momentary loudness | BS.1770 loudness over a 400 ms sliding window. (LUFS) | -20.50 | 0.00 | 0.00 |
 | Short-term loudness | BS.1770 loudness over a 3 s sliding window. (LUFS) | -18.20 | 0.00 | 0.00 |

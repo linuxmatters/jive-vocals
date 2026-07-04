@@ -36,7 +36,6 @@ func writeMonoWAV(path string, samples []int16, sampleRate int) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	// RIFF header
 	if _, err := f.Write([]byte("RIFF")); err != nil {

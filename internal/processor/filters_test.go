@@ -853,7 +853,7 @@ func TestBuildNoiseReductionFilter(t *testing.T) {
 
 	t.Run("afftdn custom with empty bn emits no bn clause", func(t *testing.T) {
 		// The builder only emits bn= when both nt=custom and a non-empty shape are
-		// present. sanitizeNoiseReductionConfig reverts a "custom" type with no shape
+		// present. sanitiseNoiseReductionConfig reverts a "custom" type with no shape
 		// to "w" upstream, so this malformed combination never reaches the builder in
 		// production; the guard here proves the builder never emits a bare bn=.
 		nr := defaultNoiseReductionConfig()
@@ -867,15 +867,15 @@ func TestBuildNoiseReductionFilter(t *testing.T) {
 		}
 	})
 
-	t.Run("sanitize reverts custom-with-no-bn to white", func(t *testing.T) {
+	t.Run("sanitise reverts custom-with-no-bn to white", func(t *testing.T) {
 		nr := defaultNoiseReductionConfig()
 		nr.AfftdnNoiseType = "custom"
 		nr.AfftdnBandNoise = "" // malformed: custom type, no shape
 
-		sanitizeNoiseReductionConfig(&nr)
+		sanitiseNoiseReductionConfig(&nr)
 
 		if nr.AfftdnNoiseType != "w" {
-			t.Errorf("sanitize must revert custom-with-no-bn to w, got: %q", nr.AfftdnNoiseType)
+			t.Errorf("sanitise must revert custom-with-no-bn to w, got: %q", nr.AfftdnNoiseType)
 		}
 	})
 

@@ -1160,7 +1160,7 @@ func linearToDB(linear float64) float64 {
 }
 
 func TestSanitizeFloat(t *testing.T) {
-	// Tests for the sanitizeFloat helper function
+	// Tests for the sanitiseFloat helper function
 	// Returns default value for NaN and Inf, otherwise returns original value
 
 	const defaultVal = 42.0
@@ -1240,18 +1240,18 @@ func TestSanitizeFloat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeFloat(tt.input, defaultVal)
+			got := sanitiseFloat(tt.input, defaultVal)
 
 			// Handle NaN comparison specially
 			if math.IsNaN(tt.want) {
 				if !math.IsNaN(got) {
-					t.Errorf("sanitizeFloat() = %v, want NaN - %s", got, tt.wantDesc)
+					t.Errorf("sanitiseFloat() = %v, want NaN - %s", got, tt.wantDesc)
 				}
 				return
 			}
 
 			if got != tt.want {
-				t.Errorf("sanitizeFloat() = %v, want %v - %s", got, tt.want, tt.wantDesc)
+				t.Errorf("sanitiseFloat() = %v, want %v - %s", got, tt.want, tt.wantDesc)
 			}
 		})
 	}
@@ -1283,10 +1283,10 @@ func TestSanitizeConfig(t *testing.T) {
 		}
 		want := config
 
-		sanitizeConfig(&config)
+		sanitiseConfig(&config)
 
 		if !reflect.DeepEqual(config, want) {
-			t.Errorf("sanitizeConfig changed valid typed config:\ngot  %+v\nwant %+v", config, want)
+			t.Errorf("sanitiseConfig changed valid typed config:\ngot  %+v\nwant %+v", config, want)
 		}
 	})
 
@@ -1322,7 +1322,7 @@ func TestSanitizeConfig(t *testing.T) {
 			Deesser: DeesserConfig{Intensity: math.NaN(), Amount: math.Inf(1), Frequency: math.Inf(-1)},
 		}
 
-		sanitizeConfig(&config)
+		sanitiseConfig(&config)
 
 		if config.RumbleHighPass.Frequency != rumbleHPDefaultFreq || config.RumbleHighPass.Width != 0.707 || config.RumbleHighPass.Mix != 1.0 {
 			t.Errorf("RumbleHighPass sanitised to %+v, want frequency %.1f width 0.707 mix 1.0", config.RumbleHighPass, rumbleHPDefaultFreq)
@@ -1331,7 +1331,7 @@ func TestSanitizeConfig(t *testing.T) {
 			t.Errorf("BandlimitLowPass sanitised to %+v, want frequency %.1f width 0.707 mix 1.0", config.BandlimitLowPass, bandlimitLPFreq)
 		}
 
-		// sanitizeConfig only repairs the non-finite float fields (Strength,
+		// sanitiseConfig only repairs the non-finite float fields (Strength,
 		// PatchSec, ResearchSec, Smooth, AfftdnNoiseReduction); the boolean and
 		// string afftdn fields keep the zero values from the input literal.
 		defaultNoise := defaultNoiseReductionConfig()
@@ -1367,7 +1367,7 @@ func TestSanitizeConfig(t *testing.T) {
 		for _, threshold := range []float64{math.NaN(), math.Inf(1), math.Inf(-1), 0.0, -0.5} {
 			config := EffectiveFilterConfig{SpeechGate: SpeechGateConfig{Threshold: threshold}}
 
-			sanitizeConfig(&config)
+			sanitiseConfig(&config)
 
 			if config.SpeechGate.Threshold != speechGateDefaultThreshold {
 				t.Errorf("SpeechGate.Threshold for input %v = %v, want %v", threshold, config.SpeechGate.Threshold, speechGateDefaultThreshold)
@@ -1383,7 +1383,7 @@ func TestSanitizeConfig(t *testing.T) {
 			SpeechGate:          SpeechGateConfig{Threshold: 1e-10},
 		}
 
-		sanitizeConfig(&config)
+		sanitiseConfig(&config)
 
 		if config.RumbleHighPass.Frequency != 0.0 || config.RumbleHighPass.Width != 0.0 || config.RumbleHighPass.Mix != 0.0 {
 			t.Errorf("RumbleHighPass zero values changed: %+v", config.RumbleHighPass)
@@ -1405,7 +1405,7 @@ func TestSanitizeConfig(t *testing.T) {
 			SpeechGate:          SpeechGateConfig{Threshold: 0.02},
 		}
 
-		sanitizeConfig(&config)
+		sanitiseConfig(&config)
 
 		if config.LevellingCompressor.Threshold != -40.0 {
 			t.Errorf("LevellingCompressor.Threshold = %v, want -40.0", config.LevellingCompressor.Threshold)

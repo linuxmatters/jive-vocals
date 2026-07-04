@@ -106,6 +106,7 @@ func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case AnalysisStartMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex].FileName = filepath.Base(msg.FilePath)
 		}
 		return m, nil
@@ -113,6 +114,7 @@ func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AnalysisProgressMsg:
 		m.ElapsedTime = time.Since(m.StartTime)
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex].Progress = msg.Progress
 			m.Files[msg.FileIndex].Level = msg.Level
 		}
@@ -120,6 +122,7 @@ func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AnalysisCompleteMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
+			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex].Result = msg.Result
 			m.Files[msg.FileIndex].Err = msg.Error
 			m.Files[msg.FileIndex].Done = true
@@ -136,6 +139,26 @@ func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// Package-level styles for the analysis TUI. Their inputs are all compile-time
+// constants, so each is identical every frame; hoisting them off View and
+// renderAnalysisVerdict keeps the style allocation off the redraw, mirroring
+// views.go (fileDetailsBox, meterOffRampStyle). analysisActiveIcon is the
+// rendered "∿" glyph, a constant string, so it is hoisted whole.
+var (
+	analysisStatusBox = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(cli.ColorMuted).
+				Padding(0, 1)
+	analysisFileStyle = lipgloss.NewStyle().
+				Foreground(cli.ColorText).
+				Bold(true)
+	analysisActiveIcon = lipgloss.NewStyle().Foreground(cli.ColorOrange).Render("∿")
+	analysisDoneStyle  = lipgloss.NewStyle().Foreground(cli.ColorGreen)
+	analysisErrorStyle = lipgloss.NewStyle().Foreground(cli.ColorRed)
+	analysisStarStyle  = lipgloss.NewStyle().Foreground(cli.ColorOrange)
+	analysisLabelStyle = lipgloss.NewStyle().Foreground(cli.ColorMuted)
+)
+
 // View renders the UI
 func (m AnalysisModel) View() tea.View {
 	if m.Width == 0 {
@@ -148,12 +171,8 @@ func (m AnalysisModel) View() tea.View {
 	b.WriteString(cli.RenderTitle())
 	b.WriteString("\n\n")
 
-	statusBox := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(cli.ColorMuted).
-		Padding(0, 1).
-		Render(fmt.Sprintf("Analysing %d files, %d complete, %d failed",
-			m.TotalFiles, m.CompletedFiles, m.FailedFiles))
+	statusBox := analysisStatusBox.Render(fmt.Sprintf("Analysing %d files, %d complete, %d failed",
+		m.TotalFiles, m.CompletedFiles, m.FailedFiles))
 	b.WriteString(statusBox)
 	b.WriteString("\n\n")
 
@@ -162,12 +181,6 @@ func (m AnalysisModel) View() tea.View {
 		return tea.NewView(b.String())
 	}
 
-	fileStyle := lipgloss.NewStyle().
-		Foreground(cli.ColorText).
-		Bold(true)
-	activeIcon := lipgloss.NewStyle().Foreground(cli.ColorOrange).Render("∿")
-	doneStyle := lipgloss.NewStyle().Foreground(cli.ColorGreen)
-	errorStyle := lipgloss.NewStyle().Foreground(cli.ColorRed)
 	elapsed := m.ElapsedTime
 
 	for i := range m.Files {
@@ -175,17 +188,17 @@ func (m AnalysisModel) View() tea.View {
 
 		switch {
 		case f.Done && f.Err != nil:
-			icon := errorStyle.Render("✗")
-			fmt.Fprintf(&b, " %s %s\n   Error: %v\n", icon, fileStyle.Render(f.FileName), f.Err)
+			icon := analysisErrorStyle.Render("✗")
+			fmt.Fprintf(&b, " %s %s\n   Error: %v\n", icon, analysisFileStyle.Render(f.FileName), f.Err)
 		case f.Done:
-			icon := doneStyle.Render("🗸")
+			icon := analysisDoneStyle.Render("🗸")
 			logName := filepath.Base(report.AnalysisReportPath(f.FileName))
-			fmt.Fprintf(&b, " %s %s → %s\n", icon, fileStyle.Render(f.FileName), logName)
+			fmt.Fprintf(&b, " %s %s → %s\n", icon, analysisFileStyle.Render(f.FileName), logName)
 			if f.Result != nil && f.Result.Measurements != nil {
 				b.WriteString(renderAnalysisVerdict(f.Result.Measurements))
 			}
 		default:
-			fmt.Fprintf(&b, " %s %s\n", activeIcon, fileStyle.Render(f.FileName))
+			fmt.Fprintf(&b, " %s %s\n", analysisActiveIcon, analysisFileStyle.Render(f.FileName))
 			fmt.Fprintf(&b, "   %s [%s]\n", m.progress.ViewAs(f.Progress), formatElapsed(elapsed))
 			if f.Level != 0 {
 				fmt.Fprintf(&b, "   Level: %.1f ㏈\n", f.Level)
@@ -205,17 +218,14 @@ func (m AnalysisModel) View() tea.View {
 // same Recording score the processing done box shows. The .md report stays
 // verdict-free; these lines live only in the TUI/console.
 func renderAnalysisVerdict(m *processor.AudioMeasurements) string {
-	starStyle := lipgloss.NewStyle().Foreground(cli.ColorOrange)
-	labelStyle := lipgloss.NewStyle().Foreground(cli.ColorMuted)
-
 	rec := processor.ComputeRecordingScore(m)
 	advice := processor.GainAdvice(m.Loudness.InputTP)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "   %s  %s  %s\n",
-		labelStyle.Render("Recording"), starStyle.Render(QualityStars(rec.Stars)), rec.Label)
+		analysisLabelStyle.Render("Recording"), analysisStarStyle.Render(QualityStars(rec.Stars)), rec.Label)
 	fmt.Fprintf(&b, "   %s  %s  %s\n",
-		labelStyle.Render("Gain     "), GainBar(m.Loudness.InputTP), advice.Message())
+		analysisLabelStyle.Render("Gain     "), GainBar(m.Loudness.InputTP), advice.Message())
 	return b.String()
 }
 

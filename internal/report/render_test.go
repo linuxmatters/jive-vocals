@@ -32,8 +32,8 @@ func fullProcessingRecord() *processor.RunRecord {
 	return rec
 }
 
-// sectionPositions returns the index of each section heading in s, asserting each
-// is present. -1 means absent (caller decides whether that is a failure).
+// sectionIndex returns the byte index of heading in s, or -1 when the heading is
+// absent. It asserts nothing; the caller decides whether -1 is a failure.
 func sectionIndex(t *testing.T, s, heading string) int {
 	t.Helper()
 	return strings.Index(s, heading)
