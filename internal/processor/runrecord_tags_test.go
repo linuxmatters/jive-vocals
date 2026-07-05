@@ -406,7 +406,7 @@ func TestAdaptiveDiagnosticsJSON_HasCanonicalKeys(t *testing.T) {
 	keys := jsonKeySet(t, diag)
 
 	for _, key := range []string{
-		"bandlimit_lowpass_reason",
+		"dynamic_range_db", "bandlimit_lowpass_reason",
 		"quiet_speech_estimate_dbfs", "separation_db", "speech_headroom_db",
 		"threshold_unclamped_db", "clamp_reason", "speech_gate_depth_db",
 	} {

@@ -160,6 +160,7 @@ func renderFilterDiagnostics(d *processor.AdaptiveDiagnostics) string {
 	b.WriteString("### Adaptation diagnostics\n\n")
 	b.WriteString(renderParamTable([]paramRow{
 		{"Low-pass reason", stringCell(d.BandlimitLPReason)},
+		{"Gate dynamic range (dB)", formatMetric(d.DynamicRangeDB, 2)},
 		{"Quiet-speech estimate (dBFS)", formatMetricDB(d.SpeechGateQuietSpeechEstimate, 2)},
 		{"Speech separation (dB)", formatMetric(d.SpeechGateSpeechSeparation, 2)},
 		{"Speech headroom (dB)", formatMetric(d.SpeechGateSpeechHeadroom, 2)},

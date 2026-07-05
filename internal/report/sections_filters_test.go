@@ -125,6 +125,7 @@ func TestRenderFiltersParams(t *testing.T) {
 		"-36.38", // levelling compressor threshold
 		// Diagnostics rendered as objective values.
 		"20.5 kHz band-limit (always on)",
+		"Gate dynamic range (dB)",
 		"none", // clamp reason
 	} {
 		if !strings.Contains(got, want) {
