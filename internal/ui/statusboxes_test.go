@@ -322,7 +322,7 @@ func TestBorderTitleInTopBorder(t *testing.T) {
 		first string // a label expected on the first content row (line 1)
 	}{
 		{"chain", ansi.Strip(renderChainBox(litSummary(), 0)), "Filter Chain", "Downmix"},
-		{"analysis", ansi.Strip(renderAnalysisBox(litSummary(), 0)), "Analysis", "Voice avg"},
+		{"analysis", ansi.Strip(renderAnalysisBox(litSummary(), 0)), "Analysis", "True Peak"},
 	} {
 		lines := strings.Split(tc.box, "\n")
 		if len(lines) < 3 {
@@ -412,22 +412,49 @@ func TestPassBoxTitleInBorder(t *testing.T) {
 	}
 }
 
-// TestAnalysisRowOrder confirms Gate depth sits on row 6 and Sibilance on row 7
-// (level with the De-esser at Filter Chain row 7), with Loudness on the bottom
-// data row.
-func TestAnalysisRowOrder(t *testing.T) {
-	plain := ansi.Strip(renderAnalysisBox(litSummary(), 0))
-	gateDepth := strings.Index(plain, "Gate depth")
-	sibilance := strings.Index(plain, "Sibilance")
-	loudness := strings.Index(plain, "Loudness")
-	truePeak := strings.Index(plain, "True peak")
-	if gateDepth < 0 || sibilance < 0 || loudness < 0 || truePeak < 0 {
-		t.Fatalf("missing a row:\n%s", plain)
+// TestStatusBoxLineup confirms the Analysis rows sit beside the Filter Chain rows
+// they explain.
+func TestStatusBoxLineup(t *testing.T) {
+	pairs := []struct {
+		chain    string
+		analysis string
+	}{
+		{"Downmix", "True Peak"},
+		{"Hi-pass", "Voice avg"},
+		{"Lo-pass", "Noise floor"},
+		{"Denoise", "SNR Gap"},
+		{"Gate", "Gate depth"},
+		{"Comp", "Dynamic"},
+		{"De-esser", "Sibilance"},
+		{"Limiter", "Loudness"},
 	}
-	// True peak (row 5) → Gate depth (row 6) → Sibilance (row 7) → Loudness (row 8).
-	if truePeak >= gateDepth || gateDepth >= sibilance || sibilance >= loudness {
-		t.Errorf("row order wrong: truePeak=%d gateDepth=%d sibilance=%d loudness=%d\n%s",
-			truePeak, gateDepth, sibilance, loudness, plain)
+
+	for _, tc := range []struct {
+		name    string
+		summary AdaptedSummary
+	}{
+		{"pending", AdaptedSummary{}},
+		{"lit", litSummary()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chain := ansi.Strip(renderChainBox(tc.summary, 0))
+			analysis := ansi.Strip(renderAnalysisBox(tc.summary, 0))
+			chainLines := strings.Split(chain, "\n")
+			analysisLines := strings.Split(analysis, "\n")
+
+			for i, pair := range pairs {
+				line := i + 1 // skip the top border title row
+				if line >= len(chainLines) || line >= len(analysisLines) {
+					t.Fatalf("status boxes too short:\nchain:\n%s\nanalysis:\n%s", chain, analysis)
+				}
+				if !strings.Contains(chainLines[line], pair.chain) {
+					t.Errorf("chain row %d = %q, want %q", i+1, chainLines[line], pair.chain)
+				}
+				if !strings.Contains(analysisLines[line], pair.analysis) {
+					t.Errorf("analysis row %d = %q, want %q", i+1, analysisLines[line], pair.analysis)
+				}
+			}
+		})
 	}
 }
 
@@ -436,10 +463,10 @@ func TestAnalysisRowOrder(t *testing.T) {
 // that fills the inner width gets zero fitWidth trailing pad: only the box style's
 // Padding(0,1) remains, leaving that row reading "… value │" with a single space
 // before the border on both sides. Each box is fed a summary whose widest row fills
-// the inner width exactly (chain: Mix "mono/44.1㎑" = 23; analysis: Dynamics
+// the inner width exactly (chain: Downmix "mono/44.1㎑" = 23; analysis: Dynamic
 // "20.0 LU → 2.5:1" = 30, the widest plausible value the widths are sized to).
 func TestStatusBoxGutterSymmetric(t *testing.T) {
-	// Analysis summary whose Dynamics row fills the 30-col inner width.
+	// Analysis summary whose Dynamic row fills the 30-col inner width.
 	fullAnalysis := litSummary()
 	fullAnalysis.InputLRA = 20.0
 	fullAnalysis.GateRatio = 2.5
@@ -450,9 +477,9 @@ func TestStatusBoxGutterSymmetric(t *testing.T) {
 		// the value on the row that fills the inner width, hugging the border.
 		longest string
 	}{
-		// Chain: the Mix row "mono/44.1㎑" is the widest (23 cols).
+		// Chain: the Downmix row "mono/44.1㎑" is the widest (23 cols).
 		{"chain", ansi.Strip(renderChainBox(litSummary(), 0)), "mono/44.1" + unitKHz},
-		// Analysis: the Dynamics row "20.0 LU → 2.5:1" fills the 30-col inner width.
+		// Analysis: the Dynamic row "20.0 LU → 2.5:1" fills the 30-col inner width.
 		{"analysis", ansi.Strip(renderAnalysisBox(fullAnalysis, 0)), "20.0 LU → 2.5:1"},
 	} {
 		var got string
