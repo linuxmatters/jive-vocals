@@ -134,8 +134,9 @@ func ProcessAudio(ctx context.Context, inputPath string, config *BaseFilterConfi
 		}
 	}()
 
-	// Set Pass 2 filter chain order
-	effectiveConfig.FilterOrder = append([]FilterID(nil), Pass2FilterOrder...)
+	// AdaptConfig carries the base config's FilterOrder (default Pass2FilterOrder)
+	// onto effectiveConfig, and processWithFilters applies exactly that order, so
+	// no re-clone is needed here.
 
 	// Track output measurements from Pass 2 (filtered but not yet normalised)
 	var filteredMeasurements *OutputMeasurements

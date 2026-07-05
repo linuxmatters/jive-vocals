@@ -116,7 +116,7 @@ func TestProgressFillIsGradient(t *testing.T) {
 // at the first cell, red-ish at the last, and more than 3 distinct fill colours.
 func TestMeterIsGradient(t *testing.T) {
 	// Drive the level to the hot end so every cell is filled and coloured.
-	out := renderAudioLevelMeter(-1.0, 0.0, 0)
+	out := renderAudioLevelMeterWithLevels(-1.0, -1.0, 0.0, 0)
 
 	colors := fillColors(out)
 	if len(colors) <= 3 {
@@ -155,7 +155,7 @@ func TestMeterIsGradient(t *testing.T) {
 // TestMeterHasNoInBarPeakGlyph asserts the peak marker is no longer overlaid
 // inside the bar: the bar cells are pure filled/empty gradient with no '|'.
 func TestMeterHasNoInBarPeakGlyph(t *testing.T) {
-	out := renderAudioLevelMeter(-20.0, -10.0, 0)
+	out := renderAudioLevelMeterWithLevels(-20.0, -20.0, -10.0, 0)
 	bar := ansi.Strip(out)
 	// Take the bar line: the line that contains the gradient cells.
 	var barLine string
@@ -192,7 +192,7 @@ func markerLine(plain string) (string, int) {
 // arrow, for two peak levels.
 func TestMeterPeakMarkerIsSingleLine(t *testing.T) {
 	for _, peak := range []float64{-10.0, -30.0} {
-		plain := ansi.Strip(renderAudioLevelMeter(-40.0, peak, 0))
+		plain := ansi.Strip(renderAudioLevelMeterWithLevels(-40.0, -40.0, peak, 0))
 		line, n := markerLine(plain)
 		if line == "" {
 			t.Fatalf("peak=%g: no arrow marker line found in:\n%q", peak, plain)
@@ -208,7 +208,7 @@ func TestMeterPeakMarkerIsSingleLine(t *testing.T) {
 // TestMeterHeaderShowsLevelNotPeak asserts the meter header line carries the
 // current level only; the peak value moved down to the elbow connector line.
 func TestMeterHeaderShowsLevelNotPeak(t *testing.T) {
-	out := ansi.Strip(renderAudioLevelMeter(-20.0, -10.0, 0))
+	out := ansi.Strip(renderAudioLevelMeterWithLevels(-20.0, -20.0, -10.0, 0))
 	header, _, _ := strings.Cut(out, "\n")
 	if !strings.Contains(header, "Level:") {
 		t.Errorf("header missing 'Level:': %q", header)
@@ -243,7 +243,7 @@ func TestMeterPeakArrowTethersValue(t *testing.T) {
 		{-10.0, 34, true},  // near right edge: flips to ⁻¹⁰·⁰ ⬏
 	}
 	for _, tc := range cases {
-		plain := ansi.Strip(renderAudioLevelMeter(-40.0, tc.peak, 0))
+		plain := ansi.Strip(renderAudioLevelMeterWithLevels(-40.0, -40.0, tc.peak, 0))
 		line, _ := markerLine(plain)
 		if line == "" {
 			t.Fatalf("peak=%g: no arrow marker line in:\n%q", tc.peak, plain)
@@ -314,7 +314,7 @@ func TestSuperscriptValue(t *testing.T) {
 // ceiling the label flips to the trailing-arrow form, so the arrow ends the line.
 func TestMeterPeakAtCeilingStaysInBounds(t *testing.T) {
 	for _, peak := range []float64{0.0, -0.5, -1.0} {
-		plain := ansi.Strip(renderAudioLevelMeter(-40.0, peak, 0))
+		plain := ansi.Strip(renderAudioLevelMeterWithLevels(-40.0, -40.0, peak, 0))
 		line, _ := markerLine(plain)
 		if line == "" {
 			t.Fatalf("peak=%g: no arrow marker line found in:\n%q", peak, plain)
@@ -339,7 +339,7 @@ func TestMeterPeakAtCeilingStaysInBounds(t *testing.T) {
 // TestMeterNoPeakMarkerAtFloor asserts no marker line (neither arrow form)
 // renders when the peak is still at the silence floor.
 func TestMeterNoPeakMarkerAtFloor(t *testing.T) {
-	out := ansi.Strip(renderAudioLevelMeter(-40.0, meterFloorDB, 0))
+	out := ansi.Strip(renderAudioLevelMeterWithLevels(-40.0, -40.0, meterFloorDB, 0))
 	if strings.ContainsRune(out, '⬑') || strings.ContainsRune(out, '⬏') {
 		t.Errorf("peak marker rendered at silence floor:\n%q", out)
 	}
@@ -349,7 +349,7 @@ func TestMeterNoPeakMarkerAtFloor(t *testing.T) {
 // shade (red > green > blue, with a substantial green component so it reads as
 // orange rather than pure red).
 func TestMeterPeakArrowIsOrange(t *testing.T) {
-	out := renderAudioLevelMeter(-40.0, -10.0, 0)
+	out := renderAudioLevelMeterWithLevels(-40.0, -40.0, -10.0, 0)
 	c := arrowColor(out)
 	if c == nil {
 		t.Fatalf("no arrow colour found in:\n%q", out)
@@ -365,8 +365,8 @@ func TestMeterPeakArrowPulses(t *testing.T) {
 	// Trough and crest of the 1.2 Hz sine: t=0 sits mid-rise; pick phases that
 	// land near the dim trough and the bright peak.
 	// durSec(0.625): sin = -1 -> dim trough. durSec(0.208): sin ≈ +1 -> bright crest.
-	dim := arrowColor(renderAudioLevelMeter(-40.0, -10.0, durSec(0.625)))
-	bright := arrowColor(renderAudioLevelMeter(-40.0, -10.0, durSec(0.208)))
+	dim := arrowColor(renderAudioLevelMeterWithLevels(-40.0, -40.0, -10.0, durSec(0.625)))
+	bright := arrowColor(renderAudioLevelMeterWithLevels(-40.0, -40.0, -10.0, durSec(0.208)))
 	if dim == nil || bright == nil {
 		t.Fatalf("missing arrow colour: dim=%v bright=%v", dim, bright)
 	}
@@ -517,7 +517,7 @@ func TestProgressBarAlignsWithMeter(t *testing.T) {
 		t.Errorf("bar rendered width %d, want %d", barW, meterWidth)
 	}
 
-	meter := renderAudioLevelMeter(-20.0, -10.0, 0)
+	meter := renderAudioLevelMeterWithLevels(-20.0, -20.0, -10.0, 0)
 	// The meter's second line is the bar cells; take the widest non-label line.
 	var meterW int
 	for line := range strings.SplitSeq(meter, "\n") {

@@ -610,7 +610,6 @@ func electSpeechProfile(runs []SpeechRegion, intervals []IntervalSample, noisePr
 func pickLowClusterRegion(intervals []IntervalSample, split float64, hop time.Duration) *RoomToneRegion {
 	var best *RoomToneRegion
 	var runStart time.Duration
-	var runLen int
 	inRun := false
 
 	closeRun := func(endIdx int) {
@@ -623,7 +622,6 @@ func pickLowClusterRegion(intervals []IntervalSample, split float64, hop time.Du
 			best = region
 		}
 		inRun = false
-		runLen = 0
 	}
 
 	for i := range intervals {
@@ -633,7 +631,6 @@ func pickLowClusterRegion(intervals []IntervalSample, split float64, hop time.Du
 				runStart = intervals[i].Timestamp
 				inRun = true
 			}
-			runLen++
 			continue
 		}
 		if inRun {

@@ -116,27 +116,20 @@ func newLoudnessDomainJSON(d LoudnessDomain) loudnessDomainJSON {
 	}
 }
 
-type loudnessMetricsJSON struct {
-	MomentaryLoudness jsonFloat `json:"momentary_lufs"`
-	ShortTermLoudness jsonFloat `json:"short_term_lufs"`
-	SamplePeak        jsonFloat `json:"sample_peak_dbfs"`
-}
-
-func newLoudnessMetricsJSON(m LoudnessMetrics) loudnessMetricsJSON {
-	return loudnessMetricsJSON{
-		MomentaryLoudness: jsonFloat(m.MomentaryLoudness),
-		ShortTermLoudness: jsonFloat(m.ShortTermLoudness),
-		SamplePeak:        jsonFloat(m.SamplePeak),
-	}
-}
-
+// inputLoudnessMetricsJSON and outputLoudnessMetricsJSON both flatten the three
+// shared LoudnessMetrics scalars alongside their stage-specific fields via a
+// custom MarshalJSON. The scalars are held as plain jsonFloat fields (no json
+// tags) so nothing serialises through them directly; MarshalJSON owns the wire
+// shape. Field order in the flat struct is the serialised key order.
 type inputLoudnessMetricsJSON struct {
-	LoudnessMetrics loudnessMetricsJSON
-	InputI          jsonFloat `json:"integrated_lufs"`
-	InputTP         jsonFloat `json:"true_peak_dbtp"`
-	InputLRA        jsonFloat `json:"lra_lu"`
-	InputThresh     jsonFloat `json:"thresh_lufs"`
-	TargetOffset    jsonFloat `json:"target_offset_db"`
+	MomentaryLoudness jsonFloat
+	ShortTermLoudness jsonFloat
+	SamplePeak        jsonFloat
+	InputI            jsonFloat
+	InputTP           jsonFloat
+	InputLRA          jsonFloat
+	InputThresh       jsonFloat
+	TargetOffset      jsonFloat
 }
 
 func newInputLoudnessMetricsJSON(m *InputLoudnessMetrics) *inputLoudnessMetricsJSON {
@@ -144,12 +137,14 @@ func newInputLoudnessMetricsJSON(m *InputLoudnessMetrics) *inputLoudnessMetricsJ
 		return nil
 	}
 	return &inputLoudnessMetricsJSON{
-		LoudnessMetrics: newLoudnessMetricsJSON(m.LoudnessMetrics),
-		InputI:          jsonFloat(m.InputI),
-		InputTP:         jsonFloat(m.InputTP),
-		InputLRA:        jsonFloat(m.InputLRA),
-		InputThresh:     jsonFloat(m.InputThresh),
-		TargetOffset:    jsonFloat(m.TargetOffset),
+		MomentaryLoudness: jsonFloat(m.MomentaryLoudness),
+		ShortTermLoudness: jsonFloat(m.ShortTermLoudness),
+		SamplePeak:        jsonFloat(m.SamplePeak),
+		InputI:            jsonFloat(m.InputI),
+		InputTP:           jsonFloat(m.InputTP),
+		InputLRA:          jsonFloat(m.InputLRA),
+		InputThresh:       jsonFloat(m.InputThresh),
+		TargetOffset:      jsonFloat(m.TargetOffset),
 	}
 }
 
@@ -164,25 +159,18 @@ func (m inputLoudnessMetricsJSON) MarshalJSON() ([]byte, error) {
 		InputThresh       jsonFloat `json:"thresh_lufs"`
 		TargetOffset      jsonFloat `json:"target_offset_db"`
 	}
-	return marshalJSON(flat{
-		MomentaryLoudness: m.LoudnessMetrics.MomentaryLoudness,
-		ShortTermLoudness: m.LoudnessMetrics.ShortTermLoudness,
-		SamplePeak:        m.LoudnessMetrics.SamplePeak,
-		InputI:            m.InputI,
-		InputTP:           m.InputTP,
-		InputLRA:          m.InputLRA,
-		InputThresh:       m.InputThresh,
-		TargetOffset:      m.TargetOffset,
-	})
+	return marshalJSON(flat(m))
 }
 
 type outputLoudnessMetricsJSON struct {
-	LoudnessMetrics loudnessMetricsJSON
-	OutputI         jsonFloat `json:"integrated_lufs"`
-	OutputTP        jsonFloat `json:"true_peak_dbtp"`
-	OutputLRA       jsonFloat `json:"lra_lu"`
-	OutputThresh    jsonFloat `json:"thresh_lufs"`
-	TargetOffset    jsonFloat `json:"target_offset_db"`
+	MomentaryLoudness jsonFloat
+	ShortTermLoudness jsonFloat
+	SamplePeak        jsonFloat
+	OutputI           jsonFloat
+	OutputTP          jsonFloat
+	OutputLRA         jsonFloat
+	OutputThresh      jsonFloat
+	TargetOffset      jsonFloat
 }
 
 func newOutputLoudnessMetricsJSON(m *OutputLoudnessMetrics) *outputLoudnessMetricsJSON {
@@ -190,12 +178,14 @@ func newOutputLoudnessMetricsJSON(m *OutputLoudnessMetrics) *outputLoudnessMetri
 		return nil
 	}
 	return &outputLoudnessMetricsJSON{
-		LoudnessMetrics: newLoudnessMetricsJSON(m.LoudnessMetrics),
-		OutputI:         jsonFloat(m.OutputI),
-		OutputTP:        jsonFloat(m.OutputTP),
-		OutputLRA:       jsonFloat(m.OutputLRA),
-		OutputThresh:    jsonFloat(m.OutputThresh),
-		TargetOffset:    jsonFloat(m.TargetOffset),
+		MomentaryLoudness: jsonFloat(m.MomentaryLoudness),
+		ShortTermLoudness: jsonFloat(m.ShortTermLoudness),
+		SamplePeak:        jsonFloat(m.SamplePeak),
+		OutputI:           jsonFloat(m.OutputI),
+		OutputTP:          jsonFloat(m.OutputTP),
+		OutputLRA:         jsonFloat(m.OutputLRA),
+		OutputThresh:      jsonFloat(m.OutputThresh),
+		TargetOffset:      jsonFloat(m.TargetOffset),
 	}
 }
 
@@ -210,16 +200,7 @@ func (m outputLoudnessMetricsJSON) MarshalJSON() ([]byte, error) {
 		OutputThresh      jsonFloat `json:"thresh_lufs"`
 		TargetOffset      jsonFloat `json:"target_offset_db"`
 	}
-	return marshalJSON(flat{
-		MomentaryLoudness: m.LoudnessMetrics.MomentaryLoudness,
-		ShortTermLoudness: m.LoudnessMetrics.ShortTermLoudness,
-		SamplePeak:        m.LoudnessMetrics.SamplePeak,
-		OutputI:           m.OutputI,
-		OutputTP:          m.OutputTP,
-		OutputLRA:         m.OutputLRA,
-		OutputThresh:      m.OutputThresh,
-		TargetOffset:      m.TargetOffset,
-	})
+	return marshalJSON(flat(m))
 }
 
 type dynamicsDomainJSON struct {

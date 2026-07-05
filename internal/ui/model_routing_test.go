@@ -111,10 +111,8 @@ func TestWindowSizeMsgPreservesRoutedFiles(t *testing.T) {
 	for i := range want {
 		got := m.Files[i]
 		got.statusBoxCache = statusBoxCache{}
-		got.fileDetailsTitleCache = overlayTitleCache{}
 		wantData := want[i]
 		wantData.statusBoxCache = statusBoxCache{}
-		wantData.fileDetailsTitleCache = overlayTitleCache{}
 		if got != wantData {
 			t.Errorf("Files[%d] routed data changed after WindowSizeMsg: got %+v, want %+v", i, got, wantData)
 		}

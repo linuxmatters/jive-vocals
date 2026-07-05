@@ -614,21 +614,24 @@ func TestRunRecord_RoundTripRestoresReportWrappers(t *testing.T) {
 	}
 }
 
-// TestLoudnormMeasuredNumeric_GracefulParseFailure asserts an unparseable loudnorm
+// TestNewLoudnormMeasuredJSON_GracefulParseFailure asserts an unparseable loudnorm
 // string omits its field rather than crashing or fabricating a zero.
-func TestLoudnormMeasuredNumeric_GracefulParseFailure(t *testing.T) {
+func TestNewLoudnormMeasuredJSON_GracefulParseFailure(t *testing.T) {
 	stats := &LoudnormStats{
 		InputI: "-18.5", InputTP: "not-a-number", NormalizationType: "dynamic",
 	}
-	out := loudnormMeasuredNumeric(parseLoudnormMeasured(stats, -16.0))
-	if _, present := out["input_true_peak_dbtp"]; present {
-		t.Error("unparseable input_tp must be omitted, not fabricated")
+	out := newLoudnormMeasuredJSON(parseLoudnormMeasured(stats, -16.0))
+	if out == nil {
+		t.Fatal("newLoudnormMeasuredJSON = nil, want populated struct")
 	}
-	if got, ok := out["input_integrated_lufs"].(float64); !ok || got != -18.5 {
-		t.Errorf("input_integrated_lufs = %v, want -18.5", out["input_integrated_lufs"])
+	if out.InputTP != nil {
+		t.Error("unparseable input_tp must be omitted (nil), not fabricated")
 	}
-	if out["normalization_type"] != "dynamic" {
-		t.Errorf("normalization_type = %v, want dynamic", out["normalization_type"])
+	if out.InputI == nil || float64(*out.InputI) != -18.5 {
+		t.Errorf("input_integrated_lufs = %v, want -18.5", out.InputI)
+	}
+	if out.NormalizationType != "dynamic" {
+		t.Errorf("normalization_type = %v, want dynamic", out.NormalizationType)
 	}
 }
 
