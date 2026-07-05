@@ -31,14 +31,13 @@ const (
 	fmtRaw                          // plain fixed-decimal floats (seconds): no scientific-notation or floor rule
 )
 
-// metricRow defines one table row: the RunRecord field key (for its definition)
-// the formatting rule, and per-stage value getters. A getter returns the metric
-// value and whether the stage carries it; a nil getter (or a getter reporting
-// false) leaves the cell as the placeholder. The value-vs-stage-type split lives
-// in the getter closures the section renderers supply.
+// metricRow defines one table row: its descriptor and per-stage value getters. A
+// getter returns the metric value and whether the stage carries it; a nil getter
+// (or a getter reporting false) leaves the cell as the placeholder. The
+// value-vs-stage-type split lives in the getter closures the section renderers
+// supply.
 type metricRow struct {
-	key    string
-	format metricFormat
+	metric metricDescriptor
 	input  func() (float64, bool)
 	filt   func() (float64, bool)
 	final  func() (float64, bool)
@@ -71,7 +70,7 @@ func stageGetter[T any](s *T, f func(*T) float64) func() (float64, bool) {
 
 // formatCell formats one stage value through the row's metric rule, returning the
 // placeholder when the stage is absent (getter nil or reporting false).
-func formatCell(getter func() (float64, bool), format metricFormat) string {
+func formatCell(getter func() (float64, bool), metric metricDescriptor) string {
 	if getter == nil {
 		return placeholder
 	}
@@ -79,11 +78,7 @@ func formatCell(getter func() (float64, bool), format metricFormat) string {
 	if !ok {
 		return placeholder
 	}
-	decimals := 2
-	if format == fmtSpectral {
-		decimals = 4
-	}
-	return formatByRule(value, format, decimals)
+	return formatByRule(value, metric.format, metric.decimals)
 }
 
 // formatByRule dispatches a value to the formatter named by the metric rule,
@@ -131,12 +126,12 @@ func renderMetricTable(rows []metricRow) string {
 	body := make([][]string, 0, len(rows))
 	for i := range rows {
 		row := &rows[i]
-		cells := []string{metricLabel(row.key), metricDefinition(row.key), formatCell(row.input, row.format)}
+		cells := []string{metricLabel(row.metric), metricDefinition(row.metric), formatCell(row.input, row.metric)}
 		if hasFiltered {
-			cells = append(cells, formatCell(row.filt, row.format))
+			cells = append(cells, formatCell(row.filt, row.metric))
 		}
 		if hasFinal {
-			cells = append(cells, formatCell(row.final, row.format))
+			cells = append(cells, formatCell(row.final, row.metric))
 		}
 		body = append(body, cells)
 	}
@@ -148,10 +143,10 @@ func renderMetricTable(rows []metricRow) string {
 // panics naming the key: every emitted key is in requiredKeys, and
 // TestRequiredKeysHaveDefinitions catches an uncatalogued key before an
 // always-on run reaches this path.
-func metricLabel(key string) string {
-	d, ok := DefinitionFor(key)
+func metricLabel(metric metricDescriptor) string {
+	d, ok := DefinitionFor(string(metric.key))
 	if !ok {
-		panic("report: metricLabel: no definition for key " + key)
+		panic("report: metricLabel: no definition for key " + string(metric.key))
 	}
 	return d.Label
 }
@@ -159,8 +154,8 @@ func metricLabel(key string) string {
 // metricDefinition returns the objective gloss with its unit appended in
 // parentheses, e.g. "Gated programme loudness... (LUFS)". Unit-less metrics omit
 // the parenthetical. Every loudness/dynamics/spectral row carries this gloss.
-func metricDefinition(key string) string {
-	d, _ := DefinitionFor(key)
+func metricDefinition(metric metricDescriptor) string {
+	d, _ := DefinitionFor(string(metric.key))
 	if d.Unit == "" {
 		return d.Gloss
 	}

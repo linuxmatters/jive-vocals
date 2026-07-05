@@ -10,7 +10,7 @@ import (
 // missing or renamed entry fails here rather than producing a blank report cell.
 func TestRequiredKeysHaveDefinitions(t *testing.T) {
 	for _, key := range requiredKeys {
-		if _, ok := Definitions[key]; !ok {
+		if _, ok := Definitions[string(key)]; !ok {
 			t.Errorf("required key %q has no definition", key)
 		}
 	}
@@ -19,17 +19,12 @@ func TestRequiredKeysHaveDefinitions(t *testing.T) {
 // TestSpectralThirteenCovered asserts all 13 aspectralstats fields are defined,
 // guarding the spectral section against a dropped metric.
 func TestSpectralThirteenCovered(t *testing.T) {
-	spectral := []string{
-		"mean", "variance", "centroid_hz", "spread_hz", "skewness",
-		"kurtosis", "entropy", "flatness", "crest", "flux", "slope",
-		"decrease", "rolloff_hz",
+	if len(spectralMetricDescriptors) != 13 {
+		t.Fatalf("spectral set has %d keys, want 13", len(spectralMetricDescriptors))
 	}
-	if len(spectral) != 13 {
-		t.Fatalf("spectral set has %d keys, want 13", len(spectral))
-	}
-	for _, key := range spectral {
-		if _, ok := Definitions[key]; !ok {
-			t.Errorf("spectral key %q has no definition", key)
+	for _, metric := range spectralMetricDescriptors {
+		if _, ok := Definitions[string(metric.key)]; !ok {
+			t.Errorf("spectral key %q has no definition", metric.key)
 		}
 	}
 }
@@ -53,33 +48,33 @@ func TestDefinitionsNonEmptyLabelAndGloss(t *testing.T) {
 // zero_crossings_rate, entropy, and the bare spectral moments) carry no unit by
 // design, so they are excluded.
 func TestRequiredKeysCarryUnitWhereDimensioned(t *testing.T) {
-	dimensionless := map[string]bool{
-		"flat_factor":         true,
-		"dc_offset":           true,
-		"zero_crossings_rate": true,
-		"entropy":             true,
-		"mean":                true,
-		"variance":            true,
-		"skewness":            true,
-		"kurtosis":            true,
-		"flatness":            true,
-		"crest":               true,
-		"flux":                true,
-		"slope":               true,
-		"decrease":            true,
-		"floor_source":        true,
-		"voice_activated":     true,
-		"floored_fraction":    true,
-		"spectral_flatness":   true,
-		"spectral_kurtosis":   true,
-		"voicing_density":     true,
-		"score":               true,
+	dimensionless := map[metricKey]bool{
+		flatFactorMetric.key:        true,
+		dcOffsetMetric.key:          true,
+		zeroCrossingsRateMetric.key: true,
+		entropyMetric.key:           true,
+		meanMetric.key:              true,
+		varianceMetric.key:          true,
+		skewnessMetric.key:          true,
+		kurtosisMetric.key:          true,
+		flatnessMetric.key:          true,
+		crestMetric.key:             true,
+		fluxMetric.key:              true,
+		slopeMetric.key:             true,
+		decreaseMetric.key:          true,
+		floorSourceMetric.key:       true,
+		voiceActivatedMetric.key:    true,
+		flooredFractionMetric.key:   true,
+		spectralFlatnessMetric.key:  true,
+		spectralKurtosisMetric.key:  true,
+		voicingDensityMetric.key:    true,
+		scoreMetric.key:             true,
 	}
 	for _, key := range requiredKeys {
 		if dimensionless[key] {
 			continue
 		}
-		def := Definitions[key]
+		def := Definitions[string(key)]
 		if strings.TrimSpace(def.Unit) == "" {
 			t.Errorf("required dimensioned key %q has empty unit", key)
 		}

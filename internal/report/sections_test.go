@@ -165,43 +165,34 @@ func TestRenderLoudnessFullStages(t *testing.T) {
 func TestRenderLoudnessDefinitionPerRow(t *testing.T) {
 	got := renderLoudness(fullLoudnessRecord())
 	// Every loudness metric row must carry a definition gloss (criterion 4).
-	for _, key := range []string{
-		"integrated_lufs", "true_peak_dbtp", "lra_lu", "thresh_lufs",
-		"momentary_lufs", "short_term_lufs", "sample_peak_dbfs", "target_offset_db",
-	} {
-		d, ok := DefinitionFor(key)
+	for _, metric := range loudnessMetricDescriptors {
+		d, ok := DefinitionFor(string(metric.key))
 		if !ok {
-			t.Fatalf("missing definition for %q", key)
+			t.Fatalf("missing definition for %q", metric.key)
 		}
 		// The renderer escapes cell content (mdTable), so compare against the
 		// escaped gloss; a gloss with a literal pipe (e.g. |min|,|max|) renders
 		// backslash-escaped.
 		if !strings.Contains(got, escapeCell(d.Gloss)) {
-			t.Errorf("loudness output missing gloss for %q: %q", key, d.Gloss)
+			t.Errorf("loudness output missing gloss for %q: %q", metric.key, d.Gloss)
 		}
 	}
 }
 
 func TestRenderDynamicsAndSpectralDefinitions(t *testing.T) {
 	dyn := renderDynamics(fullLoudnessRecord())
-	for _, key := range []string{
-		"rms_level_dbfs", "peak_level_dbfs", "crest_factor_astats_db",
-		"dynamic_range_db", "flat_factor", "bit_depth", "entropy",
-	} {
-		d, _ := DefinitionFor(key)
+	for _, metric := range dynamicsMetricDescriptors {
+		d, _ := DefinitionFor(string(metric.key))
 		if !strings.Contains(dyn, escapeCell(d.Gloss)) {
-			t.Errorf("dynamics missing gloss for %q", key)
+			t.Errorf("dynamics missing gloss for %q", metric.key)
 		}
 	}
 
 	spec := renderSpectral(fullLoudnessRecord())
-	for _, key := range []string{
-		"mean", "variance", "centroid_hz", "spread_hz", "skewness",
-		"kurtosis", "flatness", "crest", "flux", "slope", "decrease", "rolloff_hz",
-	} {
-		d, _ := DefinitionFor(key)
+	for _, metric := range spectralMetricDescriptors {
+		d, _ := DefinitionFor(string(metric.key))
 		if !strings.Contains(spec, escapeCell(d.Gloss)) {
-			t.Errorf("spectral missing gloss for %q", key)
+			t.Errorf("spectral missing gloss for %q", metric.key)
 		}
 	}
 }
@@ -375,15 +366,18 @@ func TestRenderRegionsElected(t *testing.T) {
 		}
 	}
 	// Every elected metric row carries a definition gloss (criterion 4).
-	for _, key := range []string{
-		"measured_floor_dbfs", "spectral_flatness", "voicing_density", "speech_band_sib_rms_dbfs",
+	for _, metric := range []metricDescriptor{
+		measuredFloorDBFSMetric,
+		spectralFlatnessMetric,
+		voicingDensityMetric,
+		speechBandSibilantRMSDBFSMetric,
 	} {
-		d, ok := DefinitionFor(key)
+		d, ok := DefinitionFor(string(metric.key))
 		if !ok {
-			t.Fatalf("missing definition for %q", key)
+			t.Fatalf("missing definition for %q", metric.key)
 		}
 		if !strings.Contains(got, d.Gloss) {
-			t.Errorf("regions output missing gloss for %q", key)
+			t.Errorf("regions output missing gloss for %q", metric.key)
 		}
 	}
 }
@@ -404,15 +398,13 @@ func TestRenderGateStatistics(t *testing.T) {
 		}
 	}
 	// Every gate-statistic row carries its definition gloss.
-	for _, key := range []string{
-		"voiced_low_percentile_dbfs", "noise_high_percentile_dbfs", "gate_separation_db",
-	} {
-		d, ok := DefinitionFor(key)
+	for _, metric := range gateStatisticMetricDescriptors {
+		d, ok := DefinitionFor(string(metric.key))
 		if !ok {
-			t.Fatalf("missing definition for %q", key)
+			t.Fatalf("missing definition for %q", metric.key)
 		}
 		if !strings.Contains(got, d.Gloss) {
-			t.Errorf("gate statistics output missing gloss for %q", key)
+			t.Errorf("gate statistics output missing gloss for %q", metric.key)
 		}
 	}
 }
@@ -493,10 +485,10 @@ func TestRenderIntervalSummary(t *testing.T) {
 		}
 	}
 	// Percentile rows carry definitions (criterion 4).
-	for _, key := range []string{"rms_dist_p50_dbfs", "largest_gap_db"} {
-		d, _ := DefinitionFor(key)
+	for _, metric := range []metricDescriptor{rmsDistributionP50DBFSMetric, largestGapDBMetric} {
+		d, _ := DefinitionFor(string(metric.key))
 		if !strings.Contains(got, d.Gloss) {
-			t.Errorf("interval summary missing gloss for %q", key)
+			t.Errorf("interval summary missing gloss for %q", metric.key)
 		}
 	}
 }

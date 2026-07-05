@@ -93,52 +93,52 @@ func renderLoudness(rec *processor.RunRecord) string {
 
 	rows := []metricRow{
 		{
-			key: "integrated_lufs", format: fmtLUFS,
-			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputI }),
-			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputI }),
-			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputI }),
+			metric: integratedLUFSMetric,
+			input:  stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputI }),
+			filt:   stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputI }),
+			final:  stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputI }),
 		},
 		{
-			key: "true_peak_dbtp", format: fmtPeakDB,
-			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputTP }),
-			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputTP }),
-			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputTP }),
+			metric: truePeakDBTPMetric,
+			input:  stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputTP }),
+			filt:   stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputTP }),
+			final:  stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputTP }),
 		},
 		{
-			key: "lra_lu", format: fmtLU,
-			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputLRA }),
-			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputLRA }),
-			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputLRA }),
+			metric: lraLUMetric,
+			input:  stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputLRA }),
+			filt:   stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputLRA }),
+			final:  stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputLRA }),
 		},
 		{
-			key: "thresh_lufs", format: fmtLUFS,
-			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputThresh }),
-			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputThresh }),
-			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputThresh }),
+			metric: threshLUFSMetric,
+			input:  stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.InputThresh }),
+			filt:   stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputThresh }),
+			final:  stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.OutputThresh }),
 		},
 		{
-			key: "momentary_lufs", format: fmtLUFS,
-			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.MomentaryLoudness }),
-			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.MomentaryLoudness }),
-			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.MomentaryLoudness }),
+			metric: momentaryLUFSMetric,
+			input:  stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.MomentaryLoudness }),
+			filt:   stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.MomentaryLoudness }),
+			final:  stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.MomentaryLoudness }),
 		},
 		{
-			key: "short_term_lufs", format: fmtLUFS,
-			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.ShortTermLoudness }),
-			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.ShortTermLoudness }),
-			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.ShortTermLoudness }),
+			metric: shortTermLUFSMetric,
+			input:  stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.ShortTermLoudness }),
+			filt:   stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.ShortTermLoudness }),
+			final:  stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.ShortTermLoudness }),
 		},
 		{
-			key: "sample_peak_dbfs", format: fmtDB,
-			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.SamplePeak }),
-			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.SamplePeak }),
-			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.SamplePeak }),
+			metric: samplePeakDBFSMetric,
+			input:  stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.SamplePeak }),
+			filt:   stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.SamplePeak }),
+			final:  stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.SamplePeak }),
 		},
 		{
-			key: "target_offset_db", format: fmtSigned,
-			input: stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.TargetOffset }),
-			filt:  stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.TargetOffset }),
-			final: stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.TargetOffset }),
+			metric: targetOffsetDBMetric,
+			input:  stageGetter(in, func(m *processor.InputLoudnessMetrics) float64 { return m.TargetOffset }),
+			filt:   stageGetter(filt, func(m *processor.OutputLoudnessMetrics) float64 { return m.TargetOffset }),
+			final:  stageGetter(final, func(m *processor.OutputLoudnessMetrics) float64 { return m.TargetOffset }),
 		},
 	}
 
@@ -160,27 +160,27 @@ func renderDynamics(rec *processor.RunRecord) string {
 	filt := rec.Dynamics.Stages.Filtered
 	final := rec.Dynamics.Stages.Final
 
-	row := func(key string, format metricFormat, f func(*processor.DynamicsMetrics) float64) metricRow {
+	row := func(metric metricDescriptor, f func(*processor.DynamicsMetrics) float64) metricRow {
 		return metricRow{
-			key: key, format: format,
-			input: stageGetter(in, f), filt: stageGetter(filt, f), final: stageGetter(final, f),
+			metric: metric,
+			input:  stageGetter(in, f), filt: stageGetter(filt, f), final: stageGetter(final, f),
 		}
 	}
 
 	rows := []metricRow{
-		row("rms_level_dbfs", fmtDB, func(m *processor.DynamicsMetrics) float64 { return m.RMSLevel }),
-		row("peak_level_dbfs", fmtDB, func(m *processor.DynamicsMetrics) float64 { return m.PeakLevel }),
-		row("crest_factor_astats_db", fmtSpectral, func(m *processor.DynamicsMetrics) float64 { return m.CrestFactor }),
-		row("dynamic_range_db", fmtSpectral, func(m *processor.DynamicsMetrics) float64 { return m.DynamicRange }),
-		row("min_level_dbfs", fmtDB, func(m *processor.DynamicsMetrics) float64 { return m.MinLevel }),
-		row("max_level_dbfs", fmtDB, func(m *processor.DynamicsMetrics) float64 { return m.MaxLevel }),
-		row("rms_peak_dbfs", fmtDB, func(m *processor.DynamicsMetrics) float64 { return m.RMSPeak }),
-		row("rms_trough_dbfs", fmtDB, func(m *processor.DynamicsMetrics) float64 { return m.RMSTrough }),
-		row("flat_factor", fmtSpectral, func(m *processor.DynamicsMetrics) float64 { return m.FlatFactor }),
-		row("dc_offset", fmtSpectral, func(m *processor.DynamicsMetrics) float64 { return m.DCOffset }),
-		row("zero_crossings_rate", fmtSpectral, func(m *processor.DynamicsMetrics) float64 { return m.ZeroCrossingsRate }),
-		row("bit_depth", fmtSpectral, func(m *processor.DynamicsMetrics) float64 { return m.BitDepth }),
-		row("entropy", fmtSpectral, func(m *processor.DynamicsMetrics) float64 { return m.Entropy }),
+		row(rmsLevelDBFSMetric, func(m *processor.DynamicsMetrics) float64 { return m.RMSLevel }),
+		row(peakLevelDBFSMetric, func(m *processor.DynamicsMetrics) float64 { return m.PeakLevel }),
+		row(crestFactorAstatsDBMetric, func(m *processor.DynamicsMetrics) float64 { return m.CrestFactor }),
+		row(dynamicRangeDBMetric, func(m *processor.DynamicsMetrics) float64 { return m.DynamicRange }),
+		row(minLevelDBFSMetric, func(m *processor.DynamicsMetrics) float64 { return m.MinLevel }),
+		row(maxLevelDBFSMetric, func(m *processor.DynamicsMetrics) float64 { return m.MaxLevel }),
+		row(rmsPeakDBFSMetric, func(m *processor.DynamicsMetrics) float64 { return m.RMSPeak }),
+		row(rmsTroughDBFSMetric, func(m *processor.DynamicsMetrics) float64 { return m.RMSTrough }),
+		row(flatFactorMetric, func(m *processor.DynamicsMetrics) float64 { return m.FlatFactor }),
+		row(dcOffsetMetric, func(m *processor.DynamicsMetrics) float64 { return m.DCOffset }),
+		row(zeroCrossingsRateMetric, func(m *processor.DynamicsMetrics) float64 { return m.ZeroCrossingsRate }),
+		row(bitDepthMetric, func(m *processor.DynamicsMetrics) float64 { return m.BitDepth }),
+		row(entropyMetric, func(m *processor.DynamicsMetrics) float64 { return m.Entropy }),
 	}
 
 	var b strings.Builder
@@ -200,33 +200,57 @@ func renderSpectral(rec *processor.RunRecord) string {
 	filt := rec.Spectral.Stages.Filtered
 	final := rec.Spectral.Stages.Final
 
-	row := func(key string, f func(*processor.SpectralMetrics) float64) metricRow {
+	row := func(metric metricDescriptor) metricRow {
 		return metricRow{
-			key: key, format: fmtSpectral,
-			input: stageGetter(in, f), filt: stageGetter(filt, f), final: stageGetter(final, f),
+			metric: metric,
+			input:  stageGetter(in, func(m *processor.SpectralMetrics) float64 { return spectralMetricValue(metric, m) }),
+			filt:   stageGetter(filt, func(m *processor.SpectralMetrics) float64 { return spectralMetricValue(metric, m) }),
+			final:  stageGetter(final, func(m *processor.SpectralMetrics) float64 { return spectralMetricValue(metric, m) }),
 		}
 	}
 
-	rows := []metricRow{
-		row("mean", func(m *processor.SpectralMetrics) float64 { return m.Mean }),
-		row("variance", func(m *processor.SpectralMetrics) float64 { return m.Variance }),
-		row("centroid_hz", func(m *processor.SpectralMetrics) float64 { return m.Centroid }),
-		row("spread_hz", func(m *processor.SpectralMetrics) float64 { return m.Spread }),
-		row("skewness", func(m *processor.SpectralMetrics) float64 { return m.Skewness }),
-		row("kurtosis", func(m *processor.SpectralMetrics) float64 { return m.Kurtosis }),
-		row("entropy", func(m *processor.SpectralMetrics) float64 { return m.Entropy }),
-		row("flatness", func(m *processor.SpectralMetrics) float64 { return m.Flatness }),
-		row("crest", func(m *processor.SpectralMetrics) float64 { return m.Crest }),
-		row("flux", func(m *processor.SpectralMetrics) float64 { return m.Flux }),
-		row("slope", func(m *processor.SpectralMetrics) float64 { return m.Slope }),
-		row("decrease", func(m *processor.SpectralMetrics) float64 { return m.Decrease }),
-		row("rolloff_hz", func(m *processor.SpectralMetrics) float64 { return m.Rolloff }),
+	rows := make([]metricRow, 0, len(spectralMetricDescriptors))
+	for _, metric := range spectralMetricDescriptors {
+		rows = append(rows, row(metric))
 	}
 
 	var b strings.Builder
 	b.WriteString("## Spectral\n\n")
 	b.WriteString(renderMetricTable(rows))
 	return b.String()
+}
+
+func spectralMetricValue(metric metricDescriptor, m *processor.SpectralMetrics) float64 {
+	switch metric.key {
+	case keyMean:
+		return m.Mean
+	case keyVariance:
+		return m.Variance
+	case keyCentroidHz:
+		return m.Centroid
+	case keySpreadHz:
+		return m.Spread
+	case keySkewness:
+		return m.Skewness
+	case keyKurtosis:
+		return m.Kurtosis
+	case keyEntropy:
+		return m.Entropy
+	case keyFlatness:
+		return m.Flatness
+	case keyCrest:
+		return m.Crest
+	case keyFlux:
+		return m.Flux
+	case keySlope:
+		return m.Slope
+	case keyDecrease:
+		return m.Decrease
+	case keyRolloffHz:
+		return m.Rolloff
+	default:
+		panic("report: unrouted spectral metric " + string(metric.key))
+	}
 }
 
 // =============================================================================
@@ -248,14 +272,14 @@ func renderNoiseFloor(rec *processor.RunRecord) string {
 	}
 
 	rows := [][]string{
-		metricValueRow("floor_dbfs", n.Floor),
-		{metricLabel("floor_source"), metricDefinition("floor_source"), stringCell(n.FloorSource)},
-		metricValueRow("floor_prescan_dbfs", n.FloorPrescan),
-		metricValueRow("floor_astats_dbfs", n.FloorAstats),
-		metricValueRow("room_tone_detect_level_dbfs", n.RoomToneDetectLevel),
-		{metricLabel("voice_activated"), metricDefinition("voice_activated"), boolCell(n.VoiceActivated)},
-		metricValueRow("floored_fraction", n.FlooredFraction),
-		metricValueRow("reduction_headroom_db", n.ReductionHeadroom),
+		metricValueRow(floorDBFSMetric, n.Floor),
+		{metricLabel(floorSourceMetric), metricDefinition(floorSourceMetric), stringCell(n.FloorSource)},
+		metricValueRow(floorPrescanDBFSMetric, n.FloorPrescan),
+		metricValueRow(floorAstatsDBFSMetric, n.FloorAstats),
+		metricValueRow(roomToneDetectLevelDBFSMetric, n.RoomToneDetectLevel),
+		{metricLabel(voiceActivatedMetric), metricDefinition(voiceActivatedMetric), boolCell(n.VoiceActivated)},
+		metricValueRow(flooredFractionMetric, n.FlooredFraction),
+		metricValueRow(reductionHeadroomDBMetric, n.ReductionHeadroom),
 	}
 
 	return renderValueTable("## Noise Floor\n\n", rows)
@@ -317,9 +341,9 @@ func renderGateStatistics(g *processor.GateStatistics) string {
 	}
 
 	rows := [][]string{
-		metricValueRow("voiced_low_percentile_dbfs", g.VoicedLowPercentile),
-		metricValueRow("noise_high_percentile_dbfs", g.NoiseHighPercentile),
-		metricValueRow("gate_separation_db", g.SeparationDB),
+		metricValueRow(voicedLowPercentileDBFSMetric, g.VoicedLowPercentile),
+		metricValueRow(noiseHighPercentileDBFSMetric, g.NoiseHighPercentile),
+		metricValueRow(gateSeparationDBMetric, g.SeparationDB),
 	}
 
 	return renderValueTable("### Gate Statistics\n\n", rows)
@@ -334,15 +358,15 @@ func renderRoomToneElected(p *processor.NoiseProfile) string {
 	}
 
 	rows := [][]string{
-		metricValueRow("start_s", p.Start.Seconds()),
-		metricValueRow("duration_s", p.Duration.Seconds()),
-		metricValueRow("measured_floor_dbfs", p.MeasuredNoiseFloor),
-		metricValueRow("peak_level_dbfs", p.PeakLevel),
-		metricValueRow("crest_factor_db", p.CrestFactor),
-		metricValueRow("entropy", p.Entropy),
-		metricValueRow("spectral_centroid_hz", p.Spectral.Centroid),
-		metricValueRow("spectral_flatness", p.Spectral.Flatness),
-		metricValueRow("spectral_kurtosis", p.Spectral.Kurtosis),
+		metricValueRow(startSMetric, p.Start.Seconds()),
+		metricValueRow(durationSMetric, p.Duration.Seconds()),
+		metricValueRow(measuredFloorDBFSMetric, p.MeasuredNoiseFloor),
+		metricValueRow(peakLevelDBFSMetric, p.PeakLevel),
+		metricValueRow(crestFactorDBMetric, p.CrestFactor),
+		metricValueRow(entropyMetric, p.Entropy),
+		metricValueRow(spectralCentroidHzMetric, p.Spectral.Centroid),
+		metricValueRow(spectralFlatnessMetric, p.Spectral.Flatness),
+		metricValueRow(spectralKurtosisMetric, p.Spectral.Kurtosis),
 	}
 
 	return renderValueTable("**Elected profile**\n\n", rows)
@@ -357,18 +381,18 @@ func renderSpeechElected(p *processor.SpeechCandidateMetrics) string {
 	}
 
 	rows := [][]string{
-		metricValueRow("duration_s", p.Region.Duration.Seconds()),
-		metricValueRow("rms_level_dbfs", p.RMSLevel),
-		metricValueRow("peak_level_dbfs", p.PeakLevel),
-		metricValueRow("crest_factor_db", p.CrestFactor),
-		metricValueRow("momentary_lufs", p.MomentaryLUFS),
-		metricValueRow("short_term_lufs", p.ShortTermLUFS),
-		metricValueRow("true_peak_dbtp", p.TruePeak),
-		metricValueRow("sample_peak_dbfs", p.SamplePeak),
-		metricValueRow("speech_band_body_rms_dbfs", p.BodyBandRMS),
-		metricValueRow("speech_band_sib_rms_dbfs", p.SibBandRMS),
-		metricValueRow("voicing_density", p.VoicingDensity),
-		metricValueRow("score", p.Score),
+		metricValueRow(durationSMetric, p.Region.Duration.Seconds()),
+		metricValueRow(rmsLevelDBFSMetric, p.RMSLevel),
+		metricValueRow(peakLevelDBFSMetric, p.PeakLevel),
+		metricValueRow(crestFactorDBMetric, p.CrestFactor),
+		metricValueRow(momentaryLUFSMetric, p.MomentaryLUFS),
+		metricValueRow(shortTermLUFSMetric, p.ShortTermLUFS),
+		metricValueRow(truePeakDBTPMetric, p.TruePeak),
+		metricValueRow(samplePeakDBFSMetric, p.SamplePeak),
+		metricValueRow(speechBandBodyRMSDBFSMetric, p.BodyBandRMS),
+		metricValueRow(speechBandSibilantRMSDBFSMetric, p.SibBandRMS),
+		metricValueRow(voicingDensityMetric, p.VoicingDensity),
+		metricValueRow(scoreMetric, p.Score),
 	}
 
 	return renderValueTable("**Elected profile**\n\n", rows)
@@ -388,7 +412,7 @@ func renderCandidatesSummary(s *processor.CandidatesSummary) string {
 		{"Evaluated count", "Number of region candidates evaluated.", formatInt(s.EvaluatedCount)},
 	}
 	if s.ElectedScore != nil {
-		rows = append(rows, []string{metricLabel("score"), metricDefinition("score"), formatMetric(*s.ElectedScore, 4)})
+		rows = append(rows, []string{metricLabel(scoreMetric), metricDefinition(scoreMetric), formatMetric(*s.ElectedScore, 4)})
 	}
 
 	var b strings.Builder
@@ -407,37 +431,29 @@ func renderCandidatesSummary(s *processor.CandidatesSummary) string {
 func renderRegionSamples(s processor.RegionSamples) string {
 	in, filt, final := s.Input, s.Filtered, s.Final
 
-	row := func(key string, format metricFormat, f func(*processor.RegionSample) float64) metricRow {
+	row := func(metric metricDescriptor, f func(*processor.RegionSample) float64) metricRow {
 		return metricRow{
-			key: key, format: format,
-			input: stageGetter(in, f), filt: stageGetter(filt, f), final: stageGetter(final, f),
+			metric: metric,
+			input:  stageGetter(in, f), filt: stageGetter(filt, f), final: stageGetter(final, f),
 		}
 	}
-	spec := func(key string, f func(*processor.SpectralMetrics) float64) metricRow {
-		return row(key, fmtSpectral, func(rs *processor.RegionSample) float64 { return f(&rs.Spectral) })
+	spec := func(metric metricDescriptor) metricRow {
+		return row(metric, func(rs *processor.RegionSample) float64 {
+			return spectralMetricValue(metric, &rs.Spectral)
+		})
 	}
 
 	rows := []metricRow{
-		row("rms_level_dbfs", fmtDB, func(rs *processor.RegionSample) float64 { return rs.RMSLevel }),
-		row("peak_level_dbfs", fmtDB, func(rs *processor.RegionSample) float64 { return rs.PeakLevel }),
-		row("crest_factor_db", fmtSpectral, func(rs *processor.RegionSample) float64 { return rs.CrestFactor }),
-		row("momentary_lufs", fmtLUFS, func(rs *processor.RegionSample) float64 { return rs.MomentaryLUFS }),
-		row("short_term_lufs", fmtLUFS, func(rs *processor.RegionSample) float64 { return rs.ShortTermLUFS }),
-		row("true_peak_dbtp", fmtPeakDB, func(rs *processor.RegionSample) float64 { return rs.TruePeak }),
-		row("sample_peak_dbfs", fmtDB, func(rs *processor.RegionSample) float64 { return rs.SamplePeak }),
-		spec("mean", func(m *processor.SpectralMetrics) float64 { return m.Mean }),
-		spec("variance", func(m *processor.SpectralMetrics) float64 { return m.Variance }),
-		spec("centroid_hz", func(m *processor.SpectralMetrics) float64 { return m.Centroid }),
-		spec("spread_hz", func(m *processor.SpectralMetrics) float64 { return m.Spread }),
-		spec("skewness", func(m *processor.SpectralMetrics) float64 { return m.Skewness }),
-		spec("kurtosis", func(m *processor.SpectralMetrics) float64 { return m.Kurtosis }),
-		spec("entropy", func(m *processor.SpectralMetrics) float64 { return m.Entropy }),
-		spec("flatness", func(m *processor.SpectralMetrics) float64 { return m.Flatness }),
-		spec("crest", func(m *processor.SpectralMetrics) float64 { return m.Crest }),
-		spec("flux", func(m *processor.SpectralMetrics) float64 { return m.Flux }),
-		spec("slope", func(m *processor.SpectralMetrics) float64 { return m.Slope }),
-		spec("decrease", func(m *processor.SpectralMetrics) float64 { return m.Decrease }),
-		spec("rolloff_hz", func(m *processor.SpectralMetrics) float64 { return m.Rolloff }),
+		row(rmsLevelDBFSMetric, func(rs *processor.RegionSample) float64 { return rs.RMSLevel }),
+		row(peakLevelDBFSMetric, func(rs *processor.RegionSample) float64 { return rs.PeakLevel }),
+		row(regionSampleCrestFactorDBMetric, func(rs *processor.RegionSample) float64 { return rs.CrestFactor }),
+		row(momentaryLUFSMetric, func(rs *processor.RegionSample) float64 { return rs.MomentaryLUFS }),
+		row(shortTermLUFSMetric, func(rs *processor.RegionSample) float64 { return rs.ShortTermLUFS }),
+		row(truePeakDBTPMetric, func(rs *processor.RegionSample) float64 { return rs.TruePeak }),
+		row(samplePeakDBFSMetric, func(rs *processor.RegionSample) float64 { return rs.SamplePeak }),
+	}
+	for _, metric := range spectralMetricDescriptors {
+		rows = append(rows, spec(metric))
 	}
 
 	var b strings.Builder
@@ -464,21 +480,21 @@ func renderIntervalSummary(rec *processor.RunRecord) string {
 	}
 
 	rows := [][]string{
-		{metricLabel("interval_count"), metricDefinition("interval_count"), formatInt(s.Count)},
+		{metricLabel(intervalCountMetric), metricDefinition(intervalCountMetric), formatInt(s.Count)},
 	}
 	if s.RMS != nil {
 		rows = append(rows,
-			metricValueRow("rms_dist_min_dbfs", s.RMS.Min),
-			metricValueRow("rms_dist_p10_dbfs", s.RMS.P10),
-			metricValueRow("rms_dist_p25_dbfs", s.RMS.P25),
-			metricValueRow("rms_dist_p50_dbfs", s.RMS.P50),
-			metricValueRow("rms_dist_p75_dbfs", s.RMS.P75),
-			metricValueRow("rms_dist_p90_dbfs", s.RMS.P90),
-			metricValueRow("rms_dist_max_dbfs", s.RMS.Max),
+			metricValueRow(rmsDistributionMinDBFSMetric, s.RMS.Min),
+			metricValueRow(rmsDistributionP10DBFSMetric, s.RMS.P10),
+			metricValueRow(rmsDistributionP25DBFSMetric, s.RMS.P25),
+			metricValueRow(rmsDistributionP50DBFSMetric, s.RMS.P50),
+			metricValueRow(rmsDistributionP75DBFSMetric, s.RMS.P75),
+			metricValueRow(rmsDistributionP90DBFSMetric, s.RMS.P90),
+			metricValueRow(rmsDistributionMaxDBFSMetric, s.RMS.Max),
 		)
 	}
 	if s.LargestGapDB != nil {
-		rows = append(rows, metricValueRow("largest_gap_db", *s.LargestGapDB))
+		rows = append(rows, metricValueRow(largestGapDBMetric, *s.LargestGapDB))
 	}
 
 	return renderValueTable("## Interval Summary\n\n", rows)
@@ -501,45 +517,23 @@ func renderValueTable(heading string, rows [][]string) string {
 }
 
 // metricValueRow builds a three-cell Metric | Definition | Value row for a
-// single-stage table, looking up the label and gloss from Definitions by key and
-// formatting the float through formatByRule keyed off the key's catalogued Unit
-// so the formatter choice is not re-encoded per call site. It is the single
-// value-row construction path for every dimensioned single-stage cell: dBFS/dBTP
-// (formatMetricDB), LUFS (formatMetricLUFS), dB / Hz / unit-less (formatMetric),
-// and "s" (formatFloat, via fmtRaw). Decimals follow the unit (4 for unit-less
-// spectral ratios, 2 otherwise), matching every existing cell.
-func metricValueRow(key string, value float64) []string {
-	format, decimals := unitMetricFormat(key)
-	return []string{metricLabel(key), metricDefinition(key), formatByRule(value, format, decimals)}
+// single-stage table. The descriptor owns the key, definition, format rule, and
+// decimals, so rows cannot repeat the raw metric key or formatter choice.
+func metricValueRow(metric metricDescriptor, value float64) []string {
+	return []string{
+		metricLabel(metric),
+		metricDefinition(metric),
+		formatByRule(value, metric.format, metric.decimals),
+	}
 }
 
-// unitMetricFormat maps a metric key's catalogued Unit to the formatByRule rule
-// and decimal count for its single-stage cell. It is defined only for the unit
-// classes metricValueRow routes; an unhandled unit panics so a new single-stage
-// row cannot silently mis-format (the caller picks an explicit formatter instead).
-func unitMetricFormat(key string) (metricFormat, int) {
-	d, ok := DefinitionFor(key)
-	if !ok {
-		panic("report: unitMetricFormat: no definition for key " + key)
+// unitMetricFormat exposes a descriptor's report format for the focused routing
+// tests.
+func unitMetricFormat(metric metricDescriptor) (metricFormat, int) {
+	if _, ok := DefinitionFor(string(metric.key)); !ok {
+		panic("report: unitMetricFormat: no definition for key " + string(metric.key))
 	}
-	switch d.Unit {
-	case "dBFS":
-		return fmtDB, 2
-	case "dBTP":
-		return fmtPeakDB, 2
-	case "LUFS":
-		return fmtLUFS, 2
-	case "dB":
-		return fmtSpectral, 2
-	case "Hz":
-		return fmtSpectral, 2
-	case "s":
-		return fmtRaw, 2
-	case "":
-		return fmtSpectral, 4
-	default:
-		panic("report: metricValueRow: unrouted unit " + d.Unit + " for key " + key)
-	}
+	return metric.format, metric.decimals
 }
 
 // stringCell renders a categorical string value, the placeholder when empty.
