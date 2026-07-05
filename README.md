@@ -1,4 +1,4 @@
-# Jive Vocals 🕺
+# Jive Vocals 🗣️
 
 > Formerly known as Jivetalking.
 
@@ -96,7 +96,7 @@ For the full walkthrough, see **[docs/Pipeline.md](docs/Pipeline.md)**: what eac
 When a file finishes, the completion box shows two star ratings: **Recording** (your source capture, the one that varies) and **Processed** (the output against the -16 LUFS target, almost always five stars). The pair tells the story: a two-star capture taken to a five-star master.
 
 ```
-Jive Vocals 🕺
+Jive Vocals 🗣️
 
 ╭──────────────────────────────────────────╮
 │ Processing 3 files, 3 complete, 0 failed │

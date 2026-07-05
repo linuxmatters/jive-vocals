@@ -7,7 +7,7 @@ In-depth guide to driving Jive Vocals and reading what it produces. For the basi
 When a file finishes, the completion box shows two star ratings:
 
 ```
-Jive Vocals 🕺
+Jive Vocals 🗣️
 
 ╭──────────────────────────────────────────╮
 │ Processing 3 files, 3 complete, 0 failed │
@@ -74,7 +74,7 @@ The analysis report covers:
 Analysis mode is the place to fix your capture before you commit to a take. Alongside the Recording stars, each file gets a single-line verdict and a five-cell thermometer bar that fills with your input true peak, running cyan (quiet) through green (well set) to red (clipping):
 
 ```
-Jive Vocals 🕺
+Jive Vocals 🗣️
 
 ╭─────────────────────────────────────────╮
 │ Analysing 3 files, 3 complete, 0 failed │
