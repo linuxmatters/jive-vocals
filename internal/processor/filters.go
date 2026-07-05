@@ -282,7 +282,8 @@ type BaseFilterConfig struct {
 
 // AdaptiveDiagnostics holds report-only adaptation explanations.
 type AdaptiveDiagnostics struct {
-	BandlimitLPReason string `json:"bandlimit_lowpass_reason"`
+	DynamicRangeDB    float64 `json:"dynamic_range_db"`
+	BandlimitLPReason string  `json:"bandlimit_lowpass_reason"`
 
 	SpeechGateQuietSpeechEstimate float64 `json:"quiet_speech_estimate_dbfs"`
 	SpeechGateSpeechSeparation    float64 `json:"separation_db"`
