@@ -39,9 +39,9 @@ func defaultAnalysisPoolDeps() analysisPoolDeps {
 
 // runAnalysisPool analyses files concurrently under a bounded worker pool
 // sharing one tea.Program. It supplies its per-file body to the shared
-// runBoundedPool skeleton (which owns the semaphore, the WaitGroup, the
-// ctx.Done() acquire-or-bail, and the final ui.AllCompleteMsg send). Each worker
-// owns its file index, a per-file prefixed logger, and a per-worker config
+// runBoundedPool skeleton (which owns the fixed worker queue, the WaitGroup, the
+// queued-work ctx check, and the final ui.AllCompleteMsg send). Each worker owns
+// its file index, a per-file prefixed logger, and a per-worker config
 // clone, mirroring runWorkerPool in pool.go. With env.jobs == 1 the observable
 // outcome matches the serial path.
 //
@@ -53,10 +53,10 @@ func defaultAnalysisPoolDeps() analysisPoolDeps {
 // every p.Send is gated by a p != nil check (runBoundedPool gates the final
 // AllCompleteMsg the same way).
 //
-// On cancellation a not-yet-started worker skips its work via the ctx.Done()
-// select at acquire, while an in-flight worker aborts mid-frame because ctx is
-// threaded into deps.analyse. Either way wg.Done() fires so wg.Wait() returns
-// and ui.AllCompleteMsg is sent.
+// On cancellation queued work is skipped by the ctx check before the body runs,
+// while an in-flight worker aborts mid-frame because ctx is threaded into
+// deps.analyse. Either way wg.Done() fires so wg.Wait() returns and
+// ui.AllCompleteMsg is sent.
 func runAnalysisPool(env poolEnv, slots []analysisSlot, deps analysisPoolDeps) {
 	runBoundedPool(env, nil, func(i int, inputPath string, wlog func(string, ...any)) {
 		if env.p != nil {
@@ -92,6 +92,7 @@ func runAnalysisPool(env poolEnv, slots []analysisSlot, deps analysisPoolDeps) {
 					FileIndex: i,
 					Progress:  update.Progress,
 					Level:     update.Level,
+					HasLevel:  update.HasLevel,
 				})
 			}
 		}

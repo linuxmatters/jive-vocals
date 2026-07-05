@@ -265,6 +265,56 @@ func TestMeasureWithLoudnormProgressCadenceCapsAt099(t *testing.T) {
 	requireNoLoudnormStatsFiles(t, testFile)
 }
 
+func TestMeasureWithLoudnormDefersFrameErrorsToStatsFile(t *testing.T) {
+	t.Parallel()
+
+	testFile := generateLoudnormApplicationTestAudio(t)
+	frameErr := errors.New("injected loudnorm frame error")
+	deps := injectLoudnormStatsViaRun(t, testFile, loudnormCaptureTestJSON, func(config FrameLoopConfig) error {
+		if config.OnPushError == nil || config.OnPullError == nil {
+			return errors.New("loudnorm frame policies must be explicit")
+		}
+		if err := config.OnPushError(frameErr); err != nil {
+			return fmt.Errorf("OnPushError returned %w, want nil", err)
+		}
+		if err := config.OnPullError(frameErr); err != nil {
+			return fmt.Errorf("OnPullError returned %w, want nil", err)
+		}
+		return nil
+	})
+
+	measurement, err := measureWithLoudnorm(context.Background(), testFile, defaultNormalisationTestConfig(), "", nil, deps)
+	if err != nil {
+		t.Fatalf("measureWithLoudnorm() error = %v", err)
+	}
+	if measurement == nil {
+		t.Fatal("measureWithLoudnorm() measurement = nil, want stats-file measurement")
+	}
+	requireNoLoudnormStatsFiles(t, testFile)
+}
+
+func TestLoudnormApplicationFrameLoopDefersFrameErrorsToStatsFile(t *testing.T) {
+	t.Parallel()
+
+	frameErr := errors.New("injected loudnorm frame error")
+	config := newLoudnormApplicationFrameLoop(
+		&loudnormApplicationPreparation{metadata: &audio.Metadata{Duration: 1, SampleRate: 48000}},
+		nil,
+		&loudnormTestEncoder{},
+		&outputMetadataAccumulators{},
+	)
+
+	if config.OnPushError == nil || config.OnPullError == nil {
+		t.Fatal("loudnorm application frame policies must be explicit")
+	}
+	if err := config.OnPushError(frameErr); err != nil {
+		t.Fatalf("OnPushError returned %v, want nil", err)
+	}
+	if err := config.OnPullError(frameErr); err != nil {
+		t.Fatalf("OnPullError returned %v, want nil", err)
+	}
+}
+
 // requireNoLoudnormStatsFiles asserts the per-call .loudnorm-*.tmp.json stats
 // file was unlinked, so no stats residue survives success or error (proposal AC
 // 5). The deferred unlink in measureWithLoudnorm/applyLoudnormAndMeasure removes

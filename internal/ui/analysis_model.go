@@ -19,6 +19,7 @@ type analysisFileState struct {
 	FileName string
 	Progress float64 // 0.0 to 1.0
 	Level    float64 // Current audio level, raw decode dBFS axis (not a VAD output)
+	HasLevel bool
 	Done     bool
 	Err      error
 	Result   *processor.AnalysisResult
@@ -63,6 +64,7 @@ type AnalysisProgressMsg struct {
 	FileIndex int
 	Progress  float64
 	Level     float64
+	HasLevel  bool
 }
 
 // AnalysisCompleteMsg signals analysis has completed for the file at FileIndex,
@@ -116,7 +118,10 @@ func (m AnalysisModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
 			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex].Progress = msg.Progress
-			m.Files[msg.FileIndex].Level = msg.Level
+			if msg.HasLevel {
+				m.Files[msg.FileIndex].Level = msg.Level
+				m.Files[msg.FileIndex].HasLevel = true
+			}
 		}
 		return m, nil
 
@@ -201,7 +206,7 @@ func (m AnalysisModel) View() tea.View {
 		default:
 			fmt.Fprintf(&b, " %s %s\n", analysisActiveIcon, analysisFileStyle.Render(f.FileName))
 			fmt.Fprintf(&b, "   %s [%s]\n", m.progress.ViewAs(f.Progress), formatElapsed(elapsed))
-			if f.Level != 0 {
+			if f.HasLevel {
 				fmt.Fprintf(&b, "   Level: %.1f ㏈\n", f.Level)
 			}
 		}

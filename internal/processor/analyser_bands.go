@@ -63,8 +63,8 @@ func measureSpeechBandRMS(ctx context.Context, reader *audio.Reader, start, dura
 	}
 
 	if err := runRegionMeasurementGraph(ctx, reader, start, duration, filterSpec, "band analysis", log, FrameLoopConfig{
-		OnPushError: breakOnError,
-		OnPullError: breakOnError,
+		OnPushError: logAndSkipOptionalMeasurementFrameError(log, "speech band push"),
+		OnPullError: logAndSkipOptionalMeasurementFrameError(log, "speech band pull"),
 		OnFrame:     extract,
 	}); err != nil {
 		return 0, false, err

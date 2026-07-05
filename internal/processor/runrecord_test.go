@@ -109,8 +109,8 @@ func TestRunRecord_FullShape(t *testing.T) {
 		t.Error("missing normalisation block on full record")
 	}
 	diagnostics := tree["filters"].(map[string]any)["diagnostics"].(map[string]any)
-	if got, ok := diagnostics["dynamic_range_db"].(float64); !ok || got != 0 {
-		t.Errorf("filters.diagnostics.dynamic_range_db = %v (%T), want numeric 0", diagnostics["dynamic_range_db"], diagnostics["dynamic_range_db"])
+	if _, ok := diagnostics["dynamic_range_db"]; ok {
+		t.Error("filters.diagnostics.dynamic_range_db present without a source measurement")
 	}
 
 	// run provenance is sourced from InputMetadata.

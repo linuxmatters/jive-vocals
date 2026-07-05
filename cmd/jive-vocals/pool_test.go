@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -114,6 +115,140 @@ func makeSyntheticFiles(t *testing.T, n int) []string {
 	return files
 }
 
+func TestSendWarningCountsDroppedWhenChannelFull(t *testing.T) {
+	resetDroppedWarnings()
+	t.Cleanup(resetDroppedWarnings)
+
+	reportWarnings := make(chan string, 1)
+
+	sendWarning(reportWarnings, "kept")
+	sendWarning(reportWarnings, "dropped")
+
+	if got := droppedWarningCount(); got != 1 {
+		t.Fatalf("dropped warning count = %d, want 1", got)
+	}
+
+	select {
+	case got := <-reportWarnings:
+		if got != "kept" {
+			t.Fatalf("delivered warning = %q, want %q", got, "kept")
+		}
+	default:
+		t.Fatal("expected one delivered warning")
+	}
+}
+
+func TestFormatDroppedWarningCount(t *testing.T) {
+	tests := []struct {
+		name  string
+		count uint64
+		want  string
+	}{
+		{
+			name:  "single",
+			count: 1,
+			want:  "1 warning was dropped because the warning channel was full",
+		},
+		{
+			name:  "plural",
+			count: 2,
+			want:  "2 warnings were dropped because the warning channel was full",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatDroppedWarningCount(tt.count); got != tt.want {
+				t.Fatalf("formatDroppedWarningCount(%d) = %q, want %q", tt.count, got, tt.want)
+			}
+		})
+	}
+}
+
+func waitForStarts(t *testing.T, started <-chan struct{}, n int) {
+	t.Helper()
+
+	for range n {
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("saw fewer than %d worker starts", n)
+		}
+	}
+}
+
+func TestRunBoundedPool_StartsFixedWorkerCount(t *testing.T) {
+	const n = 200
+	const jobs = 3
+
+	files := makeSyntheticFiles(t, n)
+	release := make(chan struct{})
+	started := make(chan struct{}, n)
+	base := processor.DefaultFilterConfig()
+	env := poolEnv{ctx: context.Background(), p: nil, files: files, base: base, sharedLog: func(string, ...any) {}, jobs: jobs}
+
+	before := runtime.NumGoroutine()
+	done := make(chan struct{})
+	go func() {
+		runBoundedPool(env, nil, func(_ int, _ string, _ func(string, ...any)) {
+			started <- struct{}{}
+			<-release
+		})
+		close(done)
+	}()
+
+	waitForStarts(t, started, jobs)
+	time.Sleep(50 * time.Millisecond)
+
+	if delta := runtime.NumGoroutine() - before; delta > jobs+20 {
+		t.Fatalf("runBoundedPool goroutine delta = %d, want at most %d", delta, jobs+20)
+	}
+
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runBoundedPool did not return")
+	}
+}
+
+func TestRunBoundedPool_CancelledQueuedWorkSkipsBody(t *testing.T) {
+	const n = 20
+	const jobs = 3
+
+	ctx, cancel := context.WithCancel(context.Background())
+	files := makeSyntheticFiles(t, n)
+	release := make(chan struct{})
+	started := make(chan struct{}, n)
+	var count atomic.Int32
+	base := processor.DefaultFilterConfig()
+	env := poolEnv{ctx: ctx, p: nil, files: files, base: base, sharedLog: func(string, ...any) {}, jobs: jobs}
+
+	done := make(chan struct{})
+	go func() {
+		runBoundedPool(env, nil, func(_ int, _ string, _ func(string, ...any)) {
+			count.Add(1)
+			started <- struct{}{}
+			<-release
+		})
+		close(done)
+	}()
+
+	waitForStarts(t, started, jobs)
+	cancel()
+	close(release)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runBoundedPool did not return after cancellation")
+	}
+
+	if got := count.Load(); got != jobs {
+		t.Fatalf("body starts after queued cancellation = %d, want %d", got, jobs)
+	}
+}
+
 // runPoolCapture drives runWorkerPool over files with the given processAudio
 // fake under a headless recording tea.Program (no renderer, nil input),
 // returning the observed FileCompleteMsg count, whether AllCompleteMsg fired,
@@ -193,7 +328,7 @@ func TestRunWorkerPool_InFlightBoundedToOne(t *testing.T) {
 }
 
 // TestRunWorkerPool_BoundHonouredForN asserts jobs == 3 holds in-flight
-// workers at exactly 3 over 8 files: the semaphore caps the mark at 3, and the
+// workers at exactly 3 over 8 files: the worker queue caps the mark at 3, and the
 // fake's gate holds every worker until 3 are live, so the mark reaches 3 on
 // every run with no dependence on scheduling.
 func TestRunWorkerPool_BoundHonouredForN(t *testing.T) {
@@ -536,10 +671,10 @@ func TestLaunchWorkerPool_DoneClosesAfterPoolUnwinds(t *testing.T) {
 
 // TestLaunchWorkerPool_DoneClosesOnPreCancelledContext proves the wait main()
 // performs cannot wedge: with an already-cancelled context every worker either
-// skips at the acquire-time ctx.Done() select or runs and returns, so every
-// wg.Done() fires and launchWorkerPool's channel closes promptly. The fake
-// returns an error so any worker that does win the acquire race takes the pool's
-// error branch cleanly rather than the nil-result success path.
+// skips at the queued-work ctx check or runs and returns, so every wg.Done()
+// fires and launchWorkerPool's channel closes promptly. The fake returns an
+// error so any worker that starts takes the pool's error branch cleanly rather
+// than the nil-result success path.
 func TestLaunchWorkerPool_DoneClosesOnPreCancelledContext(t *testing.T) {
 	t.Parallel()
 

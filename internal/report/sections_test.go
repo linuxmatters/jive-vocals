@@ -567,6 +567,25 @@ func TestRenderSpectrogramsAnalysisOnly(t *testing.T) {
 	}
 }
 
+func TestRenderSpectrogramsEscapesMarkdownImageLinks(t *testing.T) {
+	rec := &processor.RunRecord{
+		Spectrograms: []processor.SpectrogramImage{
+			{Kind: processor.SpectrogramKindWhole, Stage: processor.SpectrogramStageBefore, Path: "show 1 (raw).spectrogram-whole-before.png"},
+		},
+	}
+	got := renderSpectrograms(rec)
+	want := "![whole before](<show 1 (raw).spectrogram-whole-before.png>)"
+	if !strings.Contains(got, want) {
+		t.Errorf("special-character spectrogram path not escaped as a Markdown destination, want %q\n%s", want, got)
+	}
+
+	cell := spectrogramCell("wh[ole", "bef]ore", "show>one\\raw.png")
+	wantCell := "![wh\\[ole bef\\]ore](<show\\>one\\\\raw.png>)"
+	if cell != wantCell {
+		t.Errorf("spectrogramCell() = %q, want %q", cell, wantCell)
+	}
+}
+
 // TestRenderSpectrogramsEmpty: an empty slice renders "" so the orchestrator emits
 // no ## Spectrograms heading.
 func TestRenderSpectrogramsEmpty(t *testing.T) {

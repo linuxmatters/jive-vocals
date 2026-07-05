@@ -121,6 +121,7 @@ func main() {
 
 	p := tea.NewProgram(model)
 	reportWarnings := make(chan string, len(cliArgs.Files))
+	resetDroppedWarnings()
 
 	runCtx, cancel := context.WithCancel(context.Background())
 
@@ -174,6 +175,9 @@ func main() {
 	for warning := range reportWarnings {
 		cli.PrintWarning(warning)
 	}
+	if dropped := droppedWarningCount(); dropped > 0 {
+		cli.PrintWarning(formatDroppedWarningCount(dropped))
+	}
 
 	// Per-file processing failures (excluding cancellation) make the run exit
 	// non-zero so scripted callers see the failure. Report, run-record, sidecar,
@@ -196,6 +200,13 @@ func openDebugLog(enabled bool) (*os.File, error) {
 		return nil, fmt.Errorf("failed to open debug log %s: %w", debugLogPath, err)
 	}
 	return logFile, nil
+}
+
+func formatDroppedWarningCount(count uint64) string {
+	if count == 1 {
+		return "1 warning was dropped because the warning channel was full"
+	}
+	return fmt.Sprintf("%d warnings were dropped because the warning channel was full", count)
 }
 
 type analysisOnlyDeps struct {
@@ -298,6 +309,7 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 		PassName:     update.PassName,
 		Progress:     update.Progress,
 		Level:        update.Level,
+		HasLevel:     update.HasLevel,
 		Duration:     update.Duration,
 		Measurements: update.Measurements,
 	})

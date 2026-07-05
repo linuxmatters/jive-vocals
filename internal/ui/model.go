@@ -159,23 +159,17 @@ type FileProgress struct {
 	// the side boxes are not rebuilt byte-for-byte on every 60 fps frame. The panels
 	// depend only on (Summary, Pass-box height): every other input is a compile-time
 	// constant (box widths, glyphs, units) or a palette colour fixed at startup. The
-	// cache is populated lazily in joinStatusBoxes during render and reused while the
-	// key matches; it is invalidated by clearing valid in the AdaptedSummaryMsg case
-	// (Summary change) and re-renders automatically when the Pass-box height changes
-	// (meter rows appear or disappear). Render-only state; the pool never touches it.
+	// cache is populated by Update before the viewport content is refreshed and
+	// reused while the key matches. Render helpers read it but never mutate it.
 	statusBoxCache statusBoxCache
 
-	// fileDetailsTitleCache memoises the spliced "Pass N/4" top-border line for the
-	// active-file Pass box (the renderFileDetails overlayBorderTitle call). The line
-	// depends only on (title, top-border width): the colour is fixed at
-	// cli.ColorSkyBlue for this site. The title is stable within a pass, so the strip
-	// + rune-slice + 3-render overlay work runs only when the pass number changes
-	// (new title) or the box width changes, not on every 60 fps frame. Render-only
-	// state; the pool never touches it.
+	// fileDetailsTitleCache is retained for test fixtures and future Update-owned
+	// caching. Render helpers do not mutate it.
 	fileDetailsTitleCache overlayTitleCache
 
 	// Processing statistics
 	CurrentLevel float64 // Current audio level in dB
+	HasLevel     bool
 	PeakLevel    float64 // Peak level seen so far
 
 	// Completion results, copied wholesale from FileCompleteMsg.CompletionResult.
@@ -362,11 +356,38 @@ func (m *Model) refreshViewportContent() {
 	if !m.vpReady {
 		return
 	}
+	m.refreshStatusBoxCaches()
 	atBottom := m.vp.AtBottom()
 	m.vp.SetContent(renderFileQueue(*m, m.progress))
 	if atBottom {
 		m.vp.GotoBottom()
 	}
+}
+
+func (m *Model) refreshStatusBoxCaches() {
+	if !statusBoxesFit(m.Width) {
+		return
+	}
+	for i := range m.Files {
+		if !fileActive(m.Files[i].Status) {
+			continue
+		}
+		easedLevel, easedProgress, easedPeak := m.displayValues(i)
+		passBox := renderFileDetails(&m.Files[i], m.progress, easedLevel, easedProgress, easedPeak)
+		refreshStatusBoxCache(&m.Files[i], lipgloss.Height(passBox))
+	}
+}
+
+func (m Model) displayValues(i int) (level, progressValue, peak float64) {
+	level = m.Files[i].CurrentLevel
+	progressValue = m.Files[i].Progress
+	peak = m.Files[i].PeakLevel
+	if i < len(m.meters) {
+		level = m.meters[i].pos
+		progressValue = m.meters[i].progPos
+		peak = m.meters[i].peakPos
+	}
+	return level, progressValue, peak
 }
 
 // Update handles messages and updates the model
@@ -462,14 +483,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if i >= len(m.meters) {
 				continue
 			}
-			target := m.Files[i].CurrentLevel
-			// Deliberate in-place write into the aliased meters backing array; safe because Bubbletea drives Update/View serially.
-			m.meters[i].pos, m.meters[i].vel = m.spring.Update(
-				m.meters[i].pos, m.meters[i].vel, target)
+			if m.Files[i].HasLevel {
+				target := m.Files[i].CurrentLevel
+				// Deliberate in-place write into the aliased meters backing array; safe because Bubbletea drives Update/View serially.
+				m.meters[i].pos, m.meters[i].vel = m.spring.Update(
+					m.meters[i].pos, m.meters[i].vel, target)
+				m.meters[i].peakPos, m.meters[i].peakVel = m.peakSpring.Update(
+					m.meters[i].peakPos, m.meters[i].peakVel, m.Files[i].PeakLevel)
+			}
 			m.meters[i].progPos, m.meters[i].progVel = m.progressSpring.Update(
 				m.meters[i].progPos, m.meters[i].progVel, m.Files[i].Progress)
-			m.meters[i].peakPos, m.meters[i].peakVel = m.peakSpring.Update(
-				m.meters[i].peakPos, m.meters[i].peakVel, m.Files[i].PeakLevel)
 		}
 		// The meters change every tick, so the eased display in the viewport must
 		// re-render every tick too, else the live level/progress freezes once the
@@ -571,8 +594,9 @@ func updateFileProgress(fp FileProgress, msg ProgressMsg) FileProgress {
 		fp.Measurements = msg.Measurements
 	}
 
-	if msg.Level != 0 {
+	if msg.HasLevel {
 		fp.CurrentLevel = msg.Level
+		fp.HasLevel = true
 		if msg.Level > fp.PeakLevel {
 			fp.PeakLevel = msg.Level
 		}

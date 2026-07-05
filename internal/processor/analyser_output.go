@@ -111,8 +111,8 @@ func measureOutputRegionFromReader(ctx context.Context, reader *audio.Reader, st
 	}
 
 	if err := runRegionMeasurementGraph(ctx, reader, start, duration, filterSpec, "analysis", log, FrameLoopConfig{
-		OnPushError: breakOnError,
-		OnPullError: breakOnError,
+		OnPushError: logAndSkipOptionalMeasurementFrameError(log, "output region push"),
+		OnPullError: logAndSkipOptionalMeasurementFrameError(log, "output region pull"),
 		OnFrame:     extractMeasurements,
 	}); err != nil {
 		return nil, err

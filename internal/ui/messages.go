@@ -13,6 +13,7 @@ type ProgressMsg struct {
 	PassName     string
 	Progress     float64
 	Level        float64 // raw decode-loop level (raw dBFS), not a VAD output
+	HasLevel     bool
 	Duration     float64 // total audio length, seconds
 	Measurements *processor.AudioMeasurements
 }

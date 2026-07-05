@@ -160,7 +160,7 @@ func TestAnalysisProgressMsgIndexRouting(t *testing.T) {
 	m := NewAnalysisModel([]string{"a.wav", "b.wav"})
 	before := m.Files[0]
 
-	updated, _ := m.Update(AnalysisProgressMsg{FileIndex: 1, Progress: 0.75, Level: -12.5})
+	updated, _ := m.Update(AnalysisProgressMsg{FileIndex: 1, Progress: 0.75, Level: -12.5, HasLevel: true})
 	m = updated.(AnalysisModel)
 
 	if m.Files[1].Progress != 0.75 {
@@ -178,7 +178,7 @@ func TestAnalysisWindowSizeMsgPreservesRoutedFiles(t *testing.T) {
 	m := NewAnalysisModel([]string{"a.wav", "b.wav"})
 
 	// Route progress before any resize: the seeded default width makes ViewAs safe.
-	updated, _ := m.Update(AnalysisProgressMsg{FileIndex: 1, Progress: 0.75, Level: -12.5})
+	updated, _ := m.Update(AnalysisProgressMsg{FileIndex: 1, Progress: 0.75, Level: -12.5, HasLevel: true})
 	m = updated.(AnalysisModel)
 	want := append([]analysisFileState(nil), m.Files...)
 	_ = m.progress.ViewAs(m.Files[1].Progress)
@@ -263,7 +263,7 @@ func TestAnalysisMessagesDriveViewWithoutSpinner(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(AnalysisModel)
 
-	updated, _ = m.Update(AnalysisProgressMsg{FileIndex: 0, Progress: 0.5, Level: -12.5})
+	updated, _ = m.Update(AnalysisProgressMsg{FileIndex: 0, Progress: 0.5, Level: -12.5, HasLevel: true})
 	m = updated.(AnalysisModel)
 	if m.Files[0].Progress != 0.5 || m.Files[0].Level != -12.5 {
 		t.Errorf("progress msg did not update state: %+v", m.Files[0])
@@ -291,6 +291,32 @@ func TestAnalysisMessagesDriveViewWithoutSpinner(t *testing.T) {
 	}
 }
 
+func TestAnalysisViewRendersZeroLevelWhenPresent(t *testing.T) {
+	m := NewAnalysisModel([]string{"a.wav"})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(AnalysisModel)
+	updated, _ = m.Update(AnalysisProgressMsg{FileIndex: 0, Progress: 0.5, Level: 0, HasLevel: true})
+	m = updated.(AnalysisModel)
+
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "Level: 0.0 ㏈") {
+		t.Fatalf("real zero level did not render:\n%s", view)
+	}
+}
+
+func TestAnalysisViewSkipsMissingLevel(t *testing.T) {
+	m := NewAnalysisModel([]string{"a.wav"})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(AnalysisModel)
+	updated, _ = m.Update(AnalysisProgressMsg{FileIndex: 0, Progress: 0.5})
+	m = updated.(AnalysisModel)
+
+	view := ansi.Strip(m.View().Content)
+	if strings.Contains(view, "Level:") {
+		t.Fatalf("missing level rendered a fake level:\n%s", view)
+	}
+}
+
 // TestAnalysisViewLayout checks the header gradient title, absent subtitle, and
 // status box ordering above the file list.
 func TestAnalysisViewLayout(t *testing.T) {
@@ -299,7 +325,7 @@ func TestAnalysisViewLayout(t *testing.T) {
 	m = updated.(AnalysisModel)
 
 	// a.wav active with a level; b.wav done; c.wav errored.
-	updated, _ = m.Update(AnalysisProgressMsg{FileIndex: 0, Progress: 0.4, Level: -9.0})
+	updated, _ = m.Update(AnalysisProgressMsg{FileIndex: 0, Progress: 0.4, Level: -9.0, HasLevel: true})
 	m = updated.(AnalysisModel)
 	updated, _ = m.Update(AnalysisCompleteMsg{FileIndex: 1})
 	m = updated.(AnalysisModel)
@@ -345,7 +371,7 @@ func TestAnalysisUpdateOutOfRangeSafety(t *testing.T) {
 	for _, idx := range indices {
 		updated, _ := m.Update(AnalysisStartMsg{FileIndex: idx, FilePath: "x.wav"})
 		m = updated.(AnalysisModel)
-		updated, _ = m.Update(AnalysisProgressMsg{FileIndex: idx, Progress: 0.9, Level: -3})
+		updated, _ = m.Update(AnalysisProgressMsg{FileIndex: idx, Progress: 0.9, Level: -3, HasLevel: true})
 		m = updated.(AnalysisModel)
 		updated, _ = m.Update(AnalysisCompleteMsg{FileIndex: idx, Error: errors.New("boom")})
 		m = updated.(AnalysisModel)
