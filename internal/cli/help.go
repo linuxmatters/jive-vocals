@@ -50,7 +50,7 @@ func StyledHelpPrinter() func(kong.HelpOptions, *kong.Context) error {
 		// Usage
 		sb.WriteString(helpSectionStyle.Render("Usage:"))
 		sb.WriteString("\n  ")
-		fmt.Fprintf(&sb, "%s [flags] <files> ...", ctx.Model.Name)
+		sb.WriteString(usageLine(ctx))
 		sb.WriteString("\n")
 
 		// Arguments and Flags sections
@@ -67,6 +67,13 @@ func StyledHelpPrinter() func(kong.HelpOptions, *kong.Context) error {
 type helpRow struct {
 	label string
 	help  string
+}
+
+func usageLine(ctx *kong.Context) string {
+	if selected := ctx.Selected(); selected != nil {
+		return ctx.Model.Name + " " + selected.Summary()
+	}
+	return ctx.Model.Name + ctx.Model.Summary()
 }
 
 // writeHelpSection renders a help section (header plus label-styled rows) to sb,
@@ -110,7 +117,6 @@ func getFlags(ctx *kong.Context) []helpRow {
 		help:  "Show context-sensitive help.",
 	})
 
-	// Parse flags from the model
 	for _, f := range ctx.Model.Flags {
 		if f.Hidden {
 			continue
@@ -119,22 +125,15 @@ func getFlags(ctx *kong.Context) []helpRow {
 			continue // the help flag is prepended above
 		}
 
-		var flagStr string
-		if f.Short != 0 {
-			flagStr = fmt.Sprintf("-%c, --%s", f.Short, f.Name)
-		} else {
-			flagStr = fmt.Sprintf("--%s", f.Name)
-		}
-
-		if !f.IsBool() && f.PlaceHolder != "" {
-			flagStr += "=" + strings.ToUpper(f.PlaceHolder)
-		}
-
 		flags = append(flags, helpRow{
-			label: flagStr,
+			label: flagLabel(f),
 			help:  f.Help,
 		})
 	}
 
 	return flags
+}
+
+func flagLabel(flag *kong.Flag) string {
+	return flag.String()
 }

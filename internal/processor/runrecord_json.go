@@ -626,7 +626,6 @@ func newDeesserConfigJSON(c DeesserConfig) deesserConfigJSON {
 }
 
 type adaptiveDiagnosticsJSON struct {
-	DynamicRangeDB                jsonFloat `json:"dynamic_range_db"`
 	BandlimitLPReason             string    `json:"bandlimit_lowpass_reason"`
 	SpeechGateQuietSpeechEstimate jsonFloat `json:"quiet_speech_estimate_dbfs"`
 	SpeechGateSpeechSeparation    jsonFloat `json:"separation_db"`
@@ -646,7 +645,6 @@ func newAdaptiveDiagnosticsJSON(d *AdaptiveDiagnostics) *adaptiveDiagnosticsJSON
 		return nil
 	}
 	return &adaptiveDiagnosticsJSON{
-		DynamicRangeDB:                jsonFloat(0),
 		BandlimitLPReason:             d.BandlimitLPReason,
 		SpeechGateQuietSpeechEstimate: jsonFloat(d.SpeechGateQuietSpeechEstimate),
 		SpeechGateSpeechSeparation:    jsonFloat(d.SpeechGateSpeechSeparation),

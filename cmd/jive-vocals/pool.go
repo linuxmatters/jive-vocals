@@ -16,17 +16,31 @@ import (
 	"github.com/linuxmatters/jive-vocals/internal/ui"
 )
 
+var droppedWarnings atomic.Uint64
+
+// resetDroppedWarnings clears the process-level drop counter before a processing
+// run starts. The CLI owns one processing run per process, while tests reset it
+// around direct sendWarning checks.
+func resetDroppedWarnings() {
+	droppedWarnings.Store(0)
+}
+
+func droppedWarningCount() uint64 {
+	return droppedWarnings.Load()
+}
+
 // sendWarning delivers a non-fatal warning to the reportWarnings channel without
 // ever blocking the sending worker. The channel is buffered to len(files) and is
 // only drained after the pool fully unwinds, yet a single file emits several
 // warnings (report, run record, sidecars, one per spectrogram), so a burst of
 // failures could fill the buffer and block a worker - which would stall
 // wg.Wait()/specWG.Wait() and deadlock the run. The warnings are best-effort
-// diagnostics, so dropping one under saturation is the safe trade.
+// diagnostics, so dropping one under saturation increments the counter.
 func sendWarning(ch chan<- string, msg string) {
 	select {
 	case ch <- msg:
 	default:
+		droppedWarnings.Add(1)
 	}
 }
 
@@ -109,14 +123,12 @@ func launchWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- strin
 	return done
 }
 
-// runBoundedPool is the shared bounded-worker-pool skeleton both pools run. A
-// buffered semaphore of size env.jobs caps in-flight workers; a sync.WaitGroup
-// tracks completion. For each file it spawns a worker that acquires the
-// semaphore or bails on env.ctx.Done() (a not-yet-started worker skips its work
-// cleanly; the slot is released only on the branch that took one), derives a
+// runBoundedPool is the shared bounded-worker-pool skeleton both pools run. It
+// starts at most env.jobs workers and feeds them indexed file jobs from a closed
+// queue. Each worker checks env.ctx before taking queued work, derives a
 // per-file prefixed logger, and runs the caller's body with the file index,
-// input path, and that logger. wg.Done() always fires - including the
-// cancellation bail - so wg.Wait() returns even when ctx is cancelled.
+// input path, and that logger. wg.Done() always fires, so wg.Wait() returns even
+// when ctx is cancelled.
 //
 // After wg.Wait() it runs the optional afterWait hook (the processing pool
 // drains its spectrogram-render WaitGroup here so the process does not exit
@@ -125,23 +137,33 @@ func launchWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- strin
 // path passes nil and must not call p.Send. Each body owns every other p.Send
 // and self-gates on env.p, so a nil program never deadlocks a worker.
 func runBoundedPool(env poolEnv, afterWait func(), body func(i int, inputPath string, wlog func(string, ...any))) {
-	sem := make(chan struct{}, env.jobs)
+	type poolJob struct {
+		index int
+		path  string
+	}
+
+	workerCount := min(env.jobs, len(env.files))
+
+	work := make(chan poolJob, len(env.files))
+	for i, inputPath := range env.files {
+		work <- poolJob{index: i, path: inputPath}
+	}
+	close(work)
+
 	var wg sync.WaitGroup
 
-	for i, inputPath := range env.files {
+	for range workerCount {
 		wg.Go(func() {
-			// Acquire the semaphore, but bail out if ctx is already cancelled so
-			// a not-yet-started worker skips its work cleanly. Only release the
-			// slot when this branch actually took one.
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
-			case <-env.ctx.Done():
-				return
-			}
+			for job := range work {
+				select {
+				case <-env.ctx.Done():
+					return
+				default:
+				}
 
-			wlog := withFilePrefix(inputPath, env.sharedLog)
-			body(i, inputPath, wlog)
+				wlog := withFilePrefix(job.path, env.sharedLog)
+				body(job.index, job.path, wlog)
+			}
 		})
 	}
 
@@ -159,16 +181,16 @@ func runBoundedPool(env poolEnv, afterWait func(), body func(i int, inputPath st
 
 // runWorkerPool processes files concurrently under a bounded worker pool sharing
 // one tea.Program. It supplies its per-file body to the shared runBoundedPool
-// skeleton (which owns the semaphore, the WaitGroup, the ctx.Done() acquire-or-
-// bail, and the final ui.AllCompleteMsg send). Each worker owns its file index,
+// skeleton (which owns the fixed worker queue, the WaitGroup, the ctx check for
+// queued work, and the final ui.AllCompleteMsg send). Each worker owns its file index,
 // a per-file prefixed logger, and a per-worker config clone, mirroring the
 // serial loop's per-file body. With jobs == 1 the observable outcome matches the
 // serial path.
 //
-// On cancellation a not-yet-started worker skips its work via the ctx.Done()
-// select at acquire, while an in-flight worker aborts mid-frame because ctx is
-// threaded into ProcessAudio. Either way wg.Done() fires so wg.Wait() returns
-// and ui.AllCompleteMsg is sent.
+// On cancellation queued work is skipped by the ctx check before the body runs,
+// while an in-flight worker aborts mid-frame because ctx is threaded into
+// ProcessAudio. Either way wg.Done() fires so wg.Wait() returns and
+// ui.AllCompleteMsg is sent.
 //
 // diagnostics gates the bulk diagnostic artefacts (the .jsonl sidecars and the
 // spectrogram PNGs). When false the always-on set (.flac/.md/.json) still

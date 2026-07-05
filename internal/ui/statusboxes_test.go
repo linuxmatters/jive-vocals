@@ -484,13 +484,12 @@ func uncachedJoin(passBox string, s AdaptedSummary, termWidth int) string {
 	return joinStatusBoxes(passBox, &FileProgress{Summary: s}, termWidth)
 }
 
-// TestStatusBoxCacheByteIdentical confirms the cached panels match a freshly
-// rendered (uncached) panel byte-for-byte across every state: pre-Pass-2 (pending),
+// TestStatusBoxCacheByteIdentical confirms the Update-owned cached panels match a
+// freshly rendered panel byte-for-byte across every state: pre-Pass-2 (pending),
 // during Pass 2 (chain lit, limiter pending), and post-completion (limiter lit).
-// A single FileProgress is reused across frames so its cache is warm on the second
-// render; the output must equal a one-shot uncached render of the same summary.
 func TestStatusBoxCacheByteIdentical(t *testing.T) {
 	leftBox := "╭──────────╮\n│ passbox  │\n╰──────────╯"
+	height := lipgloss.Height(leftBox)
 
 	pending := AdaptedSummary{}
 	duringPass2 := litSummary()
@@ -504,12 +503,10 @@ func TestStatusBoxCacheByteIdentical(t *testing.T) {
 		{"during-pass-2", duringPass2},
 		{"post-completion", completed},
 	} {
-		// Warm cache: render twice through the same FileProgress (frame 1 fills the
-		// cache, frame 2 must reuse it).
 		fp := &FileProgress{Summary: tc.summary}
-		_ = joinStatusBoxes(leftBox, fp, 160)
+		refreshStatusBoxCache(fp, height)
 		if !fp.statusBoxCache.valid {
-			t.Errorf("%s: cache should be populated after the first render", tc.name)
+			t.Errorf("%s: cache should be populated by refreshStatusBoxCache", tc.name)
 		}
 		cached := joinStatusBoxes(leftBox, fp, 160)
 
@@ -521,18 +518,19 @@ func TestStatusBoxCacheByteIdentical(t *testing.T) {
 	}
 }
 
-// TestStatusBoxCacheInvalidatesOnSummary confirms that changing the summary on the
-// same FileProgress re-renders rather than serving the stale cached panel. This is
-// the AdaptedSummaryMsg path: the model clears valid, but even without that the key
-// mismatch (summary != cached summary) must force a re-render.
+// TestStatusBoxCacheInvalidatesOnSummary confirms that Update-owned refresh
+// replaces stale panels when the summary changes.
 func TestStatusBoxCacheInvalidatesOnSummary(t *testing.T) {
 	leftBox := "╭──────────╮\n│ passbox  │\n╰──────────╯"
+	height := lipgloss.Height(leftBox)
 
 	fp := &FileProgress{Summary: litSummary()}
+	refreshStatusBoxCache(fp, height)
 	first := joinStatusBoxes(leftBox, fp, 160)
 
 	// Limiter lights to its ceiling: a new summary on the same file.
 	fp.Summary = litSummary().WithLimiterProgress(&processor.LimiterProgress{Enabled: true, Ceiling: -2.8})
+	refreshStatusBoxCache(fp, height)
 	second := joinStatusBoxes(leftBox, fp, 160)
 
 	if first == second {
@@ -546,15 +544,16 @@ func TestStatusBoxCacheInvalidatesOnSummary(t *testing.T) {
 }
 
 // TestStatusBoxCacheInvalidatesOnHeight confirms the meter-rows-visible vs hidden
-// transition (a Pass-box height change) re-renders the side panels instead of
-// reusing a panel padded to the old height. The summary is unchanged, so height is
-// the only key input that varies; the cache must still re-render.
+// transition (a Pass-box height change) refreshes the side panels instead of
+// reusing a panel padded to the old height.
 func TestStatusBoxCacheInvalidatesOnHeight(t *testing.T) {
 	shortBox := "╭──────────╮\n│ passbox  │\n╰──────────╯"
 	tallBox := "╭──────────╮\n" + strings.Repeat("│ passbox  │\n", 6) + "╰──────────╯"
 
 	fp := &FileProgress{Summary: litSummary()}
+	refreshStatusBoxCache(fp, lipgloss.Height(shortBox))
 	shortOut := joinStatusBoxes(shortBox, fp, 160)
+	refreshStatusBoxCache(fp, lipgloss.Height(tallBox))
 	tallOut := joinStatusBoxes(tallBox, fp, 160)
 
 	if shortOut == tallOut {
@@ -570,6 +569,17 @@ func TestStatusBoxCacheInvalidatesOnHeight(t *testing.T) {
 	if fp.statusBoxCache.joinHeight != lipgloss.Height(tallBox) {
 		t.Errorf("cache should record the new Pass-box height, got %d want %d",
 			fp.statusBoxCache.joinHeight, lipgloss.Height(tallBox))
+	}
+}
+
+func TestJoinStatusBoxesDoesNotMutateCache(t *testing.T) {
+	leftBox := "╭──────────╮\n│ passbox  │\n╰──────────╯"
+	fp := &FileProgress{Summary: litSummary()}
+
+	_ = joinStatusBoxes(leftBox, fp, 160)
+
+	if fp.statusBoxCache.valid {
+		t.Fatal("joinStatusBoxes mutated the status-box cache")
 	}
 }
 

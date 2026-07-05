@@ -629,6 +629,32 @@ func TestPeakSpringInitialisesAtFloor(t *testing.T) {
 	}
 }
 
+func TestProcessingViewRendersZeroLevelWhenPresent(t *testing.T) {
+	m := NewModel([]string{"a.wav"})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = updated.(Model)
+	updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: 0, HasLevel: true})
+	m = updated.(Model)
+
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "Level: 0.0 ㏈") {
+		t.Fatalf("real zero level did not render:\n%s", view)
+	}
+}
+
+func TestProcessingViewSkipsMissingLevel(t *testing.T) {
+	m := NewModel([]string{"a.wav"})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = updated.(Model)
+	updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5})
+	m = updated.(Model)
+
+	view := ansi.Strip(m.View().Content)
+	if strings.Contains(view, "Level:") {
+		t.Fatalf("missing level rendered a fake level:\n%s", view)
+	}
+}
+
 // TestPeakSpringEases asserts the peak marker eases toward a higher target after
 // one tick (moves, but does not snap), and that ticking stops once all files
 // complete.
@@ -638,7 +664,7 @@ func TestPeakSpringEases(t *testing.T) {
 	m = updated.(Model)
 
 	// Activate the file and raise the peak-hold well above the silence floor.
-	updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: -12})
+	updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: -12, HasLevel: true})
 	m = updated.(Model)
 
 	start := meterFloorDB
@@ -674,7 +700,7 @@ func TestPeakSpringNoOvershoot(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = updated.(Model)
 
-	updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: -10})
+	updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: -10, HasLevel: true})
 	m = updated.(Model)
 
 	target := m.Files[0].PeakLevel
@@ -702,12 +728,12 @@ func TestPeakSpringRisingTargets(t *testing.T) {
 	m := NewModel([]string{"a.wav"})
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = updated.(Model)
-	updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: -40})
+	updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: -40, HasLevel: true})
 	m = updated.(Model)
 
 	prev := m.meters[0].peakPos
 	for _, level := range []float64{-30, -20, -12, -6} {
-		updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: level})
+		updated, _ = m.Update(ProgressMsg{FileIndex: 0, Pass: 2, PassName: "Processing", Progress: 0.5, Level: level, HasLevel: true})
 		m = updated.(Model)
 		target := m.Files[0].PeakLevel
 		for tick := range 600 {
@@ -736,9 +762,9 @@ func TestPeakSpringIgnoresOutOfRange(t *testing.T) {
 	m = updated.(Model)
 
 	before := m.meters[0].peakPos
-	updated, _ = m.Update(ProgressMsg{FileIndex: 5, Pass: 2, Progress: 0.9, Level: -6})
+	updated, _ = m.Update(ProgressMsg{FileIndex: 5, Pass: 2, Progress: 0.9, Level: -6, HasLevel: true})
 	m = updated.(Model)
-	updated, _ = m.Update(ProgressMsg{FileIndex: -1, Pass: 2, Progress: 0.9, Level: -6})
+	updated, _ = m.Update(ProgressMsg{FileIndex: -1, Pass: 2, Progress: 0.9, Level: -6, HasLevel: true})
 	m = updated.(Model)
 
 	if got := m.meters[0].peakPos; got != before {

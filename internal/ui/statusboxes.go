@@ -90,23 +90,28 @@ func joinStatusBoxes(passBox string, file *FileProgress, termWidth int) string {
 	// with blank lines so the top edges align.
 	passHeight := lipgloss.Height(passBox)
 
-	// Reuse the memoised panels when the cache key matches. The panels depend only
-	// on (Summary, passHeight): box widths/glyphs/units are compile-time constants
-	// and the palette is fixed at startup. termWidth never enters the panel render
-	// (the inner widths are constants), so it is not part of the key; it only gates
-	// the early return above. AdaptedSummary is comparable, so == is a complete key
-	// check. A height change (meter rows appearing/disappearing) re-renders here.
-	c := &file.statusBoxCache
-	// Deliberate in-place cache write during View; safe because Bubbletea drives Update/View serially.
-	if !c.valid || c.summary != file.Summary || c.joinHeight != passHeight {
-		c.chain = renderChainBox(file.Summary, passHeight)
-		c.analysis = renderAnalysisBox(file.Summary, passHeight)
-		c.summary = file.Summary
-		c.joinHeight = passHeight
-		c.valid = true
-	}
+	chain, analysis := statusBoxPanels(*file, passHeight)
+	return lipgloss.JoinHorizontal(lipgloss.Top, passBox, " ", chain, " ", analysis)
+}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, passBox, " ", c.chain, " ", c.analysis)
+func refreshStatusBoxCache(file *FileProgress, passHeight int) {
+	c := &file.statusBoxCache
+	if c.valid && c.summary == file.Summary && c.joinHeight == passHeight {
+		return
+	}
+	c.chain = renderChainBox(file.Summary, passHeight)
+	c.analysis = renderAnalysisBox(file.Summary, passHeight)
+	c.summary = file.Summary
+	c.joinHeight = passHeight
+	c.valid = true
+}
+
+func statusBoxPanels(file FileProgress, passHeight int) (string, string) {
+	c := file.statusBoxCache
+	if c.valid && c.summary == file.Summary && c.joinHeight == passHeight {
+		return c.chain, c.analysis
+	}
+	return renderChainBox(file.Summary, passHeight), renderAnalysisBox(file.Summary, passHeight)
 }
 
 // statusBox builds a bordered status box from pre-rendered content rows. The

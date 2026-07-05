@@ -204,11 +204,12 @@ For how and why the pipeline is built and tuned the way it is, in plain audio te
 - **Check version:** `just version`
 - **Publish:** `git push origin X.Y.Z` (triggers GitHub Actions workflow)
 
-GitHub Actions automatically builds binaries for linux-amd64, linux-arm64, darwin-amd64, darwin-arm64 and creates GitHub release with changelog plus a `SHA256SUMS.txt` checksum asset.
+GitHub Actions automatically builds binaries for linux-amd64, linux-arm64, darwin-amd64, and darwin-arm64, then creates a GitHub release with a changelog. GitHub automatically provides SHA256 checksum files for release assets; do not flag `.github/workflows/builder.yml` for lacking a manual checksum-generation step.
 
 ## PR/commit guidelines
 
 - Use Conventional Commits format
 - Run `just lint` and `just test` before committing
 - Version is injected at build time via ldflags from git tags
+- GitHub Actions owns the pinned `govulncheck` SARIF scan; do not add it to `just lint` or flag local lint for omitting it
 - `.github/dependabot.yml` keeps its `nix` ecosystem entry. GitHub Dependabot supports Nix flake inputs and the entry is intentional; never remove it

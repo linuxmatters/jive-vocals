@@ -7,10 +7,9 @@ import (
 	"github.com/alecthomas/kong"
 )
 
-// helpTestCLI is a minimal Kong grammar exercising every branch of getFlags and
-// getArguments: a bool flag, a value flag with a placeholder, a short+long flag,
-// and a positional argument. Kong synthesises the -h/--help flag itself, so it is
-// not declared here.
+// helpTestCLI is a minimal Kong grammar exercising the help helpers: a bool flag,
+// a value flag with a placeholder, a short+long flag, and a positional argument.
+// Kong synthesises the -h/--help flag itself, so it is not declared here.
 type helpTestCLI struct {
 	Files []string `arg:"" name:"files" help:"Audio files to process" optional:""`
 
@@ -21,17 +20,25 @@ type helpTestCLI struct {
 
 // newHelpTestContext builds a kong.Context from helpTestCLI the same way main.go
 // does (kong.New then Parse), so getFlags/getArguments see a real flag model.
-func newHelpTestContext(t *testing.T, args ...string) *kong.Context {
+func newHelpTestContext(t *testing.T) *kong.Context {
 	t.Helper()
 	k, err := kong.New(&helpTestCLI{}, kong.Name("jive-vocals"))
 	if err != nil {
 		t.Fatalf("kong.New: %v", err)
 	}
-	ctx, err := k.Parse(args)
+	ctx, err := k.Parse(nil)
 	if err != nil {
 		t.Fatalf("kong parse: %v", err)
 	}
 	return ctx
+}
+
+func labels(rows []helpRow) []string {
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.label)
+	}
+	return out
 }
 
 // findRow returns the helpRow whose label matches, or fails the test.
@@ -44,6 +51,15 @@ func findRow(t *testing.T, rows []helpRow, label string) helpRow {
 	}
 	t.Fatalf("no row with label %q in %+v", label, rows)
 	return helpRow{}
+}
+
+func TestUsageLineUsesKongSummary(t *testing.T) {
+	got := usageLine(newHelpTestContext(t))
+	want := "jive-vocals [<files> ...] [flags]"
+
+	if got != want {
+		t.Errorf("usageLine() = %q, want %q", got, want)
+	}
 }
 
 // TestWriteHelpSectionRendersRows asserts the shared section writer produces the
@@ -77,9 +93,9 @@ func TestWriteHelpSectionEmptyRowsWritesNothing(t *testing.T) {
 	}
 }
 
-// TestGetFlagsFormatsLabels pins the hand-rolled flag-string formatting in
-// getFlags: the prepended -h/--help row, the long-only bool flag, the
-// short+long join, and the upcased =PLACEHOLDER on a value flag.
+// TestGetFlagsFormatsLabels pins labels sourced from Kong model flags: the manual
+// -h/--help row, a long-only bool flag, a value flag placeholder, and a
+// short+long flag.
 func TestGetFlagsFormatsLabels(t *testing.T) {
 	rows := getFlags(newHelpTestContext(t))
 
@@ -99,8 +115,8 @@ func TestGetFlagsFormatsLabels(t *testing.T) {
 			wantHelp:  "Enable debug logging",
 		},
 		{
-			name:      "value flag upcases its placeholder",
-			wantLabel: "--output=PATH",
+			name:      "value flag uses its placeholder",
+			wantLabel: "--output=path",
 			wantHelp:  "Write result here",
 		},
 		{
@@ -117,6 +133,20 @@ func TestGetFlagsFormatsLabels(t *testing.T) {
 				t.Errorf("help for %q = %q, want %q", tt.wantLabel, row.help, tt.wantHelp)
 			}
 		})
+	}
+}
+
+func TestFlagLabelUsesKongString(t *testing.T) {
+	rows := getFlags(newHelpTestContext(t))
+	want := []string{
+		"-h, --help",
+		"--debug",
+		"--output=path",
+		"-v, --verbose",
+	}
+
+	if got := labels(rows); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("flag labels = %#v, want %#v", got, want)
 	}
 }
 
@@ -179,8 +209,8 @@ func TestGetArgumentsRendersPositionals(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("got %d argument rows, want 1: %+v", len(rows), rows)
 	}
-	if !strings.Contains(rows[0].label, "files") {
-		t.Errorf("argument label = %q, want it to mention files", rows[0].label)
+	if rows[0].label != "[<files> ...]" {
+		t.Errorf("argument label = %q, want %q", rows[0].label, "[<files> ...]")
 	}
 	if rows[0].help != "Audio files to process" {
 		t.Errorf("argument help = %q, want %q", rows[0].help, "Audio files to process")

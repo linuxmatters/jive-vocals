@@ -126,14 +126,7 @@ func renderFileQueue(m Model, prog progress.Model) string {
 	for i := range m.Files {
 		// Use the eased meter and progress positions for the active display;
 		// fall back to the raw values when no spring slot exists.
-		easedLevel := m.Files[i].CurrentLevel
-		easedProgress := m.Files[i].Progress
-		easedPeak := m.Files[i].PeakLevel
-		if i < len(m.meters) {
-			easedLevel = m.meters[i].pos
-			easedProgress = m.meters[i].progPos
-			easedPeak = m.meters[i].peakPos
-		}
+		easedLevel, easedProgress, easedPeak := m.displayValues(i)
 		b.WriteString(renderFileEntry(&m.Files[i], prog, easedLevel, easedProgress, easedPeak, m.Width))
 		b.WriteString("\n")
 	}
@@ -214,13 +207,13 @@ func renderFileDetails(file *FileProgress, prog progress.Model, easedLevel, ease
 	// Audio level visualization. Both the displayed level and the peak marker ease
 	// toward their targets via springs; the critically-damped peak spring keeps the
 	// eased peak from ever exceeding the measured peak-hold value.
-	if file.CurrentLevel != 0 {
+	if file.HasLevel {
 		content.WriteString("\n")
-		content.WriteString(renderAudioLevelMeter(easedLevel, easedPeak, file.ElapsedTime))
+		content.WriteString(renderAudioLevelMeterWithLevels(file.CurrentLevel, easedLevel, easedPeak, file.ElapsedTime))
 	}
 
 	title := fmt.Sprintf("Pass %d/4", file.CurrentPass)
-	return cachedOverlayTitle(&file.fileDetailsTitleCache, fileDetailsBox.Render(content.String()), title)
+	return overlayBorderTitle(fileDetailsBox.Render(content.String()), title, cli.ColorSkyBlue)
 }
 
 // timelineWidth is the cell count of the mini dot timeline in the Time block.
@@ -356,10 +349,14 @@ var meterOffRampStyle = lipgloss.NewStyle().Foreground(cli.ColorRed)
 // running elapsed time, advanced once per meter tick, so no second tick loop is
 // needed.
 func renderAudioLevelMeter(currentLevel, peakLevel float64, elapsed time.Duration) string {
+	return renderAudioLevelMeterWithLevels(currentLevel, currentLevel, peakLevel, elapsed)
+}
+
+func renderAudioLevelMeterWithLevels(displayLevel, currentLevel, peakLevel float64, elapsed time.Duration) string {
 	var b strings.Builder
 
 	// Display current level only; the peak value is tethered to its marker below.
-	fmt.Fprintf(&b, "Level: %.1f ㏈\n", currentLevel)
+	fmt.Fprintf(&b, "Level: %.1f ㏈\n", displayLevel)
 
 	// Create visual meter
 	// dB range: -70 dB (silence) to 0 dB (maximum)

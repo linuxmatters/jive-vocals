@@ -103,5 +103,36 @@ func renderSpectrograms(rec *processor.RunRecord) string {
 // spectrogramCell renders one Markdown image link to a relative basename:
 // ![<kind> <stage>](<path>).
 func spectrogramCell(kind, stage, path string) string {
-	return "![" + kind + " " + stage + "](" + path + ")"
+	return "![" + escapeSpectrogramAlt(kind+" "+stage) + "](" + escapeSpectrogramDestination(path) + ")"
+}
+
+func escapeSpectrogramAlt(s string) string {
+	if !strings.ContainsAny(s, "\\[]\n\r") {
+		return s
+	}
+	r := strings.NewReplacer(
+		"\\", "\\\\",
+		"[", "\\[",
+		"]", "\\]",
+		"\n", " ",
+		"\r", " ",
+	)
+	return r.Replace(s)
+}
+
+func escapeSpectrogramDestination(path string) string {
+	if path == "" {
+		return ""
+	}
+	if !strings.ContainsAny(path, " \t()[]<>\\\n\r") {
+		return path
+	}
+	r := strings.NewReplacer(
+		"\\", "\\\\",
+		"<", "\\<",
+		">", "\\>",
+		"\n", " ",
+		"\r", " ",
+	)
+	return "<" + r.Replace(path) + ">"
 }

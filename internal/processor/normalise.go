@@ -255,8 +255,8 @@ func measureWithLoudnorm(ctx context.Context, inputPath string, config *Effectiv
 
 	// Process all frames through loudnorm (no encoding - just measurement)
 	loopErr := deps.runFilterGraph(ctx, reader, bufferSrcCtx, bufferSinkCtx, FrameLoopConfig{
-		OnPushError: breakOnError,
-		OnPullError: breakOnError,
+		OnPushError: deferLoudnormFrameErrorToStatsFile,
+		OnPullError: deferLoudnormFrameErrorToStatsFile,
 		OnInputFrame: func(inputFrame *ffmpeg.AVFrame) {
 			// Measure the instantaneous level of the Pass-2 output being read so the
 			// VU meter animates consistently with Passes 1-2.
@@ -271,6 +271,7 @@ func measureWithLoudnorm(ctx context.Context, inputPath string, config *Effectiv
 					PassName: "Measuring",
 					Progress: progress,
 					Level:    currentLevel,
+					HasLevel: true,
 					Duration: metadata.Duration,
 				})
 			}
@@ -854,11 +855,12 @@ func newLoudnormApplicationFrameLoop(
 	var inputFramesRead int64
 	// currentLevel holds the instantaneous per-frame output level for the live VU meter.
 	var currentLevel float64
+	var hasLevel bool
 	const progressUpdateInterval = 100 // Send progress update every N frames
 
 	return FrameLoopConfig{
-		OnPushError: breakOnError,
-		OnPullError: breakOnError,
+		OnPushError: deferLoudnormFrameErrorToStatsFile,
+		OnPullError: deferLoudnormFrameErrorToStatsFile,
 		OnInputFrame: func(inputFrame *ffmpeg.AVFrame) {
 			// Drive progress from input-frame consumption so the bar advances
 			// monotonically. samplesProcessed and totalSamples are both at the input rate.
@@ -872,6 +874,7 @@ func newLoudnormApplicationFrameLoop(
 					PassName: "Normalising",
 					Progress: fraction,
 					Level:    currentLevel,
+					HasLevel: hasLevel,
 					Duration: prep.metadata.Duration,
 				})
 			}
@@ -880,6 +883,7 @@ func newLoudnormApplicationFrameLoop(
 			// Measure the instantaneous level of the final normalised output frame
 			// so the VU meter shows the processed result, consistent with Pass 2.
 			currentLevel = calculateFrameLevel(filteredFrame)
+			hasLevel = true
 
 			// Extract validation measurements using Pass 2's function
 			extractOutputFrameMetadata(filteredFrame.Metadata(), acc)

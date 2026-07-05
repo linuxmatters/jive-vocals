@@ -18,6 +18,20 @@ func breakOnError(error) error { return nil }
 // run aborts.
 func abortOnError(err error) error { return err }
 
+// deferLoudnormFrameErrorToStatsFile keeps the historic loudnorm frame-loop
+// tolerance explicit. Pass 3 still requires a parseable stats file after graph
+// free; Pass 4 still fails through encoder, flush, close, and publish errors.
+func deferLoudnormFrameErrorToStatsFile(error) error { return nil }
+
+// logAndSkipOptionalMeasurementFrameError names optional region and band probes:
+// the policy logs the skipped frame error and leaves the sample unmeasured.
+func logAndSkipOptionalMeasurementFrameError(log debugLogger, measurement string) func(error) error {
+	return func(err error) error {
+		log.Logf("Warning: %s frame error skipped: %v", measurement, err)
+		return nil
+	}
+}
+
 // FrameLoopConfig controls the behaviour of runFilterGraph.
 //
 // Each error callback returns nil to continue leniently or the error to abort

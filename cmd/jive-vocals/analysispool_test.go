@@ -95,7 +95,7 @@ func (f *inflightAnalysisFake) fn(_ context.Context, inputPath string, _ *proces
 
 // TestRunAnalysisPool_InFlightBoundedToJobs asserts jobs == 3 caps in-flight
 // analysis workers at 3 over 8 files while still reaching real concurrency (>1),
-// proving the semaphore both bounds and permits parallelism. Drives the pool
+// proving the worker queue both bounds and permits parallelism. Drives the pool
 // with p == nil (no real tea.Program).
 func TestRunAnalysisPool_InFlightBoundedToJobs(t *testing.T) {
 	const n = 8
@@ -152,7 +152,7 @@ func TestRunAnalysisPool_SerialParityJobs1(t *testing.T) {
 // TestRunAnalysisPool_JobsAboveFileCountNoCap asserts a jobs value far above both
 // the file count and NumCPU does NOT cap in-flight workers below the file count:
 // jobs == 64 over 3 files must reach high-water == 3 (all three run at once). The
-// semaphore of 64 leaves every worker free to start, and runAnalysisPool applies
+// worker count of 3 leaves every file free to start, and runAnalysisPool applies
 // no NumCPU cap of its own (that is resolveJobs's job, tested in main_test.go).
 //
 // A sync.WaitGroup barrier sized to the file count makes the assertion

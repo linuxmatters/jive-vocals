@@ -608,6 +608,7 @@ func collectAnalysisFrames(ctx stdcontext.Context, filename string, config *Base
 					PassName: "Analysing",
 					Progress: progress,
 					Level:    currentLevel,
+					HasLevel: true,
 					Duration: totalDuration,
 				})
 			}

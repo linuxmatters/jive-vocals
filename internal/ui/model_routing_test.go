@@ -106,11 +106,8 @@ func TestWindowSizeMsgPreservesRoutedFiles(t *testing.T) {
 		t.Errorf("dimensions not stored: Width=%d Height=%d, want 120/40", m.Width, m.Height)
 	}
 	// The resize builds and fills the viewport, so the file queue now renders
-	// inside Update on the persistent model. Rendering populates the presentation
-	// -only render caches (statusBoxCache / fileDetailsTitleCache) in place, so a
-	// whole-struct equality would trip on those. Assert the routed DATA contract
-	// survives instead (that is what this test guards); the render caches are
-	// derived state and excluded by clearing them on both sides before comparing.
+	// inside Update on the persistent model. Cache refresh may populate derived
+	// status-box state, so assert the routed DATA contract survives instead.
 	for i := range want {
 		got := m.Files[i]
 		got.statusBoxCache = statusBoxCache{}
@@ -302,7 +299,7 @@ func TestMeterTickStepsSpringWithoutMutatingRoutedFields(t *testing.T) {
 	m := NewModel([]string{"a.wav"})
 
 	// Make the file active and give the meter a target above its start floor.
-	updated, _ := m.Update(ProgressMsg{FileIndex: 0, Pass: processor.PassProcessing, Progress: 0.5, Level: -12})
+	updated, _ := m.Update(ProgressMsg{FileIndex: 0, Pass: processor.PassProcessing, Progress: 0.5, Level: -12, HasLevel: true})
 	m = updated.(Model)
 
 	wantProgress := m.Files[0].Progress
@@ -336,7 +333,7 @@ func TestMeterTickStopsAfterAllComplete(t *testing.T) {
 	m := NewModel([]string{"a.wav"})
 
 	// Activate the file so a tick would normally re-schedule.
-	updated, _ := m.Update(ProgressMsg{FileIndex: 0, Pass: processor.PassProcessing, Progress: 0.5, Level: -12})
+	updated, _ := m.Update(ProgressMsg{FileIndex: 0, Pass: processor.PassProcessing, Progress: 0.5, Level: -12, HasLevel: true})
 	m = updated.(Model)
 
 	updated, _ = m.Update(AllCompleteMsg{})

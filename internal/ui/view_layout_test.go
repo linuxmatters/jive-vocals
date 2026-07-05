@@ -102,7 +102,7 @@ func TestProcessingViewOverallProgressContent(t *testing.T) {
 func TestFinalSummaryReturnsCompletionContent(t *testing.T) {
 	m := NewModel([]string{"a.wav", "b.wav"})
 
-	updated, _ := m.Update(ProgressMsg{FileIndex: 0, Pass: processor.PassProcessing, Progress: 0.5, Level: -12})
+	updated, _ := m.Update(ProgressMsg{FileIndex: 0, Pass: processor.PassProcessing, Progress: 0.5, Level: -12, HasLevel: true})
 	m = updated.(Model)
 	updated, _ = m.Update(FileCompleteMsg{
 		FileIndex: 0, CompletionResult: CompletionResult{

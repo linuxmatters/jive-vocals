@@ -302,6 +302,7 @@ func processWithFilters(ctx context.Context, inputPath, outputPath string, confi
 	// Track frame count for periodic progress updates
 	frameCount := 0
 	currentLevel := 0.0
+	hasLevel := false
 
 	// Process all frames through the filter chain using runFilterGraph
 	if err := runFilterGraph(ctx, reader, bufferSrcCtx, bufferSinkCtx, FrameLoopConfig{
@@ -329,6 +330,7 @@ func processWithFilters(ctx context.Context, inputPath, outputPath string, confi
 					PassName:     "Processing",
 					Progress:     progress,
 					Level:        currentLevel,
+					HasLevel:     hasLevel,
 					Duration:     measurements.Duration,
 					Measurements: measurements,
 				})
@@ -337,6 +339,7 @@ func processWithFilters(ctx context.Context, inputPath, outputPath string, confi
 		OnFrame: func(inputFrame, filteredFrame *ffmpeg.AVFrame) error {
 			// Calculate audio level from FILTERED frame (shows processed audio in VU meter)
 			currentLevel = calculateFrameLevel(filteredFrame)
+			hasLevel = true
 
 			// Extract output measurements from filtered frame metadata (if enabled)
 			if outputAcc != nil {
