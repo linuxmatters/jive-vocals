@@ -304,17 +304,13 @@ var meterRampStyles = sync.OnceValue(func() []lipgloss.Style {
 
 // meterOffRampStyle is the off-ramp fallback style: cells whose index falls
 // outside the cached ramp resolve to cli.ColorRed, matching cellColor in
-// renderAudioLevelMeter. Built once at package init so the flush never allocates.
+// renderMeterBar. Built once at package init so the flush never allocates.
 var meterOffRampStyle = lipgloss.NewStyle().Foreground(cli.ColorRed)
 
-// renderAudioLevelMeter renders a live audio level meter with dB visualization.
-// elapsed drives the gentle pulse of the peak-hold marker; it is the file's
-// running elapsed time, advanced once per meter tick, so no second tick loop is
-// needed.
-func renderAudioLevelMeter(currentLevel, peakLevel float64, elapsed time.Duration) string {
-	return renderAudioLevelMeterWithLevels(currentLevel, currentLevel, peakLevel, elapsed)
-}
-
+// renderAudioLevelMeterWithLevels renders a live audio level meter with dB
+// visualisation. elapsed drives the gentle pulse of the peak-hold marker; it is
+// the file's running elapsed time, advanced once per meter tick, so no second
+// tick loop is needed.
 func renderAudioLevelMeterWithLevels(displayLevel, currentLevel, peakLevel float64, elapsed time.Duration) string {
 	var b strings.Builder
 

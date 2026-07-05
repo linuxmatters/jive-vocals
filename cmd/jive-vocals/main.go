@@ -421,7 +421,20 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 	// In no-TTY mode the post-loop prints the one-line confirmation to stdout;
 	// in TTY mode the persisted analysis TUI already shows it, so we skip the
 	// stdout print to avoid doubling up. The .md report is written in both modes.
-	render := analysisRenderScheduler{ctx: specCtx, sem: specSem, wg: &specWG}
+	// reportErr serialises the render goroutines' stderr writes. Background
+	// spectrogram renders (up to jobs at once) each call deps.printError on
+	// failure, an unsynchronised fmt.Fprintf(os.Stderr, ...); a mutex round the
+	// call stops two concurrent failures interleaving on the write. The volume of
+	// these errors is low, so a mutex fits better than the processing path's
+	// buffered warning channel.
+	var reportErrMu sync.Mutex
+	reportErr := func(msg string) {
+		reportErrMu.Lock()
+		defer reportErrMu.Unlock()
+		deps.printError(msg)
+	}
+
+	render := analysisRenderScheduler{ctx: specCtx, sem: specSem, wg: &specWG, reportErr: reportErr}
 	noTTY := !tty
 	failed := 0
 	for i := range files {
@@ -429,7 +442,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 			if errors.Is(slots[i].err, context.Canceled) {
 				continue
 			}
-			deps.printError(fmt.Sprintf("Analysis failed for %s: %v", files[i], slots[i].err))
+			reportErr(fmt.Sprintf("Analysis failed for %s: %v", files[i], slots[i].err))
 			failed++
 			continue
 		}
@@ -451,6 +464,9 @@ type analysisRenderScheduler struct {
 	ctx context.Context
 	sem chan struct{}
 	wg  *sync.WaitGroup
+	// reportErr wraps deps.printError behind a mutex so concurrent render
+	// goroutines serialise their stderr writes.
+	reportErr func(string)
 }
 
 // emitAnalysisReport writes one file's analysis artefacts after a successful
@@ -504,7 +520,7 @@ func emitAnalysisReport(inputPath string, result *processor.AnalysisResult, meta
 		render: func(ctx context.Context, img processor.SpectrogramImage) error {
 			return processor.RenderSpectrogramImage(ctx, img, record, inputPath, "", filepath.Dir(reportPath))
 		},
-		reportErr: deps.printError,
+		reportErr: render.reportErr,
 		errMsgs: reportErrorMessages{
 			inputPath:   inputPath,
 			report:      "Failed to write analysis report for %s: %v",

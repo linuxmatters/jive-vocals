@@ -501,39 +501,6 @@ func loudnormValueJSON(value LoudnormValue) *jsonFloat {
 	return &out
 }
 
-// loudnormMeasuredNumeric converts the parsed loudnorm values into the §8.4
-// numeric sub-block: each parsed measurement is written under a unit-suffixed
-// key, and normalization_type stays a string (it is categorical, not a
-// measurement). A field whose source string failed to parse is omitted (the
-// reader sees a missing key, never a fabricated 0). Returns nil for nil values
-// so the caller emits null.
-func loudnormMeasuredNumeric(measured *LoudnormMeasured) map[string]any {
-	if measured == nil {
-		return nil
-	}
-	out := map[string]any{}
-	putLoudnormValue(out, "input_integrated_lufs", measured.InputI)
-	putLoudnormValue(out, "input_true_peak_dbtp", measured.InputTP)
-	putLoudnormValue(out, "input_lra_lu", measured.InputLRA)
-	putLoudnormValue(out, "input_thresh_lufs", measured.InputThresh)
-	putLoudnormValue(out, "output_integrated_lufs", measured.OutputI)
-	putLoudnormValue(out, "output_true_peak_dbtp", measured.OutputTP)
-	putLoudnormValue(out, "output_lra_lu", measured.OutputLRA)
-	putLoudnormValue(out, "output_thresh_lufs", measured.OutputThresh)
-	putLoudnormValue(out, "target_offset_db", measured.TargetOffset)
-	if measured.NormalizationType != "" {
-		out["normalization_type"] = measured.NormalizationType
-	}
-	return out
-}
-
-func putLoudnormValue(out map[string]any, key string, value LoudnormValue) {
-	if !value.OK {
-		return
-	}
-	out[key] = value.Value
-}
-
 func durationFromSeconds(seconds jsonFloat) time.Duration {
 	return time.Duration(float64(seconds) * float64(time.Second))
 }

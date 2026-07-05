@@ -161,10 +161,6 @@ type FileProgress struct {
 	// reused while the key matches. Render helpers read it but never mutate it.
 	statusBoxCache statusBoxCache
 
-	// fileDetailsTitleCache is retained for test fixtures and future Update-owned
-	// caching. Render helpers do not mutate it.
-	fileDetailsTitleCache overlayTitleCache
-
 	// Processing statistics
 	CurrentLevel float64 // Current audio level in dB
 	HasLevel     bool
@@ -203,18 +199,6 @@ type statusBoxCache struct {
 	joinHeight int
 	chain      string
 	analysis   string
-}
-
-// overlayTitleCache holds a memoised overlayBorderTitle result keyed on the inputs
-// that vary it: the title text and the rendered box's top-border width. valid guards
-// the zero-value (a genuine key of {"", 0}). line is the spliced first border line.
-// The colour is not part of the key: this cache serves a single-colour call site
-// (cli.ColorSkyBlue), so colour never varies.
-type overlayTitleCache struct {
-	valid bool
-	title string
-	width int
-	line  string
 }
 
 // Model is the Bubbletea model for the processing UI

@@ -185,14 +185,10 @@ func getFlags(ctx *kong.Context) []helpRow {
 		}
 
 		flags = append(flags, helpRow{
-			label: flagLabel(f),
+			label: f.String(),
 			help:  f.Help,
 		})
 	}
 
 	return flags
-}
-
-func flagLabel(flag *kong.Flag) string {
-	return flag.String()
 }

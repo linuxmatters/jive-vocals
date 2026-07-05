@@ -36,14 +36,6 @@ func newHelpTestContext(t *testing.T) *kong.Context {
 	return ctx
 }
 
-func labels(rows []helpRow) []string {
-	out := make([]string, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, r.label)
-	}
-	return out
-}
-
 // findRow returns the helpRow whose label matches, or fails the test.
 func findRow(t *testing.T, rows []helpRow, label string) helpRow {
 	t.Helper()
@@ -173,20 +165,6 @@ func TestGetFlagsFormatsLabels(t *testing.T) {
 				t.Errorf("help for %q = %q, want %q", tt.wantLabel, row.help, tt.wantHelp)
 			}
 		})
-	}
-}
-
-func TestFlagLabelUsesKongString(t *testing.T) {
-	rows := getFlags(newHelpTestContext(t))
-	want := []string{
-		"-h, --help",
-		"--debug",
-		"--output=path",
-		"-v, --verbose",
-	}
-
-	if got := labels(rows); strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Errorf("flag labels = %#v, want %#v", got, want)
 	}
 }
 

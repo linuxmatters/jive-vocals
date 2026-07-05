@@ -163,9 +163,9 @@ func runFilterGraph(
 	// Flush the filter graph by sending nil frame
 	if _, err := ffmpeg.AVBuffersrcAddFrameFlags(bufferSrcCtx, nil, 0); err != nil {
 		if cbErr := config.OnPushError(err); cbErr != nil {
-			return cbErr
+			return cbErr // strict handler aborted: report the failed flush, do not drop the tail
 		}
-		return nil // flush push failed but handler swallowed it
+		return nil // lenient handler swallowed it: skip the drain, treat as clean EOF
 	}
 
 	// Drain remaining filtered frames

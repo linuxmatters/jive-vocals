@@ -37,9 +37,9 @@ func TestSpeedFraction(t *testing.T) {
 	}
 }
 
-// perFrameMeterRamp is the oracle: the exact per-frame ramp-build logic that
-// renderAudioLevelMeter ran before the ramp was cached. The cached meterRamp()
-// must produce a byte-identical slice and identical rendered meters.
+// perFrameMeterRamp is the oracle: the exact per-frame ramp-build logic the meter
+// ran before the ramp was cached. The cached meterRamp() must produce a
+// byte-identical slice and identical rendered meters.
 func perFrameMeterRamp() []color.Color {
 	width := meterWidth
 	minDB := meterFloorDB
@@ -184,7 +184,7 @@ func TestPeakMarkerColorMatchesOracle(t *testing.T) {
 	}
 }
 
-// renderMeterWithRamp reproduces renderAudioLevelMeter's bar-painting loop with a
+// renderMeterWithRamp reproduces renderMeterBar's bar-painting loop with a
 // caller-supplied ramp, so the test can drive both the cached ramp and the oracle
 // through identical rendering and compare the strings. It mirrors the production
 // run-coalescing and cell logic; the peak-marker block is excluded because it does
