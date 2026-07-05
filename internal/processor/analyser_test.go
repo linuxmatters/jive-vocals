@@ -10,22 +10,6 @@ import (
 	"github.com/linuxmatters/jive-vocals/internal/audio"
 )
 
-var flatSpectralJSONFields = []string{
-	"spectral_mean",
-	"spectral_variance",
-	"spectral_centroid",
-	"spectral_spread",
-	"spectral_skewness",
-	"spectral_kurtosis",
-	"spectral_entropy",
-	"spectral_flatness",
-	"spectral_crest",
-	"spectral_flux",
-	"spectral_slope",
-	"spectral_decrease",
-	"spectral_rolloff",
-}
-
 func TestIntervalSampleJSON_PreservesFlatSpectralFields(t *testing.T) {
 	sample := IntervalSample{
 		Spectral: flatSpectralMetricsFixture(),
@@ -38,7 +22,7 @@ func TestIntervalSampleJSON_PreservesFlatSpectralFields(t *testing.T) {
 	assertFlatSpectralJSONKeys(t, data)
 
 	var decoded IntervalSample
-	if err := json.Unmarshal(flatSpectralJSONFixture(), &decoded); err != nil {
+	if err := json.Unmarshal(flatSpectralJSONFixture(t), &decoded); err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 	assertSpectralValues(t, decoded.Spectral)
@@ -52,7 +36,7 @@ func assertFlatSpectralJSONKeys(t *testing.T, data []byte) {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 
-	for _, field := range flatSpectralJSONFields {
+	for _, field := range intervalSpectralJSONKeys() {
 		if _, ok := object[field]; !ok {
 			t.Errorf("missing flat spectral JSON field %q in %s", field, string(data))
 		}
@@ -62,69 +46,37 @@ func assertFlatSpectralJSONKeys(t *testing.T, data []byte) {
 	}
 }
 
-func flatSpectralJSONFixture() []byte {
-	return []byte(`{
-		"spectral_mean": 1,
-		"spectral_variance": 2,
-		"spectral_centroid": 3,
-		"spectral_spread": 4,
-		"spectral_skewness": 5,
-		"spectral_kurtosis": 6,
-		"spectral_entropy": 7,
-		"spectral_flatness": 8,
-		"spectral_crest": 9,
-		"spectral_flux": 10,
-		"spectral_slope": 11,
-		"spectral_decrease": 12,
-		"spectral_rolloff": 13
-	}`)
+func flatSpectralJSONFixture(t *testing.T) []byte {
+	t.Helper()
+
+	object := make(map[string]float64, len(spectralMetricDescriptors))
+	for index, descriptor := range spectralMetricDescriptors {
+		object[descriptor.intervalJSONKey] = float64(index + 1)
+	}
+	data, err := json.Marshal(object)
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	return data
 }
 
 func flatSpectralMetricsFixture() SpectralMetrics {
-	return SpectralMetrics{
-		Mean:     1,
-		Variance: 2,
-		Centroid: 3,
-		Spread:   4,
-		Skewness: 5,
-		Kurtosis: 6,
-		Entropy:  7,
-		Flatness: 8,
-		Crest:    9,
-		Flux:     10,
-		Slope:    11,
-		Decrease: 12,
-		Rolloff:  13,
-		Found:    true,
+	metrics := SpectralMetrics{Found: true}
+	for index, descriptor := range spectralMetricDescriptors {
+		*descriptor.metricField(&metrics) = float64(index + 1)
 	}
+	return metrics
 }
 
 func assertSpectralValues(t *testing.T, got SpectralMetrics) {
 	t.Helper()
 
 	want := flatSpectralMetricsFixture()
-	checks := []struct {
-		name string
-		got  float64
-		want float64
-	}{
-		{"Mean", got.Mean, want.Mean},
-		{"Variance", got.Variance, want.Variance},
-		{"Centroid", got.Centroid, want.Centroid},
-		{"Spread", got.Spread, want.Spread},
-		{"Skewness", got.Skewness, want.Skewness},
-		{"Kurtosis", got.Kurtosis, want.Kurtosis},
-		{"Entropy", got.Entropy, want.Entropy},
-		{"Flatness", got.Flatness, want.Flatness},
-		{"Crest", got.Crest, want.Crest},
-		{"Flux", got.Flux, want.Flux},
-		{"Slope", got.Slope, want.Slope},
-		{"Decrease", got.Decrease, want.Decrease},
-		{"Rolloff", got.Rolloff, want.Rolloff},
-	}
-	for _, c := range checks {
-		if c.got != c.want {
-			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+	for _, descriptor := range spectralMetricDescriptors {
+		gotValue := *descriptor.metricField(&got)
+		wantValue := *descriptor.metricField(&want)
+		if gotValue != wantValue {
+			t.Errorf("%s = %v, want %v", descriptor.name, gotValue, wantValue)
 		}
 	}
 }

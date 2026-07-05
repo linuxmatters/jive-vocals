@@ -71,24 +71,13 @@ func (s IntervalSample) MarshalJSON() ([]byte, error) {
 		RMSLevel:  s.RMSLevel,
 		PeakLevel: s.PeakLevel,
 
-		SpectralMean:     s.Spectral.Mean,
-		SpectralVariance: s.Spectral.Variance,
-		SpectralCentroid: s.Spectral.Centroid,
-		SpectralSpread:   s.Spectral.Spread,
-		SpectralSkewness: s.Spectral.Skewness,
-		SpectralKurtosis: s.Spectral.Kurtosis,
-		SpectralEntropy:  s.Spectral.Entropy,
-		SpectralFlatness: s.Spectral.Flatness,
-		SpectralCrest:    s.Spectral.Crest,
-		SpectralFlux:     s.Spectral.Flux,
-		SpectralSlope:    s.Spectral.Slope,
-		SpectralDecrease: s.Spectral.Decrease,
-		SpectralRolloff:  s.Spectral.Rolloff,
-
 		MomentaryLUFS: s.MomentaryLUFS,
 		ShortTermLUFS: s.ShortTermLUFS,
 		TruePeak:      s.TruePeak,
 		SamplePeak:    s.SamplePeak,
+	}
+	for _, descriptor := range spectralMetricDescriptors {
+		*descriptor.intervalField(&flat) = *descriptor.metricField(&s.Spectral)
 	}
 	return json.Marshal(sanitiseValue(reflect.ValueOf(flat)))
 }
@@ -103,20 +92,9 @@ func (s *IntervalSample) UnmarshalJSON(data []byte) error {
 	s.Timestamp = decoded.Timestamp
 	s.RMSLevel = decoded.RMSLevel
 	s.PeakLevel = decoded.PeakLevel
-	s.Spectral = SpectralMetrics{
-		Mean:     decoded.SpectralMean,
-		Variance: decoded.SpectralVariance,
-		Centroid: decoded.SpectralCentroid,
-		Spread:   decoded.SpectralSpread,
-		Skewness: decoded.SpectralSkewness,
-		Kurtosis: decoded.SpectralKurtosis,
-		Entropy:  decoded.SpectralEntropy,
-		Flatness: decoded.SpectralFlatness,
-		Crest:    decoded.SpectralCrest,
-		Flux:     decoded.SpectralFlux,
-		Slope:    decoded.SpectralSlope,
-		Decrease: decoded.SpectralDecrease,
-		Rolloff:  decoded.SpectralRolloff,
+	s.Spectral = SpectralMetrics{}
+	for _, descriptor := range spectralMetricDescriptors {
+		*descriptor.metricField(&s.Spectral) = *descriptor.intervalField(&decoded)
 	}
 	s.MomentaryLUFS = decoded.MomentaryLUFS
 	s.ShortTermLUFS = decoded.ShortTermLUFS
@@ -132,28 +110,17 @@ func (s *IntervalSample) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// intervalSpectralJSONKeys is the single source of truth for the flat spectral_*
-// JSON keys on an interval sample. The intervalSampleJSON marshal/unmarshal tags
-// must match this list, and hasSpectralKeys probes exactly these keys.
-var intervalSpectralJSONKeys = []string{
-	"spectral_mean",
-	"spectral_variance",
-	"spectral_centroid",
-	"spectral_spread",
-	"spectral_skewness",
-	"spectral_kurtosis",
-	"spectral_entropy",
-	"spectral_flatness",
-	"spectral_crest",
-	"spectral_flux",
-	"spectral_slope",
-	"spectral_decrease",
-	"spectral_rolloff",
+func intervalSpectralJSONKeys() []string {
+	keys := make([]string, 0, len(spectralMetricDescriptors))
+	for _, descriptor := range spectralMetricDescriptors {
+		keys = append(keys, descriptor.intervalJSONKey)
+	}
+	return keys
 }
 
 func hasSpectralKeys(raw map[string]json.RawMessage) bool {
-	for _, key := range intervalSpectralJSONKeys {
-		if _, ok := raw[key]; ok {
+	for _, descriptor := range spectralMetricDescriptors {
+		if _, ok := raw[descriptor.intervalJSONKey]; ok {
 			return true
 		}
 	}
@@ -430,21 +397,6 @@ func (a *intervalAccumulator) reset() {
 // Cached metadata keys for frame extraction - avoids per-frame C string allocations
 // These use GlobalCStr which maintains an internal cache, so identical strings share the same CStr
 var (
-	// aspectralstats metadata keys (all measurements)
-	metaKeySpectralMean     = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.mean")
-	metaKeySpectralVariance = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.variance")
-	metaKeySpectralCentroid = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.centroid")
-	metaKeySpectralSpread   = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.spread")
-	metaKeySpectralSkewness = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.skewness")
-	metaKeySpectralKurtosis = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.kurtosis")
-	metaKeySpectralEntropy  = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.entropy")
-	metaKeySpectralFlatness = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.flatness")
-	metaKeySpectralCrest    = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.crest")
-	metaKeySpectralFlux     = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.flux")
-	metaKeySpectralSlope    = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.slope")
-	metaKeySpectralDecrease = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.decrease")
-	metaKeySpectralRolloff  = ffmpeg.GlobalCStr("lavfi.aspectralstats.1.rolloff")
-
 	// astats per-channel metadata keys (channel .1 for mono after downmix)
 	metaKeyDynamicRange      = ffmpeg.GlobalCStr("lavfi.astats.1.Dynamic_range")
 	metaKeyRMSLevel          = ffmpeg.GlobalCStr("lavfi.astats.1.RMS_level")
@@ -710,6 +662,108 @@ type SpectralMetrics struct {
 	Found    bool    `json:"-"`           // True if any spectral metric was extracted
 }
 
+type spectralMetricDescriptor struct {
+	name            string
+	intervalJSONKey string
+	metadataKey     *ffmpeg.CStr
+	metricField     func(*SpectralMetrics) *float64
+	intervalField   func(*intervalSampleJSON) *float64
+}
+
+var spectralMetricDescriptors = []spectralMetricDescriptor{
+	{
+		name:            "Mean",
+		intervalJSONKey: "spectral_mean",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.mean"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Mean },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralMean },
+	},
+	{
+		name:            "Variance",
+		intervalJSONKey: "spectral_variance",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.variance"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Variance },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralVariance },
+	},
+	{
+		name:            "Centroid",
+		intervalJSONKey: "spectral_centroid",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.centroid"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Centroid },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralCentroid },
+	},
+	{
+		name:            "Spread",
+		intervalJSONKey: "spectral_spread",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.spread"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Spread },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralSpread },
+	},
+	{
+		name:            "Skewness",
+		intervalJSONKey: "spectral_skewness",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.skewness"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Skewness },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralSkewness },
+	},
+	{
+		name:            "Kurtosis",
+		intervalJSONKey: "spectral_kurtosis",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.kurtosis"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Kurtosis },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralKurtosis },
+	},
+	{
+		name:            "Entropy",
+		intervalJSONKey: "spectral_entropy",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.entropy"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Entropy },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralEntropy },
+	},
+	{
+		name:            "Flatness",
+		intervalJSONKey: "spectral_flatness",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.flatness"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Flatness },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralFlatness },
+	},
+	{
+		name:            "Crest",
+		intervalJSONKey: "spectral_crest",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.crest"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Crest },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralCrest },
+	},
+	{
+		name:            "Flux",
+		intervalJSONKey: "spectral_flux",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.flux"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Flux },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralFlux },
+	},
+	{
+		name:            "Slope",
+		intervalJSONKey: "spectral_slope",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.slope"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Slope },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralSlope },
+	},
+	{
+		name:            "Decrease",
+		intervalJSONKey: "spectral_decrease",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.decrease"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Decrease },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralDecrease },
+	},
+	{
+		name:            "Rolloff",
+		intervalJSONKey: "spectral_rolloff",
+		metadataKey:     ffmpeg.GlobalCStr("lavfi.aspectralstats.1.rolloff"),
+		metricField:     func(m *SpectralMetrics) *float64 { return &m.Rolloff },
+		intervalField:   func(j *intervalSampleJSON) *float64 { return &j.SpectralRolloff },
+	},
+}
+
 // SpectralAccumulator accumulates spectral measurements across frames and
 // averages only frames where aspectralstats metadata was found.
 type SpectralAccumulator struct {
@@ -745,38 +799,18 @@ func (a SpectralAccumulator) Found() bool {
 
 // add accumulates another SpectralMetrics into this one (element-wise sum).
 func (m *SpectralMetrics) add(other SpectralMetrics) {
-	m.Mean += other.Mean
-	m.Variance += other.Variance
-	m.Centroid += other.Centroid
-	m.Spread += other.Spread
-	m.Skewness += other.Skewness
-	m.Kurtosis += other.Kurtosis
-	m.Entropy += other.Entropy
-	m.Flatness += other.Flatness
-	m.Crest += other.Crest
-	m.Flux += other.Flux
-	m.Slope += other.Slope
-	m.Decrease += other.Decrease
-	m.Rolloff += other.Rolloff
+	for _, descriptor := range spectralMetricDescriptors {
+		*descriptor.metricField(m) += *descriptor.metricField(&other)
+	}
 }
 
 // average returns a new SpectralMetrics with all fields divided by n.
 func (m SpectralMetrics) average(n float64) SpectralMetrics {
-	return SpectralMetrics{
-		Mean:     m.Mean / n,
-		Variance: m.Variance / n,
-		Centroid: m.Centroid / n,
-		Spread:   m.Spread / n,
-		Skewness: m.Skewness / n,
-		Kurtosis: m.Kurtosis / n,
-		Entropy:  m.Entropy / n,
-		Flatness: m.Flatness / n,
-		Crest:    m.Crest / n,
-		Flux:     m.Flux / n,
-		Slope:    m.Slope / n,
-		Decrease: m.Decrease / n,
-		Rolloff:  m.Rolloff / n,
+	var average SpectralMetrics
+	for _, descriptor := range spectralMetricDescriptors {
+		*descriptor.metricField(&average) = *descriptor.metricField(&m) / n
 	}
+	return average
 }
 
 // extractSpectralMetrics extracts all 13 aspectralstats measurements from FFmpeg metadata.
@@ -784,57 +818,11 @@ func (m SpectralMetrics) average(n float64) SpectralMetrics {
 func extractSpectralMetrics(metadata *ffmpeg.AVDictionary) SpectralMetrics {
 	var m SpectralMetrics
 
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralMean); ok {
-		m.Mean = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralVariance); ok {
-		m.Variance = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralCentroid); ok {
-		m.Centroid = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralSpread); ok {
-		m.Spread = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralSkewness); ok {
-		m.Skewness = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralKurtosis); ok {
-		m.Kurtosis = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralEntropy); ok {
-		m.Entropy = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralFlatness); ok {
-		m.Flatness = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralCrest); ok {
-		m.Crest = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralFlux); ok {
-		m.Flux = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralSlope); ok {
-		m.Slope = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralDecrease); ok {
-		m.Decrease = value
-		m.Found = true
-	}
-	if value, ok := getFloatMetadata(metadata, metaKeySpectralRolloff); ok {
-		m.Rolloff = value
-		m.Found = true
+	for _, descriptor := range spectralMetricDescriptors {
+		if value, ok := getFloatMetadata(metadata, descriptor.metadataKey); ok {
+			*descriptor.metricField(&m) = value
+			m.Found = true
+		}
 	}
 
 	return m
