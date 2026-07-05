@@ -12,20 +12,34 @@ import (
 
 const spectralTestEpsilon = 1e-9
 
-var staleSpectralPrimitiveFields = []string{
-	"SpectralMean",
-	"SpectralVariance",
-	"SpectralCentroid",
-	"SpectralSpread",
-	"SpectralSkewness",
-	"SpectralKurtosis",
-	"SpectralEntropy",
-	"SpectralFlatness",
-	"SpectralCrest",
-	"SpectralFlux",
-	"SpectralSlope",
-	"SpectralDecrease",
-	"SpectralRolloff",
+var staleSpectralPrimitiveFields = func() []string {
+	fields := make([]string, 0, len(spectralMetricDescriptors))
+	for _, descriptor := range spectralMetricDescriptors {
+		fields = append(fields, "Spectral"+descriptor.name)
+	}
+	return fields
+}()
+
+func spectralMetricsFromValues(values ...float64) SpectralMetrics {
+	metrics := SpectralMetrics{Found: true}
+	for index, descriptor := range spectralMetricDescriptors {
+		if index < len(values) {
+			*descriptor.metricField(&metrics) = values[index]
+		}
+	}
+	return metrics
+}
+
+func assertSpectralMetricsApprox(t *testing.T, got SpectralMetrics, want SpectralMetrics) {
+	t.Helper()
+
+	for _, descriptor := range spectralMetricDescriptors {
+		gotValue := *descriptor.metricField(&got)
+		wantValue := *descriptor.metricField(&want)
+		if math.Abs(gotValue-wantValue) > spectralTestEpsilon {
+			t.Errorf("%s: got %v, want %v", descriptor.name, gotValue, wantValue)
+		}
+	}
 }
 
 func TestFinalizeSpectral_ZeroFrameCount(t *testing.T) {
@@ -39,114 +53,23 @@ func TestFinalizeSpectral_ZeroFrameCount(t *testing.T) {
 
 func TestFinalizeSpectral_AveragesCorrectly(t *testing.T) {
 	acc := &baseMetadataAccumulators{}
-	acc.accumulateSpectral(SpectralMetrics{
-		Mean:     2.0,
-		Variance: 4.0,
-		Centroid: 1000.0,
-		Spread:   200.0,
-		Skewness: 1.0,
-		Kurtosis: 2.0,
-		Entropy:  0.25,
-		Flatness: 0.10,
-		Crest:    1.0,
-		Flux:     0.5,
-		Slope:    -0.005,
-		Decrease: 0.1,
-		Rolloff:  2000.0,
-		Found:    true,
-	})
-	acc.accumulateSpectral(SpectralMetrics{
-		Mean:     8.0,
-		Variance: 16.0,
-		Centroid: 2000.0,
-		Spread:   400.0,
-		Skewness: 3.0,
-		Kurtosis: 6.0,
-		Entropy:  1.25,
-		Flatness: 0.40,
-		Crest:    5.0,
-		Flux:     1.5,
-		Slope:    -0.015,
-		Decrease: 0.3,
-		Rolloff:  6000.0,
-		Found:    true,
-	})
+	acc.accumulateSpectral(spectralMetricsFromValues(2.0, 4.0, 1000.0, 200.0, 1.0, 2.0, 0.25, 0.10, 1.0, 0.5, -0.005, 0.1, 2000.0))
+	acc.accumulateSpectral(spectralMetricsFromValues(8.0, 16.0, 2000.0, 400.0, 3.0, 6.0, 1.25, 0.40, 5.0, 1.5, -0.015, 0.3, 6000.0))
 
 	result := acc.finalizeSpectral()
 
-	checks := []struct {
-		name string
-		got  float64
-		want float64
-	}{
-		{"Mean", result.Mean, 5.0},
-		{"Variance", result.Variance, 10.0},
-		{"Centroid", result.Centroid, 1500.0},
-		{"Spread", result.Spread, 300.0},
-		{"Skewness", result.Skewness, 2.0},
-		{"Kurtosis", result.Kurtosis, 4.0},
-		{"Entropy", result.Entropy, 0.75},
-		{"Flatness", result.Flatness, 0.25},
-		{"Crest", result.Crest, 3.0},
-		{"Flux", result.Flux, 1.0},
-		{"Slope", result.Slope, -0.01},
-		{"Decrease", result.Decrease, 0.2},
-		{"Rolloff", result.Rolloff, 4000.0},
-	}
-	for _, c := range checks {
-		if math.Abs(c.got-c.want) > spectralTestEpsilon {
-			t.Errorf("%s: got %v, want %v", c.name, c.got, c.want)
-		}
-	}
+	assertSpectralMetricsApprox(t, result, spectralMetricsFromValues(5.0, 10.0, 1500.0, 300.0, 2.0, 4.0, 0.75, 0.25, 3.0, 1.0, -0.01, 0.2, 4000.0))
 }
 
 func TestFinalizeSpectral_AssignsBaseSpectral(t *testing.T) {
 	acc := &baseMetadataAccumulators{}
 	for range 3 {
-		acc.accumulateSpectral(SpectralMetrics{
-			Mean:     10.0,
-			Variance: 20.0,
-			Centroid: 3000.0,
-			Spread:   500.0,
-			Skewness: 2.0,
-			Kurtosis: 4.0,
-			Entropy:  0.7,
-			Flatness: 0.3,
-			Crest:    5.0,
-			Flux:     1.0,
-			Slope:    -0.02,
-			Decrease: 0.4,
-			Rolloff:  8000.0,
-			Found:    true,
-		})
+		acc.accumulateSpectral(spectralMetricsFromValues(10.0, 20.0, 3000.0, 500.0, 2.0, 4.0, 0.7, 0.3, 5.0, 1.0, -0.02, 0.4, 8000.0))
 	}
 
 	spectral := acc.finalizeSpectral()
 
-	checks := []struct {
-		name string
-		got  float64
-		want float64
-	}{
-		{"Mean", spectral.Mean, 10.0},
-		{"Variance", spectral.Variance, 20.0},
-		{"Centroid", spectral.Centroid, 3000.0},
-		{"Spread", spectral.Spread, 500.0},
-		{"Skewness", spectral.Skewness, 2.0},
-		{"Kurtosis", spectral.Kurtosis, 4.0},
-		{"Entropy", spectral.Entropy, 0.7},
-		{"Flatness", spectral.Flatness, 0.3},
-		{"Crest", spectral.Crest, 5.0},
-		{"Flux", spectral.Flux, 1.0},
-		{"Slope", spectral.Slope, -0.02},
-		{"Decrease", spectral.Decrease, 0.4},
-		{"Rolloff", spectral.Rolloff, 8000.0},
-	}
-	for _, c := range checks {
-		if math.Abs(c.got-c.want) > spectralTestEpsilon {
-			t.Errorf("%s: got %v, want %v", c.name, c.got, c.want)
-		}
-	}
+	assertSpectralMetricsApprox(t, spectral, spectralMetricsFromValues(10.0, 20.0, 3000.0, 500.0, 2.0, 4.0, 0.7, 0.3, 5.0, 1.0, -0.02, 0.4, 8000.0))
 }
 
 func TestSpectralAccumulator_ZeroFrameCount(t *testing.T) {
@@ -192,65 +115,12 @@ func TestSpectralAccumulator_MixedFoundAndUnfound(t *testing.T) {
 
 func TestSpectralAccumulator_AveragesAllFields(t *testing.T) {
 	var acc SpectralAccumulator
-	acc.Add(SpectralMetrics{
-		Mean:     2.0,
-		Variance: 4.0,
-		Centroid: 1000.0,
-		Spread:   200.0,
-		Skewness: 1.0,
-		Kurtosis: 2.0,
-		Entropy:  0.2,
-		Flatness: 0.4,
-		Crest:    6.0,
-		Flux:     0.02,
-		Slope:    -0.10,
-		Decrease: 0.06,
-		Rolloff:  5000.0,
-		Found:    true,
-	})
-	acc.Add(SpectralMetrics{
-		Mean:     6.0,
-		Variance: 12.0,
-		Centroid: 3000.0,
-		Spread:   600.0,
-		Skewness: 3.0,
-		Kurtosis: 6.0,
-		Entropy:  0.6,
-		Flatness: 0.8,
-		Crest:    10.0,
-		Flux:     0.06,
-		Slope:    -0.30,
-		Decrease: 0.18,
-		Rolloff:  9000.0,
-		Found:    true,
-	})
+	acc.Add(spectralMetricsFromValues(2.0, 4.0, 1000.0, 200.0, 1.0, 2.0, 0.2, 0.4, 6.0, 0.02, -0.10, 0.06, 5000.0))
+	acc.Add(spectralMetricsFromValues(6.0, 12.0, 3000.0, 600.0, 3.0, 6.0, 0.6, 0.8, 10.0, 0.06, -0.30, 0.18, 9000.0))
 
 	result := acc.Average()
 
-	checks := []struct {
-		name string
-		got  float64
-		want float64
-	}{
-		{"Mean", result.Mean, 4.0},
-		{"Variance", result.Variance, 8.0},
-		{"Centroid", result.Centroid, 2000.0},
-		{"Spread", result.Spread, 400.0},
-		{"Skewness", result.Skewness, 2.0},
-		{"Kurtosis", result.Kurtosis, 4.0},
-		{"Entropy", result.Entropy, 0.4},
-		{"Flatness", result.Flatness, 0.6},
-		{"Crest", result.Crest, 8.0},
-		{"Flux", result.Flux, 0.04},
-		{"Slope", result.Slope, -0.20},
-		{"Decrease", result.Decrease, 0.12},
-		{"Rolloff", result.Rolloff, 7000.0},
-	}
-	for _, c := range checks {
-		if math.Abs(c.got-c.want) > spectralTestEpsilon {
-			t.Errorf("%s: got %v, want %v", c.name, c.got, c.want)
-		}
-	}
+	assertSpectralMetricsApprox(t, result, spectralMetricsFromValues(4.0, 8.0, 2000.0, 400.0, 2.0, 4.0, 0.4, 0.6, 8.0, 0.04, -0.20, 0.12, 7000.0))
 }
 
 func TestBaseMetadataAccumulators_UsesSingleSpectralAccumulator(t *testing.T) {
@@ -499,40 +369,10 @@ func assertNoStaleSpectralPrimitiveFields[T any](t *testing.T) {
 func TestIntervalAccumulatorFinalize_WritesAveragedSpectralMetrics(t *testing.T) {
 	acc := &intervalAccumulator{}
 	acc.add(intervalFrameMetrics{
-		Spectral: SpectralMetrics{
-			Mean:     2.0,
-			Variance: 4.0,
-			Centroid: 1000.0,
-			Spread:   200.0,
-			Skewness: 1.0,
-			Kurtosis: 2.0,
-			Entropy:  0.2,
-			Flatness: 0.4,
-			Crest:    6.0,
-			Flux:     0.02,
-			Slope:    -0.10,
-			Decrease: 0.06,
-			Rolloff:  5000.0,
-			Found:    true,
-		},
+		Spectral: spectralMetricsFromValues(2.0, 4.0, 1000.0, 200.0, 1.0, 2.0, 0.2, 0.4, 6.0, 0.02, -0.10, 0.06, 5000.0),
 	})
 	acc.add(intervalFrameMetrics{
-		Spectral: SpectralMetrics{
-			Mean:     6.0,
-			Variance: 12.0,
-			Centroid: 3000.0,
-			Spread:   600.0,
-			Skewness: 3.0,
-			Kurtosis: 6.0,
-			Entropy:  0.6,
-			Flatness: 0.8,
-			Crest:    10.0,
-			Flux:     0.06,
-			Slope:    -0.30,
-			Decrease: 0.18,
-			Rolloff:  9000.0,
-			Found:    true,
-		},
+		Spectral: spectralMetricsFromValues(6.0, 12.0, 3000.0, 600.0, 3.0, 6.0, 0.6, 0.8, 10.0, 0.06, -0.30, 0.18, 9000.0),
 	})
 
 	result := acc.finalize(time.Second)
@@ -540,28 +380,5 @@ func TestIntervalAccumulatorFinalize_WritesAveragedSpectralMetrics(t *testing.T)
 	if !result.Spectral.Found {
 		t.Fatal("expected averaged interval spectral metrics to preserve Found")
 	}
-	checks := []struct {
-		name string
-		got  float64
-		want float64
-	}{
-		{"Mean", result.Spectral.Mean, 4.0},
-		{"Variance", result.Spectral.Variance, 8.0},
-		{"Centroid", result.Spectral.Centroid, 2000.0},
-		{"Spread", result.Spectral.Spread, 400.0},
-		{"Skewness", result.Spectral.Skewness, 2.0},
-		{"Kurtosis", result.Spectral.Kurtosis, 4.0},
-		{"Entropy", result.Spectral.Entropy, 0.4},
-		{"Flatness", result.Spectral.Flatness, 0.6},
-		{"Crest", result.Spectral.Crest, 8.0},
-		{"Flux", result.Spectral.Flux, 0.04},
-		{"Slope", result.Spectral.Slope, -0.20},
-		{"Decrease", result.Spectral.Decrease, 0.12},
-		{"Rolloff", result.Spectral.Rolloff, 7000.0},
-	}
-	for _, c := range checks {
-		if math.Abs(c.got-c.want) > spectralTestEpsilon {
-			t.Errorf("%s: got %v, want %v", c.name, c.got, c.want)
-		}
-	}
+	assertSpectralMetricsApprox(t, result.Spectral, spectralMetricsFromValues(4.0, 8.0, 2000.0, 400.0, 2.0, 4.0, 0.4, 0.6, 8.0, 0.04, -0.20, 0.12, 7000.0))
 }
