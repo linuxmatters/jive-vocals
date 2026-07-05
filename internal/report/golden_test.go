@@ -38,9 +38,8 @@ var goldenTimings = Timings{
 // regions with elected room-tone + speech, interval summary, filter chain, peak
 // limiter, loudnorm). The record is built IN-MEMORY via the production assembly
 // path (NewRunRecord / NewAnalysisRunRecord) so the golden is complete and
-// CI-runnable WITHOUT the gitignored corpus, and is NOT subject to the lossy
-// .json round-trip (see TestRoundTripFromEmittedJSON). Any rendered drift fails
-// this test; regenerate with -update after review.
+// CI-runnable WITHOUT the gitignored corpus. Any rendered drift fails this test;
+// regenerate with -update after review.
 func TestGoldenFullReport(t *testing.T) {
 	got := RenderMarkdown(fullProcessingRecord(), goldenTimings)
 
@@ -83,29 +82,13 @@ func TestGoldenNoInterpretationTokens(t *testing.T) {
 	}
 }
 
-// TestRoundTripFromEmittedJSON proves the emitted run-record .json round-trips into
-// a *processor.RunRecord that RenderMarkdown turns into a valid, non-empty report
-// (criterion 7: .json -> .md is an adapter, no .json re-read inside the renderer).
-//
-// FINDING (empirical, documented for the owner): the round-trip is PARTIAL. The
-// RunRecord uses custom marshalling - the regions `elected` profiles and the
-// `normalisation` block are unexported accessor-wrapper types (noiseProfileRecord /
-// speechProfileRecord / normalisationRecord) whose `src` field cannot be populated
-// by encoding/json on Unmarshal, and whose JSON shape applies unit conversions
-// (ns->seconds, loudnorm string->numeric) with no reversing UnmarshalJSON. So an
-// unmarshalled record renders EVERYTHING EXCEPT the elected-profile metric tables
-// and the Peak Limiter + Loudnorm sections. This test asserts what genuinely
-// survives and documents the degraded sections rather than forcing a lossy
-// UnmarshalJSON onto the record.
+// TestRoundTripFromEmittedJSON proves the emitted run-record JSON round-trips into
+// a *processor.RunRecord that RenderMarkdown turns into the same elected-profile
+// and normalisation sections as the live record path.
 func TestRoundTripFromEmittedJSON(t *testing.T) {
-	const fixture = "../../testdata/validation-runrecord/runs/verify17/LMP-83-mark-LUFS-16-processed.json"
-	if _, err := os.Stat(fixture); os.IsNotExist(err) {
-		t.Skipf("emitted .json fixture absent (gitignored corpus): %s", fixture)
-	}
-
-	data, err := os.ReadFile(fixture)
+	data, err := processor.MarshalRunRecord(fullProcessingRecord())
 	if err != nil {
-		t.Fatalf("reading fixture: %v", err)
+		t.Fatalf("marshalling emitted JSON: %v", err)
 	}
 
 	var rec processor.RunRecord
@@ -118,9 +101,6 @@ func TestRoundTripFromEmittedJSON(t *testing.T) {
 		t.Fatal("render-from-unmarshalled-json produced an empty report")
 	}
 
-	// Sections that DO survive the round-trip (exported record fields): header, the
-	// staged metric tables, noise floor, region headings + candidate summaries +
-	// per-stage samples, interval summary, and the full filter chain.
 	for _, want := range []string{
 		"# Audio Processing Report",
 		"## Loudness",
@@ -130,29 +110,25 @@ func TestRoundTripFromEmittedJSON(t *testing.T) {
 		"## Regions",
 		"### Room Tone",
 		"### Speech",
+		"**Elected profile**",
+		"Measured floor",
+		"Voicing density",
 		"**Candidates**",
 		"**Samples**",
 		"## Interval Summary",
 		"## Filter Chain",
 		"### Speech gate",
+		"## Peak Limiter",
+		"## Loudnorm",
+		"Measured output integrated (LUFS)",
+		"Normalisation type",
 	} {
 		if !strings.Contains(got, want) {
-			t.Errorf("round-trip report missing section that should survive: %q", want)
+			t.Errorf("round-trip report missing %q", want)
 		}
 	}
 
-	// DOCUMENTED degradation: the elected-profile metric tables and the
-	// normalisation block do NOT survive (unexported src wrappers, no UnmarshalJSON).
-	// Assert the known-degraded state so a future change to the record (e.g. adding
-	// an UnmarshalJSON) trips this test and the owner re-reads the finding above.
-	for _, degraded := range []string{
-		"**Elected profile**",
-		"## Peak Limiter",
-		"## Loudnorm",
-	} {
-		if strings.Contains(got, degraded) {
-			t.Errorf("round-trip now renders %q - the wrapper round-trip changed; "+
-				"update TestRoundTripFromEmittedJSON and the documented finding", degraded)
-		}
+	if count := strings.Count(got, "**Elected profile**"); count != 2 {
+		t.Errorf("round-trip elected profile count = %d, want 2\n%s", count, got)
 	}
 }

@@ -561,6 +561,55 @@ func TestRunRecord_LoudnormMeasuredNumeric(t *testing.T) {
 	}
 }
 
+func TestRunRecord_RoundTripRestoresReportWrappers(t *testing.T) {
+	rec := NewRunRecord(populatedProcessingResult())
+	_, raw := marshalRecordTree(t, rec)
+
+	var roundTrip RunRecord
+	if err := json.Unmarshal(raw, &roundTrip); err != nil {
+		t.Fatalf("unmarshal emitted run record: %v", err)
+	}
+
+	roomTone := roundTrip.Regions.RoomTone.ElectedProfile()
+	if roomTone == nil {
+		t.Fatal("round-trip room-tone elected profile = nil")
+	}
+	if roomTone.Duration != 10*time.Second {
+		t.Errorf("room-tone duration = %v, want 10s", roomTone.Duration)
+	}
+	if roomTone.Spectral.Centroid != rec.Regions.RoomTone.ElectedProfile().Spectral.Centroid {
+		t.Errorf("room-tone spectral centroid = %v, want %v", roomTone.Spectral.Centroid, rec.Regions.RoomTone.ElectedProfile().Spectral.Centroid)
+	}
+
+	speech := roundTrip.Regions.Speech.ElectedProfile()
+	if speech == nil {
+		t.Fatal("round-trip speech elected profile = nil")
+	}
+	if speech.Region.Duration != rec.Regions.Speech.ElectedProfile().Region.Duration {
+		t.Errorf("speech duration = %v, want %v", speech.Region.Duration, rec.Regions.Speech.ElectedProfile().Region.Duration)
+	}
+	if speech.VoicingDensity != rec.Regions.Speech.ElectedProfile().VoicingDensity {
+		t.Errorf("speech voicing density = %v, want %v", speech.VoicingDensity, rec.Regions.Speech.ElectedProfile().VoicingDensity)
+	}
+
+	norm := roundTrip.Normalisation.Result()
+	if norm == nil {
+		t.Fatal("round-trip normalisation result = nil")
+	}
+	if norm.RegionMeasurementTime != 1500*time.Millisecond {
+		t.Errorf("normalisation region measurement time = %v, want 1.5s", norm.RegionMeasurementTime)
+	}
+	if norm.LoudnormParsed == nil || !norm.LoudnormParsed.OutputI.OK || norm.LoudnormParsed.OutputI.Value != -16.0 {
+		t.Fatalf("round-trip loudnorm parsed output = %+v, want -16.0 OK", norm.LoudnormParsed)
+	}
+	if !norm.LoudnormParsed.TargetDeviation.OK || norm.LoudnormParsed.TargetDeviation.Value != 0 {
+		t.Errorf("target deviation = %+v, want 0 OK", norm.LoudnormParsed.TargetDeviation)
+	}
+	if norm.LoudnormStats == nil || norm.LoudnormStats.NormalizationType != "linear" {
+		t.Errorf("normalisation type = %+v, want linear", norm.LoudnormStats)
+	}
+}
+
 // TestLoudnormMeasuredNumeric_GracefulParseFailure asserts an unparseable loudnorm
 // string omits its field rather than crashing or fabricating a zero.
 func TestLoudnormMeasuredNumeric_GracefulParseFailure(t *testing.T) {
