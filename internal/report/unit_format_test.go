@@ -9,40 +9,28 @@ import "testing"
 func TestUnitMetricFormat(t *testing.T) {
 	cases := []struct {
 		name         string
-		key          string // a catalogued key whose Unit is the routed class
+		metric       metricDescriptor
 		wantFormat   metricFormat
 		wantDecimals int
 	}{
-		{"dBFS", "rms_level_dbfs", fmtDB, 2},
-		{"dBTP", "true_peak_dbtp", fmtPeakDB, 2},
-		{"LUFS", "momentary_lufs", fmtLUFS, 2},
-		{"Hz", "centroid_hz", fmtSpectral, 2},
-		{"unit-less", "flatness", fmtSpectral, 4},
+		{"dBFS", rmsLevelDBFSMetric, fmtDB, 2},
+		{"dBTP", truePeakDBTPMetric, fmtPeakDB, 2},
+		{"LUFS", momentaryLUFSMetric, fmtLUFS, 2},
+		{"Hz", spectralCentroidHzMetric, fmtSpectral, 2},
+		{"unit-less", flatnessMetric, fmtSpectral, 4},
+		{"count", intervalCountMetric, fmtRaw, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			format, decimals := unitMetricFormat(tc.key)
+			format, decimals := unitMetricFormat(tc.metric)
 			if format != tc.wantFormat {
-				t.Errorf("unitMetricFormat(%q) format = %d, want %d", tc.key, format, tc.wantFormat)
+				t.Errorf("unitMetricFormat(%q) format = %d, want %d", tc.metric.key, format, tc.wantFormat)
 			}
 			if decimals != tc.wantDecimals {
-				t.Errorf("unitMetricFormat(%q) decimals = %d, want %d", tc.key, decimals, tc.wantDecimals)
+				t.Errorf("unitMetricFormat(%q) decimals = %d, want %d", tc.metric.key, decimals, tc.wantDecimals)
 			}
 		})
 	}
-}
-
-// TestUnitMetricFormatUnroutedPanics pins the default-branch panic contract: a
-// catalogued key on an unrouted unit (here "count") must panic so it cannot reach
-// a silent mis-format. "interval_count" has Unit "count", which the switch does
-// not route (it is rendered as an integer via formatInt, not through this path).
-func TestUnitMetricFormatUnroutedPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("unitMetricFormat on an unrouted unit did not panic")
-		}
-	}()
-	unitMetricFormat("interval_count")
 }
 
 // TestUnitMetricFormatUncataloguedPanics pins the no-definition panic: a key with
@@ -53,7 +41,7 @@ func TestUnitMetricFormatUncataloguedPanics(t *testing.T) {
 			t.Fatal("unitMetricFormat on an uncatalogued key did not panic")
 		}
 	}()
-	unitMetricFormat("not_a_real_key")
+	unitMetricFormat(metricDescriptor{key: metricKey("not_a_real_key")})
 }
 
 // TestMetricLabelUncataloguedPanics pins the metricLabel no-definition panic: a
@@ -64,5 +52,5 @@ func TestMetricLabelUncataloguedPanics(t *testing.T) {
 			t.Fatal("metricLabel on an uncatalogued key did not panic")
 		}
 	}()
-	metricLabel("not_a_real_key")
+	metricLabel(metricDescriptor{key: metricKey("not_a_real_key")})
 }
