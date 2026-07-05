@@ -121,23 +121,62 @@ func renderScrollHint() string {
 
 // renderFileQueue renders the list of files with their status
 func renderFileQueue(m Model, prog progress.Model) string {
+	return renderFileQueueWithActiveEntries(m, prog, nil)
+}
+
+func renderFileQueueWithActiveEntries(m Model, prog progress.Model, activeEntries []string) string {
 	var b strings.Builder
 
 	for i := range m.Files {
+		if rendered := activeEntryAt(activeEntries, i); rendered != "" && fileActive(m.Files[i].Status) {
+			b.WriteString(rendered)
+			b.WriteString("\n")
+			continue
+		}
+
 		// Use the eased meter and progress positions for the active display;
 		// fall back to the raw values when no spring slot exists.
 		easedLevel, easedProgress, easedPeak := m.displayValues(i)
-		b.WriteString(renderFileEntry(&m.Files[i], prog, easedLevel, easedProgress, easedPeak, m.Width))
+		b.WriteString(renderFileEntryWithCache(&m.Files[i], m.fileEntryCache(i), prog, easedLevel, easedProgress, easedPeak, m.Width))
 		b.WriteString("\n")
 	}
 
 	return b.String()
 }
 
+func activeEntryAt(activeEntries []string, index int) string {
+	if index < 0 || index >= len(activeEntries) {
+		return ""
+	}
+	return activeEntries[index]
+}
+
+func (m Model) fileEntryCache(index int) *fileEntryCache {
+	if index < 0 || index >= len(m.fileEntryCaches) {
+		return nil
+	}
+	return &m.fileEntryCaches[index]
+}
+
+func renderFileEntryWithCache(file *FileProgress, cache *fileEntryCache, prog progress.Model, easedLevel, easedProgress, easedPeak float64, termWidth int) string {
+	if cache != nil &&
+		cache.valid &&
+		cache.status == file.Status &&
+		cache.termWidth == termWidth &&
+		stableFileEntryStatus(file.Status) {
+		return cache.rendered
+	}
+	return renderFileEntry(file, prog, easedLevel, easedProgress, easedPeak, termWidth)
+}
+
 // renderFileEntry renders a single file entry in the queue. termWidth gates the
 // side-by-side status boxes: they are dropped on narrow terminals so the Pass box
 // never wraps.
 func renderFileEntry(file *FileProgress, prog progress.Model, easedLevel, easedProgress, easedPeak float64, termWidth int) string {
+	return renderFileEntryWithPassBox(file, prog, easedLevel, easedProgress, easedPeak, termWidth, "")
+}
+
+func renderFileEntryWithPassBox(file *FileProgress, prog progress.Model, easedLevel, easedProgress, easedPeak float64, termWidth int, passBox string) string {
 	fileName := filepath.Base(file.InputPath)
 
 	switch file.Status {
@@ -148,7 +187,9 @@ func renderFileEntry(file *FileProgress, prog progress.Model, easedLevel, easedP
 		// active file with detailed progress, with the filter-chain status boxes
 		// joined to the right of the Pass box.
 		icon := lipgloss.NewStyle().Foreground(cli.ColorOrange).Render("∿")
-		passBox := renderFileDetails(file, prog, easedLevel, easedProgress, easedPeak)
+		if passBox == "" {
+			passBox = renderFileDetails(file, prog, easedLevel, easedProgress, easedPeak)
+		}
 		body := joinStatusBoxes(passBox, file, termWidth)
 		return fmt.Sprintf(" %s %s\n%s", icon, fileName, body)
 
@@ -666,12 +707,12 @@ func renderCompletionSummary(m Model) string {
 
 	for i := range m.Files {
 		if m.Files[i].Status == StatusError {
-			b.WriteString(renderFileEntry(&m.Files[i], m.progress, 0, 0, 0, m.Width))
+			b.WriteString(renderFileEntryWithCache(&m.Files[i], m.fileEntryCache(i), m.progress, 0, 0, 0, m.Width))
 			b.WriteString("\n")
 			continue
 		}
 		if m.Files[i].Status == StatusComplete {
-			b.WriteString(renderDoneBox(m.Files[i]))
+			b.WriteString(renderFileEntryWithCache(&m.Files[i], m.fileEntryCache(i), m.progress, 0, 0, 0, m.Width))
 			b.WriteString("\n")
 		}
 	}

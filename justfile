@@ -164,7 +164,6 @@ release VERSION:
 
 # Run linters
 lint: _check-submodule
-    @go vet ./...
     @gocyclo -top 20 -avg -ignore '_test\.go$' .
     @ineffassign ./...
     @golangci-lint run

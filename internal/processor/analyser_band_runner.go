@@ -5,7 +5,6 @@ import (
 	stdcontext "context"
 	"runtime"
 	"sync"
-	"sync/atomic"
 )
 
 // bandMeasureSem bounds the concurrent band decodes across ALL files and both
@@ -25,15 +24,16 @@ type bandProgressReporter func()
 
 // bandProgressTracker maps a stream of band-decode completions onto the
 // post-loop 0.95..1.0 progress span. completed counts the bands finished so far
-// (incremented atomically, so concurrent goroutines report safely) and total is
-// the band count across the whole post-loop phase (speech + noise). Each report()
-// call emits one ProgressUpdate. A nil callback or non-positive total makes
-// report() a no-op.
+// under mu, so concurrent band groups emit callback updates in completion-count
+// order. total is the band count across the whole post-loop phase (speech +
+// noise). Each report() call emits one ProgressUpdate. A nil callback or
+// non-positive total makes report() a no-op.
 type bandProgressTracker struct {
 	callback  ProgressCallback
 	duration  float64
 	total     int
-	completed atomic.Int64
+	mu        sync.Mutex
+	completed int
 }
 
 // newBandProgressTracker builds a tracker for the post-loop band phase. total is
@@ -48,11 +48,15 @@ func (t *bandProgressTracker) report() {
 	if t == nil || t.callback == nil || t.total <= 0 {
 		return
 	}
-	done := t.completed.Add(1)
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.completed++
 	t.callback(ProgressUpdate{ // #nosec G101 -- progress update, not a credential
 		Pass:     PassAnalysis,
 		PassName: "Analysing frequency bands",
-		Progress: bandPhaseProgress(int(done), t.total),
+		Progress: bandPhaseProgress(t.completed, t.total),
 		Duration: t.duration,
 	})
 }

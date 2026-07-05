@@ -51,10 +51,10 @@ func afftdnBandEdgesHz(index int) (lowHz, highHz float64) {
 }
 
 // measureNoiseBands measures the per-band RMS (dBFS) over the elected room-tone
-// region and writes them onto the NoiseProfile. It is a no-op when no
-// NoiseProfile was elected or the region is empty. Failures are non-fatal:
-// BandNoise stays nil and BandsMeasured stays false, so tuneNoiseReduction keeps
-// the white-noise afftdn path.
+// region and writes them onto the NoiseProfile. It is a no-op when pre-band data
+// cannot later select a custom afftdn profile. Failures are non-fatal: BandNoise
+// stays nil and BandsMeasured stays false, so tuneNoiseReduction keeps the
+// white-noise afftdn path.
 //
 // The 15 bands run as bounded goroutines (runBandMeasurements): each opens its
 // own audio.Reader and runs an independent filter graph, band-limiting the
@@ -63,13 +63,12 @@ func afftdnBandEdgesHz(index int) (lowHz, highHz float64) {
 // bit-identical to the former serial path. report (when non-nil) advances the
 // post-loop progress span.
 func measureNoiseBands(ctx context.Context, filename string, measurements *AudioMeasurements, report bandProgressReporter, log debugLogger) {
-	if measurements == nil || measurements.Regions.NoiseProfile == nil {
-		drainBandProgress(report, len(afftdnBandCentresHz))
-		return
-	}
-
-	profile := measurements.Regions.NoiseProfile
-	if profile.Duration <= 0 {
+	profile, eligible := noiseBandProfileEligibleForCustomAfftdn(measurements)
+	if !eligible {
+		if profile != nil {
+			profile.BandNoise = nil
+			profile.BandsMeasured = false
+		}
 		drainBandProgress(report, len(afftdnBandCentresHz))
 		return
 	}
@@ -116,4 +115,31 @@ func measureNoiseBands(ctx context.Context, filename string, measurements *Audio
 	profile.BandsMeasured = finite >= afftdnMinFiniteBands
 
 	log.Logf("Noise band RMS: %v dBFS, finite=%d/%d, measured=%v", bands, finite, len(bands), profile.BandsMeasured)
+}
+
+func noiseBandProfileEligibleForCustomAfftdn(measurements *AudioMeasurements) (*NoiseProfile, bool) {
+	if measurements == nil {
+		return nil, false
+	}
+
+	profile := measurements.Regions.NoiseProfile
+	if profile == nil {
+		return nil, false
+	}
+	if profile.Duration <= 0 {
+		return profile, false
+	}
+	if measurements.Noise.VoiceActivated {
+		return profile, false
+	}
+	if measurements.Noise.Floor == 0 {
+		return profile, false
+	}
+	if measurements.Regions.GateSeparationDB < afftdnCustomMinSeparationDB {
+		return profile, false
+	}
+	if profile.Spectral.Flatness < afftdnCustomMinFlatness {
+		return profile, false
+	}
+	return profile, true
 }

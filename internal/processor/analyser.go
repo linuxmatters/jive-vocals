@@ -5,6 +5,7 @@ import (
 	stdcontext "context"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
@@ -333,23 +334,32 @@ func AnalyseAudio(ctx stdcontext.Context, filename string, config *BaseFilterCon
 
 	// Post-loop band phase: the main decode loop is capped at BandPhaseProgressStart
 	// (0.95); the two band functions drive 0.95..1.0 by reporting each completed
-	// band decode through one shared tracker (atomic counter, monotonic, clamped to
-	// 1.0). The total is the combined speech + noise band budget, so a band function
-	// that early-returns still drains its share via drainBandProgress and the phase
-	// reaches 1.0. The functions run sequentially (speech then noise) but each fans
-	// its own bands across cores under the shared semaphore.
+	// band decode through one shared tracker (monotonic, clamped to 1.0, and
+	// serialised before the external callback). The total covers speech and noise
+	// bands, so a band function that early-returns still drains its share via
+	// drainBandProgress and the phase reaches 1.0. Speech and guarded noise groups
+	// run as siblings here, while each group still fans its own bands across cores
+	// under the shared semaphore.
 	bandTotal := len(speechBandPlan) + len(afftdnBandCentresHz)
 	tracker := newBandProgressTracker(progressCallback, measurements.Duration, bandTotal)
 
-	// Measure body/sibilant band RMS over the elected speech region for the
-	// de-esser engagement signal. Region-scoped decode (no asplit/multi-sink
-	// support in the analysis graph); non-fatal on failure.
-	measureSpeechBands(ctx, filename, measurements, tracker.report, config.logger)
-
-	// Measure the 15-band room-tone spectrum for the measured custom afftdn noise
-	// profile (nt=custom:bn=...). Region-scoped, non-fatal on failure (the
-	// white-noise afftdn path stands in when bands are unavailable).
-	measureNoiseBands(ctx, filename, measurements, tracker.report, config.logger)
+	var bandGroups sync.WaitGroup
+	bandGroups.Add(2)
+	go func() {
+		defer bandGroups.Done()
+		// Measure body/sibilant band RMS over the elected speech region for the
+		// de-esser engagement signal. Region-scoped decode (no asplit/multi-sink
+		// support in the analysis graph); non-fatal on failure.
+		measureSpeechBands(ctx, filename, measurements, tracker.report, config.logger)
+	}()
+	go func() {
+		defer bandGroups.Done()
+		// Measure the 15-band room-tone spectrum for the measured custom afftdn noise
+		// profile (nt=custom:bn=...). Region-scoped, non-fatal on failure (the
+		// white-noise afftdn path stands in when bands are unavailable).
+		measureNoiseBands(ctx, filename, measurements, tracker.report, config.logger)
+	}()
+	bandGroups.Wait()
 
 	assignInputMeasurementSuggestions(measurements)
 

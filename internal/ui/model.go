@@ -179,6 +179,22 @@ type FileProgress struct {
 	CompletionResult
 }
 
+// fileEntryCache holds a rendered, stable queue entry. Active entries are never
+// cached here because their meters, clocks, and side panels can change every tick.
+type fileEntryCache struct {
+	valid     bool
+	status    FileStatus
+	termWidth int
+	rendered  string
+}
+
+// activeFileEntryCache holds the previous rendered output for active entries.
+// Meter ticks compare full rendered strings so every visible field participates
+// in the no-op refresh check.
+type activeFileEntryCache struct {
+	rendered string
+}
+
 // statusBoxCache holds the memoised side-panel render keyed on the inputs the
 // render functions read. valid guards against a zero-value false positive (a
 // genuine key of {Summary{}, 0}). chain and analysis are the rendered box
@@ -218,6 +234,15 @@ type Model struct {
 	// Progress bar (owned by Update; rendered via ViewAs)
 	progress progress.Model
 
+	// fileEntryCaches stores rendered entries for queued, completed, and errored
+	// files. Update owns population and invalidation; View only reads cached strings.
+	fileEntryCaches []fileEntryCache
+
+	// activeFileEntryCaches stores the previous rendered active entries, keyed by
+	// file index. It is used only by Update to skip viewport writes on no-op meter
+	// ticks.
+	activeFileEntryCaches []activeFileEntryCache
+
 	// vp scrolls the file queue inside the alt-screen processing view, which has
 	// no native scrollback. The title + overall-progress header stays pinned
 	// above it; vp holds only the file list. Built on the first WindowSizeMsg
@@ -254,11 +279,13 @@ func NewModel(inputFiles []string) Model {
 	}
 
 	return Model{
-		Files:      files,
-		TotalFiles: len(inputFiles),
-		StartTime:  time.Now(),
-		progress:   newProgressModel(),
-		meters:     meters,
+		Files:                 files,
+		TotalFiles:            len(inputFiles),
+		StartTime:             time.Now(),
+		progress:              newProgressModel(),
+		fileEntryCaches:       make([]fileEntryCache, len(inputFiles)),
+		activeFileEntryCaches: make([]activeFileEntryCache, len(inputFiles)),
+		meters:                meters,
 		// Gentle under-damped spring: eases toward target without hard snapping.
 		spring: harmonica.NewSpring(harmonica.FPS(meterFPS), 6.0, 0.7),
 		// Snappier critically-damped spring for the bar fill: smooth motion that
@@ -342,6 +369,114 @@ func (m *Model) sizeViewport() {
 	m.vp.SetHeight(vpHeight)
 }
 
+func stableFileEntryStatus(status FileStatus) bool {
+	switch status {
+	case StatusQueued, StatusComplete, StatusError:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *Model) ensureFileEntryCaches() {
+	if len(m.fileEntryCaches) == len(m.Files) {
+		return
+	}
+	next := make([]fileEntryCache, len(m.Files))
+	copy(next, m.fileEntryCaches)
+	m.fileEntryCaches = next
+}
+
+func (m *Model) ensureActiveFileEntryCaches() {
+	if len(m.activeFileEntryCaches) == len(m.Files) {
+		return
+	}
+	next := make([]activeFileEntryCache, len(m.Files))
+	copy(next, m.activeFileEntryCaches)
+	m.activeFileEntryCaches = next
+}
+
+func (m *Model) invalidateFileEntryCache(index int) {
+	if index < 0 || index >= len(m.fileEntryCaches) {
+		return
+	}
+	m.fileEntryCaches[index] = fileEntryCache{}
+}
+
+func (m *Model) invalidateStableEntryCaches() {
+	m.ensureFileEntryCaches()
+	for i := range m.fileEntryCaches {
+		if stableFileEntryStatus(m.Files[i].Status) {
+			m.fileEntryCaches[i] = fileEntryCache{}
+		}
+	}
+}
+
+func (m *Model) refreshFileEntryCaches() bool {
+	m.ensureFileEntryCaches()
+	changed := false
+	for i := range m.Files {
+		if !stableFileEntryStatus(m.Files[i].Status) {
+			if m.fileEntryCaches[i].valid {
+				changed = true
+			}
+			m.fileEntryCaches[i] = fileEntryCache{}
+			continue
+		}
+		cache := &m.fileEntryCaches[i]
+		if cache.valid && cache.status == m.Files[i].Status && cache.termWidth == m.Width {
+			continue
+		}
+		changed = true
+		cache.valid = true
+		cache.status = m.Files[i].Status
+		cache.termWidth = m.Width
+		cache.rendered = renderFileEntry(&m.Files[i], m.progress, 0, 0, 0, m.Width)
+	}
+	return changed
+}
+
+func (m *Model) renderActiveEntriesForRefresh() []string {
+	activeEntries := make([]string, len(m.Files))
+	fitStatusBoxes := statusBoxesFit(m.Width)
+	for i := range m.Files {
+		if !fileActive(m.Files[i].Status) {
+			continue
+		}
+		easedLevel, easedProgress, easedPeak := m.displayValues(i)
+		passBox := renderFileDetails(&m.Files[i], m.progress, easedLevel, easedProgress, easedPeak)
+		if fitStatusBoxes {
+			refreshStatusBoxCache(&m.Files[i], lipgloss.Height(passBox))
+		}
+		activeEntries[i] = renderFileEntryWithPassBox(&m.Files[i], m.progress, easedLevel, easedProgress, easedPeak, m.Width, passBox)
+	}
+	return activeEntries
+}
+
+func (m *Model) activeFileEntriesChanged(activeEntries []string) bool {
+	m.ensureActiveFileEntryCaches()
+	if len(activeEntries) != len(m.activeFileEntryCaches) {
+		return true
+	}
+	for i, rendered := range activeEntries {
+		if rendered != m.activeFileEntryCaches[i].rendered {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) storeActiveFileEntries(activeEntries []string) {
+	m.ensureActiveFileEntryCaches()
+	for i := range m.activeFileEntryCaches {
+		rendered := ""
+		if i < len(activeEntries) {
+			rendered = activeEntries[i]
+		}
+		m.activeFileEntryCaches[i].rendered = rendered
+	}
+}
+
 // refreshViewportContent re-renders the file queue into the PERSISTENT viewport
 // so its content (and therefore its scrollable height) tracks the model. It must
 // run in Update, not View: View has a value receiver, so any SetContent there
@@ -353,29 +488,26 @@ func (m *Model) sizeViewport() {
 // branch never calls this, so it never yanks them back down). renderFileQueue
 // takes the model by value, hence *m.
 func (m *Model) refreshViewportContent() {
+	m.refreshViewportContentIfChanged(false)
+}
+
+func (m *Model) refreshViewportContentIfChanged(skipUnchanged bool) bool {
 	if !m.vpReady {
-		return
+		return false
 	}
-	m.refreshStatusBoxCaches()
+	activeEntries := m.renderActiveEntriesForRefresh()
+	stableChanged := m.refreshFileEntryCaches()
+	activeChanged := m.activeFileEntriesChanged(activeEntries)
+	if skipUnchanged && !stableChanged && !activeChanged {
+		return false
+	}
 	atBottom := m.vp.AtBottom()
-	m.vp.SetContent(renderFileQueue(*m, m.progress))
+	m.vp.SetContent(renderFileQueueWithActiveEntries(*m, m.progress, activeEntries))
+	m.storeActiveFileEntries(activeEntries)
 	if atBottom {
 		m.vp.GotoBottom()
 	}
-}
-
-func (m *Model) refreshStatusBoxCaches() {
-	if !statusBoxesFit(m.Width) {
-		return
-	}
-	for i := range m.Files {
-		if !fileActive(m.Files[i].Status) {
-			continue
-		}
-		easedLevel, easedProgress, easedPeak := m.displayValues(i)
-		passBox := renderFileDetails(&m.Files[i], m.progress, easedLevel, easedProgress, easedPeak)
-		refreshStatusBoxCache(&m.Files[i], lipgloss.Height(passBox))
-	}
+	return true
 }
 
 func (m Model) displayValues(i int) (level, progressValue, peak float64) {
@@ -398,6 +530,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// content so the scrollable height is correct from the first frame.
 		if _, ok := msg.(tea.WindowSizeMsg); ok {
 			m.sizeViewport()
+			m.invalidateStableEntryCaches()
 			m.refreshViewportContent()
 		}
 		// Scroll keys (PgUp/PgDn/arrows) are KeyPressMsg values that handleCommonMsg
@@ -424,6 +557,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.Files) {
 			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex] = updateFileProgress(m.Files[msg.FileIndex], msg)
+			m.invalidateFileEntryCache(msg.FileIndex)
 		}
 		m.refreshViewportContent()
 		return m, nil
@@ -433,6 +567,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Deliberate in-place write into the aliased Files backing array; safe because Bubbletea drives Update/View serially.
 			m.Files[msg.FileIndex].Status = StatusAnalysing
 			m.Files[msg.FileIndex].StartTime = time.Now()
+			m.invalidateFileEntryCache(msg.FileIndex)
 		}
 		m.refreshViewportContent()
 		return m, nil
@@ -449,6 +584,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the Pass-box height, so this clear plus the height check covers every
 			// input the panels read.
 			m.Files[msg.FileIndex].statusBoxCache.valid = false
+			m.invalidateFileEntryCache(msg.FileIndex)
 		}
 		m.refreshViewportContent()
 		return m, nil
@@ -465,6 +601,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.CompletedFiles++
 			}
+			m.invalidateFileEntryCache(msg.FileIndex)
 		}
 		m.refreshViewportContent()
 		return m, nil
@@ -494,10 +631,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.meters[i].progPos, m.meters[i].progVel = m.progressSpring.Update(
 				m.meters[i].progPos, m.meters[i].progVel, m.Files[i].Progress)
 		}
-		// The meters change every tick, so the eased display in the viewport must
-		// re-render every tick too, else the live level/progress freezes once the
-		// content is loaded.
-		m.refreshViewportContent()
+		// Render the full active entries, then skip the viewport write when the
+		// rendered output is byte-for-byte unchanged from the previous tick.
+		m.refreshViewportContentIfChanged(true)
 		if !m.anyActive() {
 			return m, nil
 		}

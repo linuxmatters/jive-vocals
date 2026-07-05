@@ -29,7 +29,6 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - run: go vet ./...
       - name: Check cyclomatic complexity
         run: |
           go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
@@ -67,6 +66,14 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Get ffmpeg-statigo submodule SHA
+        id: ffmpeg-statigo
+        run: echo "sha=$(git -C third_party/ffmpeg-statigo rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Cache ffmpeg-statigo libraries
+        uses: actions/cache@v5
+        with:
+          path: third_party/ffmpeg-statigo/lib
+          key: ffmpeg-statigo-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg-statigo.outputs.sha }}
       - name: Download ffmpeg-statigo libraries
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -108,6 +115,14 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Get ffmpeg-statigo submodule SHA
+        id: ffmpeg-statigo
+        run: echo "sha=$(git -C third_party/ffmpeg-statigo rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Cache ffmpeg-statigo libraries
+        uses: actions/cache@v5
+        with:
+          path: third_party/ffmpeg-statigo/lib
+          key: ffmpeg-statigo-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.ffmpeg-statigo.outputs.sha }}
       - name: Download ffmpeg-statigo libraries
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -207,6 +222,14 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Get ffmpeg-statigo submodule SHA
+        id: ffmpeg-statigo
+        run: echo "sha=$(git -C third_party/ffmpeg-statigo rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Cache ffmpeg-statigo libraries
+        uses: actions/cache@v5
+        with:
+          path: third_party/ffmpeg-statigo/lib
+          key: ffmpeg-statigo-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.ffmpeg-statigo.outputs.sha }}
       - name: Download ffmpeg-statigo libraries
         env:
           GITHUB_TOKEN: ${{ github.token }}

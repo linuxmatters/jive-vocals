@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestBandPhaseProgress(t *testing.T) {
@@ -83,6 +84,56 @@ func TestBandProgressTrackerEmitsMappedUpdates(t *testing.T) {
 	}
 }
 
+func TestBandProgressTrackerSerialisesConcurrentReports(t *testing.T) {
+	const total = 64
+	var (
+		mu         sync.Mutex
+		got        []ProgressUpdate
+		inCallback atomic.Int64
+	)
+	tracker := newBandProgressTracker(func(u ProgressUpdate) {
+		if !inCallback.CompareAndSwap(0, 1) {
+			t.Error("callback ran while another callback was active")
+		}
+		time.Sleep(100 * time.Microsecond)
+		mu.Lock()
+		got = append(got, u)
+		mu.Unlock()
+		inCallback.Store(0)
+	}, 12.5, total)
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for range total {
+		wg.Go(func() {
+			<-start
+			tracker.report()
+		})
+	}
+	close(start)
+	wg.Wait()
+
+	if len(got) != total {
+		t.Fatalf("got %d updates, want %d", len(got), total)
+	}
+	prev := BandPhaseProgressStart
+	for i, update := range got {
+		if update.Pass != PassAnalysis {
+			t.Fatalf("update %d Pass = %v, want PassAnalysis", i, update.Pass)
+		}
+		if update.PassName != "Analysing frequency bands" {
+			t.Fatalf("update %d PassName = %q, want %q", i, update.PassName, "Analysing frequency bands")
+		}
+		if update.Progress < prev {
+			t.Fatalf("update %d progress = %v, fell below previous %v", i, update.Progress, prev)
+		}
+		prev = update.Progress
+	}
+	if got[total-1].Progress != 1.0 {
+		t.Fatalf("final update = %v, want 1.0", got[total-1].Progress)
+	}
+}
+
 func TestBandProgressTrackerNilSafe(t *testing.T) {
 	// nil tracker, nil callback, and zero total must all no-op without panicking.
 	var nilTracker *bandProgressTracker
@@ -111,13 +162,13 @@ func TestRunBandMeasurementsDeterministicSlots(t *testing.T) {
 
 func TestRunBandMeasurementsReportsEveryBand(t *testing.T) {
 	const count = 17
-	var reported int64
+	var reported atomic.Int64
 	runBandMeasurements(context.Background(), count, func() {
-		atomic.AddInt64(&reported, 1)
+		reported.Add(1)
 	}, func(int) {})
 
-	if reported != count {
-		t.Fatalf("reported = %d, want %d", reported, count)
+	if reported.Load() != count {
+		t.Fatalf("reported = %d, want %d", reported.Load(), count)
 	}
 }
 
@@ -128,18 +179,18 @@ func TestRunBandMeasurementsCancelledStopsCleanly(t *testing.T) {
 	cancel()
 
 	const count = 17
-	var measured, reported int64
+	var measured, reported atomic.Int64
 	runBandMeasurements(ctx, count, func() {
-		atomic.AddInt64(&reported, 1)
+		reported.Add(1)
 	}, func(int) {
-		atomic.AddInt64(&measured, 1)
+		measured.Add(1)
 	})
 
-	if measured != 0 {
-		t.Fatalf("measure ran %d times under a cancelled ctx, want 0", measured)
+	if measured.Load() != 0 {
+		t.Fatalf("measure ran %d times under a cancelled ctx, want 0", measured.Load())
 	}
-	if reported != count {
-		t.Fatalf("reported = %d, want %d (every band must still drain progress)", reported, count)
+	if reported.Load() != count {
+		t.Fatalf("reported = %d, want %d (every band must still drain progress)", reported.Load(), count)
 	}
 }
 
@@ -184,11 +235,46 @@ func TestRunBandMeasurementsBoundedConcurrency(t *testing.T) {
 }
 
 func TestDrainBandProgress(t *testing.T) {
-	var n int64
-	drainBandProgress(func() { atomic.AddInt64(&n, 1) }, 5)
-	if n != 5 {
-		t.Fatalf("drainBandProgress fired %d times, want 5", n)
+	var n atomic.Int64
+	drainBandProgress(func() { n.Add(1) }, 5)
+	if n.Load() != 5 {
+		t.Fatalf("drainBandProgress fired %d times, want 5", n.Load())
 	}
 	// nil reporter is a no-op and must not panic.
 	drainBandProgress(nil, 5)
+}
+
+func TestSiblingBandGroupsCompleteProgress(t *testing.T) {
+	total := len(speechBandPlan) + len(afftdnBandCentresHz)
+	var (
+		mu            sync.Mutex
+		progress      []float64
+		noiseMeasured atomic.Int64
+	)
+	tracker := newBandProgressTracker(func(u ProgressUpdate) {
+		mu.Lock()
+		progress = append(progress, u.Progress)
+		mu.Unlock()
+	}, 9.0, total)
+
+	var groups sync.WaitGroup
+	groups.Go(func() {
+		drainBandProgress(tracker.report, len(speechBandPlan))
+	})
+	groups.Go(func() {
+		runBandMeasurements(context.Background(), len(afftdnBandCentresHz), tracker.report, func(int) {
+			noiseMeasured.Add(1)
+		})
+	})
+	groups.Wait()
+
+	if int(noiseMeasured.Load()) != len(afftdnBandCentresHz) {
+		t.Fatalf("noiseMeasured = %d, want %d", noiseMeasured.Load(), len(afftdnBandCentresHz))
+	}
+	if len(progress) != total {
+		t.Fatalf("got %d progress updates, want %d", len(progress), total)
+	}
+	if progress[len(progress)-1] != 1.0 {
+		t.Fatalf("final progress = %v, want 1.0", progress[len(progress)-1])
+	}
 }
