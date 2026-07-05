@@ -586,9 +586,16 @@ func applyNormalisationWithDeps(
 	log debugLogger,
 	deps loudnormDeps,
 ) (*NormalisationResult, error) {
+	if config == nil {
+		return nil, fmt.Errorf("normalisation config is nil")
+	}
+
 	loudnorm := config.Loudnorm
 	if !loudnorm.Enabled {
 		return &NormalisationResult{Skipped: true}, nil
+	}
+	if outputMeasurements == nil {
+		return nil, fmt.Errorf("normalisation output measurements are nil")
 	}
 
 	progress := normProgressEmitter{callback: progressCallback, duration: normaliseDuration(inputMeasurements)}
@@ -607,6 +614,9 @@ func applyNormalisationWithDeps(
 	measurement, err := measureWithLoudnorm(ctx, inputPath, config, limiter.pass3Prefix, progressCallback, deps)
 	if err != nil {
 		return nil, fmt.Errorf("loudnorm measurement pass failed: %w", err)
+	}
+	if measurement == nil {
+		return nil, fmt.Errorf("loudnorm measurement pass returned nil measurements")
 	}
 
 	// Validate measurements are usable
@@ -930,6 +940,9 @@ func finalizeLoudnormOutputMeasurements(
 ) (*OutputMeasurements, time.Duration) {
 	finalMeasurements := finalizeOutputMeasurements(acc)
 	var regionMeasurementTime time.Duration
+	if finalMeasurements == nil {
+		return nil, regionMeasurementTime
+	}
 
 	if inputMeasurements == nil {
 		return finalMeasurements, regionMeasurementTime

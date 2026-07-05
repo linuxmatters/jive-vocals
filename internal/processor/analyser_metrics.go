@@ -973,6 +973,9 @@ func extractOutputFrameMetadata(metadata *ffmpeg.AVDictionary, acc *outputMetada
 // finalizeOutputMeasurements converts accumulated values to OutputMeasurements struct.
 // Returns nil if no measurements were captured.
 func finalizeOutputMeasurements(acc *outputMetadataAccumulators) *OutputMeasurements {
+	if acc == nil {
+		return nil
+	}
 	if !acc.ebur128Found && !acc.astatsFound && !acc.spectral.Found() {
 		return nil // No measurements captured
 	}

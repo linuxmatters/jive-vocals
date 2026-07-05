@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/compat"
+	"github.com/charmbracelet/colorprofile"
 )
 
 // Palette is the single source of colours for both the cli and ui packages.
@@ -92,24 +95,33 @@ var renderTitleOnce = sync.OnceValue(func() string {
 // and the processing-TUI header so both render the wordmark identically.
 func RenderTitle() string { return renderTitleOnce() }
 
+func styledWriter(w io.Writer) io.Writer {
+	return colorprofile.NewWriter(w, os.Environ())
+}
+
 // PrintVersion prints version information
 func PrintVersion(version string) {
-	lipgloss.Println(RenderTitle())
-	lipgloss.Printf("%s %s\n", keyStyle.Render("Version:"), valueStyle.Render(version))
-	lipgloss.Println()
+	printVersion(os.Stdout, version)
+}
+
+func printVersion(w io.Writer, version string) {
+	out := styledWriter(w)
+	fmt.Fprintln(out, RenderTitle())
+	fmt.Fprintf(out, "%s %s\n", keyStyle.Render("Version:"), valueStyle.Render(version))
+	fmt.Fprintln(out)
 }
 
 // printLabelled writes a styled label followed by message to stderr.
-func printLabelled(style lipgloss.Style, label, message string) {
-	lipgloss.Fprintf(os.Stderr, "%s %s\n", style.Render(label), message)
+func printLabelled(w io.Writer, style lipgloss.Style, label, message string) {
+	fmt.Fprintf(styledWriter(w), "%s %s\n", style.Render(label), message)
 }
 
 // PrintError prints an error message
 func PrintError(message string) {
-	printLabelled(errorStyle, "Error:", message)
+	printLabelled(os.Stderr, errorStyle, "Error:", message)
 }
 
 // PrintWarning prints a warning message
 func PrintWarning(message string) {
-	printLabelled(warningStyle, "Warning:", message)
+	printLabelled(os.Stderr, warningStyle, "Warning:", message)
 }

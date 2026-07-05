@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"io"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -59,6 +61,59 @@ func TestStyledOutputStripsColorButKeepsTextWhenNoTTY(t *testing.T) {
 	}
 	if !strings.Contains(out, "Error:") {
 		t.Errorf("NoTTY profile dropped text: %q", out)
+	}
+}
+
+func captureFileOutput(t *testing.T, file **os.File, fn func()) string {
+	t.Helper()
+
+	old := *file
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	*file = w
+	defer func() {
+		*file = old
+	}()
+
+	fn()
+	if err := w.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("close reader: %v", err)
+	}
+	return string(out)
+}
+
+func TestPrintHelpersUseNoTTYWriterPolicy(t *testing.T) {
+	stdout := captureFileOutput(t, &os.Stdout, func() {
+		PrintVersion("1.2.3")
+	})
+	stderr := captureFileOutput(t, &os.Stderr, func() {
+		PrintError("bad input")
+		PrintWarning("check levels")
+	})
+	out := stdout + stderr
+
+	if strings.Contains(out, "\x1b[") {
+		t.Fatalf("no-TTY print output left escape sequences: %q", out)
+	}
+	for _, want := range []string{
+		"Jive Vocals",
+		"Version:",
+		"1.2.3",
+		"Error: bad input",
+		"Warning: check levels",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("print output missing %q:\n%s", want, out)
+		}
 	}
 }
 

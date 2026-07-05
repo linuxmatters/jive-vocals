@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
 )
@@ -254,6 +255,32 @@ func TestGetFloatMetadata_UnparseableValueReportsNotFound(t *testing.T) {
 
 	if value, ok := getFloatMetadata(dict, metaKeyDynamicRange); ok {
 		t.Errorf("unparseable value: got (%v, true), want (_, false)", value)
+	}
+}
+
+func TestCStringNoCopyStopsAtNUL(t *testing.T) {
+	raw := []byte{'-', '2', '3', '.', '5', 0, '9', '9'}
+
+	got := cStringNoCopy(unsafe.Pointer(&raw[0]))
+
+	if got != "-23.5" {
+		t.Fatalf("cStringNoCopy() = %q, want %q", got, "-23.5")
+	}
+}
+
+func TestCStringNoCopyCapsScan(t *testing.T) {
+	raw := make([]byte, 300)
+	for i := range raw {
+		raw[i] = '7'
+	}
+
+	got := cStringNoCopy(unsafe.Pointer(&raw[0]))
+
+	if len(got) != 256 {
+		t.Fatalf("cStringNoCopy() length = %d, want 256", len(got))
+	}
+	if strings.Trim(got, "7") != "" {
+		t.Fatalf("cStringNoCopy() = %q, want only 7 bytes", got)
 	}
 }
 

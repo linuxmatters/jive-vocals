@@ -3,13 +3,11 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/harmonica"
 	"github.com/linuxmatters/jive-vocals/internal/cli"
 	"github.com/linuxmatters/jive-vocals/internal/processor"
@@ -332,196 +330,6 @@ func (m Model) Init() tea.Cmd {
 	return meterTick()
 }
 
-// processingFooterHeight is the row count View() reserves below the viewport for
-// the scroll-hint footer. It is ALWAYS 1, even when the queue fits and the hint
-// is blank: reserving the row unconditionally keeps the viewport height (and so
-// the file boxes) from reflowing when the hint toggles on overflow.
-const processingFooterHeight = 1
-
-// scrollbarWidth is the column reserved at the right edge of the viewport for the
-// vertical scrollbar strip. The viewport is sized to m.Width - scrollbarWidth so
-// the strip joins beside it without pushing content off-screen; the column is
-// reserved unconditionally (a blank strip when the queue fits) so the file boxes
-// never reflow when the scrollbar toggles on overflow.
-const scrollbarWidth = 1
-
-// sizeViewport (re)builds and sizes the file-queue viewport from the current
-// terminal dimensions. The viewport height is the terminal height minus the
-// rendered header height (title + overall box) and the footer reservation,
-// floored at 1 so a tiny terminal still yields a usable viewport. The header
-// height is measured from the rendered header, not guessed, so it tracks any
-// future header change automatically.
-func (m *Model) sizeViewport() {
-	if m.Width <= 0 || m.Height <= 0 {
-		return
-	}
-	headerHeight := lipgloss.Height(renderProcessingHeader(*m))
-	vpHeight := max(m.Height-headerHeight-processingFooterHeight, 1)
-	// Reserve one column for the scrollbar strip, floored at 1 so a tiny terminal
-	// still yields a usable viewport.
-	vpWidth := max(m.Width-scrollbarWidth, 1)
-	if !m.vpReady {
-		m.vp = viewport.New(viewport.WithWidth(vpWidth), viewport.WithHeight(vpHeight))
-		m.vpReady = true
-		return
-	}
-	m.vp.SetWidth(vpWidth)
-	m.vp.SetHeight(vpHeight)
-}
-
-func stableFileEntryStatus(status FileStatus) bool {
-	switch status {
-	case StatusQueued, StatusComplete, StatusError:
-		return true
-	default:
-		return false
-	}
-}
-
-func (m *Model) ensureFileEntryCaches() {
-	if len(m.fileEntryCaches) == len(m.Files) {
-		return
-	}
-	next := make([]fileEntryCache, len(m.Files))
-	copy(next, m.fileEntryCaches)
-	m.fileEntryCaches = next
-}
-
-func (m *Model) ensureActiveFileEntryCaches() {
-	if len(m.activeFileEntryCaches) == len(m.Files) {
-		return
-	}
-	next := make([]activeFileEntryCache, len(m.Files))
-	copy(next, m.activeFileEntryCaches)
-	m.activeFileEntryCaches = next
-}
-
-func (m *Model) invalidateFileEntryCache(index int) {
-	if index < 0 || index >= len(m.fileEntryCaches) {
-		return
-	}
-	m.fileEntryCaches[index] = fileEntryCache{}
-}
-
-func (m *Model) invalidateStableEntryCaches() {
-	m.ensureFileEntryCaches()
-	for i := range m.fileEntryCaches {
-		if stableFileEntryStatus(m.Files[i].Status) {
-			m.fileEntryCaches[i] = fileEntryCache{}
-		}
-	}
-}
-
-func (m *Model) refreshFileEntryCaches() bool {
-	m.ensureFileEntryCaches()
-	changed := false
-	for i := range m.Files {
-		if !stableFileEntryStatus(m.Files[i].Status) {
-			if m.fileEntryCaches[i].valid {
-				changed = true
-			}
-			m.fileEntryCaches[i] = fileEntryCache{}
-			continue
-		}
-		cache := &m.fileEntryCaches[i]
-		if cache.valid && cache.status == m.Files[i].Status && cache.termWidth == m.Width {
-			continue
-		}
-		changed = true
-		cache.valid = true
-		cache.status = m.Files[i].Status
-		cache.termWidth = m.Width
-		cache.rendered = renderFileEntry(&m.Files[i], m.progress, 0, 0, 0, m.Width)
-	}
-	return changed
-}
-
-func (m *Model) renderActiveEntriesForRefresh() []string {
-	activeEntries := make([]string, len(m.Files))
-	fitStatusBoxes := statusBoxesFit(m.Width)
-	for i := range m.Files {
-		if !fileActive(m.Files[i].Status) {
-			continue
-		}
-		easedLevel, easedProgress, easedPeak := m.displayValues(i)
-		passBox := renderFileDetails(&m.Files[i], m.progress, easedLevel, easedProgress, easedPeak)
-		if fitStatusBoxes {
-			refreshStatusBoxCache(&m.Files[i], lipgloss.Height(passBox))
-		}
-		activeEntries[i] = renderFileEntryWithPassBox(&m.Files[i], m.progress, easedLevel, easedProgress, easedPeak, m.Width, passBox)
-	}
-	return activeEntries
-}
-
-func (m *Model) activeFileEntriesChanged(activeEntries []string) bool {
-	m.ensureActiveFileEntryCaches()
-	if len(activeEntries) != len(m.activeFileEntryCaches) {
-		return true
-	}
-	for i, rendered := range activeEntries {
-		if rendered != m.activeFileEntryCaches[i].rendered {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *Model) storeActiveFileEntries(activeEntries []string) {
-	m.ensureActiveFileEntryCaches()
-	for i := range m.activeFileEntryCaches {
-		rendered := ""
-		if i < len(activeEntries) {
-			rendered = activeEntries[i]
-		}
-		m.activeFileEntryCaches[i].rendered = rendered
-	}
-}
-
-// refreshViewportContent re-renders the file queue into the PERSISTENT viewport
-// so its content (and therefore its scrollable height) tracks the model. It must
-// run in Update, not View: View has a value receiver, so any SetContent there
-// mutates a throwaway copy and the real viewport stays empty and unscrollable.
-//
-// Follow-the-active-files: if the user has not scrolled up (still at the bottom),
-// re-pin to the bottom after setting content so in-progress entries stay visible
-// as the list grows. A user who scrolled up keeps their offset (the wheel/key
-// branch never calls this, so it never yanks them back down). renderFileQueue
-// takes the model by value, hence *m.
-func (m *Model) refreshViewportContent() {
-	m.refreshViewportContentIfChanged(false)
-}
-
-func (m *Model) refreshViewportContentIfChanged(skipUnchanged bool) bool {
-	if !m.vpReady {
-		return false
-	}
-	activeEntries := m.renderActiveEntriesForRefresh()
-	stableChanged := m.refreshFileEntryCaches()
-	activeChanged := m.activeFileEntriesChanged(activeEntries)
-	if skipUnchanged && !stableChanged && !activeChanged {
-		return false
-	}
-	atBottom := m.vp.AtBottom()
-	m.vp.SetContent(renderFileQueueWithActiveEntries(*m, m.progress, activeEntries))
-	m.storeActiveFileEntries(activeEntries)
-	if atBottom {
-		m.vp.GotoBottom()
-	}
-	return true
-}
-
-func (m Model) displayValues(i int) (level, progressValue, peak float64) {
-	level = m.Files[i].CurrentLevel
-	progressValue = m.Files[i].Progress
-	peak = m.Files[i].PeakLevel
-	if i < len(m.meters) {
-		level = m.meters[i].pos
-		progressValue = m.meters[i].progPos
-		peak = m.meters[i].peakPos
-	}
-	return level, progressValue, peak
-}
-
 // Update handles messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if handled, cmd := handleCommonMsg(msg, &m.Width, &m.Height, &m.Done, &m.progress, processingBarOverhead); handled {
@@ -666,47 +474,6 @@ func (m Model) View() tea.View {
 	// MouseWheelEnabled (default true) then scrolls the file queue.
 	view.MouseMode = tea.MouseModeCellMotion
 	return view
-}
-
-// renderScrollingView composes the pinned header with the scrollable file queue.
-// The header (title + overall progress) stays fixed; the file list lives inside
-// the viewport so the user can scroll it with the wheel or pager keys during a
-// run. Before the first WindowSizeMsg sizes the viewport, it falls back to the
-// unscrolled stack so early frames still render.
-func (m Model) renderScrollingView() string {
-	if !m.vpReady {
-		return renderProcessingView(m)
-	}
-	// Pure render: the viewport's content and scroll offset are managed in Update
-	// (refreshViewportContent), since View's value receiver discards any mutation.
-	//
-	// The scrollbar and the scroll hint appear ONLY when the file queue overflows
-	// the viewport. Both the scrollbar column and the hint row are reserved
-	// unconditionally in sizeViewport / processingFooterHeight, so toggling them
-	// fills a pre-reserved slot and never reflows the file boxes.
-	overflow := m.vp.TotalLineCount() > m.vp.Height()
-
-	body := lipgloss.JoinHorizontal(lipgloss.Top, m.vp.View(), m.scrollbarStrip(overflow))
-
-	hint := ""
-	if overflow {
-		hint = renderScrollHint()
-	}
-
-	return renderProcessingHeader(m) + "\n" + body + "\n" + hint
-}
-
-// scrollbarStrip returns the right-edge scrollbar column for the viewport. On
-// overflow it is the live thumb/track strip from the viewport's scroll state; when
-// the queue fits it is a blank strip of spaces so the reserved column holds its
-// width and the file boxes do not reflow. Read-only viewport queries only, keeping
-// renderScrollingView pure.
-func (m Model) scrollbarStrip(overflow bool) string {
-	vpHeight := m.vp.Height()
-	if !overflow {
-		return strings.TrimRight(strings.Repeat(" \n", vpHeight), "\n")
-	}
-	return renderScrollbar(vpHeight, m.vp.TotalLineCount(), vpHeight, m.vp.ScrollPercent())
 }
 
 // updateFileProgress updates a FileProgress based on a ProgressMsg

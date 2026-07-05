@@ -3,11 +3,11 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/kong"
-	"github.com/charmbracelet/colorprofile"
 )
 
 // Help styles for the section headers, flag names, and argument names in the
@@ -38,6 +38,7 @@ var (
 func StyledHelpPrinter() func(kong.HelpOptions, *kong.Context) error {
 	return func(options kong.HelpOptions, ctx *kong.Context) error {
 		var sb strings.Builder
+		width := helpWrapWidth(options)
 
 		// Title and description (Kong's Description populates Model.Help)
 		sb.WriteString(RenderTitle())
@@ -54,11 +55,11 @@ func StyledHelpPrinter() func(kong.HelpOptions, *kong.Context) error {
 		sb.WriteString("\n")
 
 		// Arguments and Flags sections
-		writeHelpSection(&sb, "Arguments:", helpArgStyle, getArguments(ctx))
-		writeHelpSection(&sb, "Flags:", helpFlagStyle, getFlags(ctx))
+		writeHelpSection(&sb, "Arguments:", helpArgStyle, getArguments(ctx), width)
+		writeHelpSection(&sb, "Flags:", helpFlagStyle, getFlags(ctx), width)
 
 		sb.WriteString("\n")
-		fmt.Fprint(colorprofile.NewWriter(ctx.Stdout, os.Environ()), sb.String())
+		fmt.Fprint(styledWriter(ctx.Stdout), sb.String())
 		return nil
 	}
 }
@@ -79,7 +80,7 @@ func usageLine(ctx *kong.Context) string {
 // writeHelpSection renders a help section (header plus label-styled rows) to sb,
 // writing nothing when rows is empty. label is drawn with style, help follows
 // after two spaces when present.
-func writeHelpSection(sb *strings.Builder, header string, style lipgloss.Style, rows []helpRow) {
+func writeHelpSection(sb *strings.Builder, header string, style lipgloss.Style, rows []helpRow, width int) {
 	if len(rows) == 0 {
 		return
 	}
@@ -88,14 +89,72 @@ func writeHelpSection(sb *strings.Builder, header string, style lipgloss.Style, 
 	sb.WriteString(helpSectionStyle.Render(header))
 	sb.WriteString("\n")
 	for _, row := range rows {
-		sb.WriteString("  ")
-		sb.WriteString(style.Render(row.label))
+		label := "  " + style.Render(row.label)
+		sb.WriteString(label)
 		if row.help != "" {
-			sb.WriteString("  ")
-			sb.WriteString(row.help)
+			writeWrappedHelp(sb, label, row.help, width)
 		}
 		sb.WriteString("\n")
 	}
+}
+
+func helpWrapWidth(options kong.HelpOptions) int {
+	width := 80
+	if cols := os.Getenv("COLUMNS"); cols != "" {
+		if n, err := strconv.Atoi(cols); err == nil && n > 0 {
+			width = n
+		}
+	}
+	if options.WrapUpperBound > 0 && width > options.WrapUpperBound {
+		width = options.WrapUpperBound
+	}
+	return width
+}
+
+func writeWrappedHelp(sb *strings.Builder, label, help string, width int) {
+	firstPrefix := label + "  "
+	helpWidth := width - lipgloss.Width(firstPrefix)
+	if helpWidth < 8 {
+		sb.WriteString("\n")
+		writeWrappedHelpLines(sb, "    ", help, width)
+		return
+	}
+
+	lines := wrappedLines(help, helpWidth)
+	if len(lines) == 0 {
+		return
+	}
+	sb.WriteString("  ")
+	sb.WriteString(lines[0])
+	continuationPrefix := strings.Repeat(" ", lipgloss.Width(firstPrefix))
+	for _, line := range lines[1:] {
+		sb.WriteString("\n")
+		sb.WriteString(continuationPrefix)
+		sb.WriteString(line)
+	}
+}
+
+func writeWrappedHelpLines(sb *strings.Builder, prefix, help string, width int) {
+	helpWidth := width - lipgloss.Width(prefix)
+	helpWidth = max(helpWidth, 1)
+	for i, line := range wrappedLines(help, helpWidth) {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(prefix)
+		sb.WriteString(line)
+	}
+}
+
+func wrappedLines(text string, width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	wrapped := strings.TrimRight(lipgloss.Wrap(text, width, " "), "\n")
+	if wrapped == "" {
+		return nil
+	}
+	return strings.Split(wrapped, "\n")
 }
 
 func getArguments(ctx *kong.Context) []helpRow {

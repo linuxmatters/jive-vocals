@@ -145,14 +145,8 @@ func main() {
 	// ctx.Done() so their deferred temp cleanup runs and wg.Wait() completes.
 	cancel()
 
-	// Wait for the pool to fully unwind before exiting on either path. After a
-	// user quit p.Run() returns immediately while in-flight workers still need
-	// to observe ctx.Done(), abort ProcessAudio, run their deferred temp
-	// cleanup, and call wg.Done(); exiting first would leave temp dotfiles and
-	// violate the no-residue-on-cancel guarantee. No deadlock: post-Run
-	// tea.Program.Send is a non-blocking no-op, so the pool's FileComplete/
-	// AllComplete sends do not block, and the acquire-time ctx.Done() select
-	// lets not-yet-started workers exit at once.
+	// Wait for the pool before exiting so cancelled workers can observe ctx,
+	// finish deferred cleanup, and report the final failure count.
 	failedFiles := <-poolDone
 	close(reportWarnings)
 
@@ -418,7 +412,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 	}
 
 	// Write each file's report to <source-name>-analysis.md in input order
-	// after the pool completes. A worker cancelled at the acquire select leaves
+	// after the pool completes. A queued file skipped after cancellation leaves
 	// both results[i] and errs[i] nil; a worker cancelled mid-analysis sets
 	// errs[i] to a context.Canceled-wrapped error. Both cases are skipped: a
 	// user who quit should get no error spew. Real errors still print so

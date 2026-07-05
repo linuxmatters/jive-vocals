@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/kong"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // helpTestCLI is a minimal Kong grammar exercising the help helpers: a bool flag,
@@ -70,7 +73,7 @@ func TestWriteHelpSectionRendersRows(t *testing.T) {
 	writeHelpSection(&sb, "Flags:", helpFlagStyle, []helpRow{
 		{label: "-h, --help", help: "Show context-sensitive help."},
 		{label: "--debug", help: ""},
-	})
+	}, 80)
 
 	got := sb.String()
 	want := "\n" +
@@ -87,9 +90,46 @@ func TestWriteHelpSectionRendersRows(t *testing.T) {
 // output, matching the prior len(rows) > 0 guard around each section.
 func TestWriteHelpSectionEmptyRowsWritesNothing(t *testing.T) {
 	var sb strings.Builder
-	writeHelpSection(&sb, "Arguments:", helpArgStyle, nil)
+	writeHelpSection(&sb, "Arguments:", helpArgStyle, nil, 80)
 	if got := sb.String(); got != "" {
 		t.Errorf("expected no output for empty rows, got %q", got)
+	}
+}
+
+type narrowHelpCLI struct {
+	Diagnostics bool `name:"diagnostics" help:"Write interval sidecars and spectrogram images beside report output for before and after audio comparisons"`
+}
+
+func TestStyledHelpPrinterWrapsNarrowTerminal(t *testing.T) {
+	t.Setenv("COLUMNS", "44")
+
+	var stdout, stderr bytes.Buffer
+	k, err := kong.New(&narrowHelpCLI{},
+		kong.Name("jive-vocals"),
+		kong.Writers(&stdout, &stderr),
+	)
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	ctx, err := k.Parse(nil)
+	if err != nil {
+		t.Fatalf("kong parse: %v", err)
+	}
+	if err := StyledHelpPrinter()(kong.HelpOptions{}, ctx); err != nil {
+		t.Fatalf("StyledHelpPrinter: %v", err)
+	}
+
+	out := stdout.String()
+	if strings.Contains(out, "\x1b[") {
+		t.Fatalf("no-TTY help output left escape sequences: %q", out)
+	}
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
+		if width := lipgloss.Width(ansi.Strip(line)); width > 44 {
+			t.Fatalf("help line width = %d, want <= 44:\n%s", width, out)
+		}
+	}
+	if !strings.Contains(out, "spectrogram images") {
+		t.Fatalf("wrapped help dropped diagnostics text:\n%s", out)
 	}
 }
 
@@ -190,7 +230,7 @@ func TestGetFlagsOmitsHiddenFlags(t *testing.T) {
 	}
 
 	var sb strings.Builder
-	writeHelpSection(&sb, "Flags:", helpFlagStyle, getFlags(ctx))
+	writeHelpSection(&sb, "Flags:", helpFlagStyle, getFlags(ctx), 80)
 	got := sb.String()
 
 	if strings.Contains(got, "--secret") {

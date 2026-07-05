@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	ffmpeg "github.com/linuxmatters/ffmpeg-statigo"
 	"github.com/linuxmatters/jive-vocals/internal/audio"
@@ -979,6 +980,72 @@ func TestApplyLoudnormAndMeasureMalformedPass4StatsReturnsNilStatsWithoutError(t
 	}
 	requireNoLoudnormTempFiles(t, testFile)
 	requireNoLoudnormStatsFiles(t, testFile)
+}
+
+func TestApplyNormalisationWithDepsRejectsNilBoundaries(t *testing.T) {
+	t.Parallel()
+
+	_, err := applyNormalisationWithDeps(
+		context.Background(),
+		"unused.flac",
+		nil,
+		&OutputMeasurements{},
+		nil,
+		nil,
+		nil,
+		defaultLoudnormDeps(),
+	)
+	if err == nil || !strings.Contains(err.Error(), "normalisation config is nil") {
+		t.Fatalf("nil config error = %v, want config guard", err)
+	}
+
+	_, err = applyNormalisationWithDeps(
+		context.Background(),
+		"unused.flac",
+		defaultNormalisationTestConfig(),
+		nil,
+		nil,
+		nil,
+		nil,
+		defaultLoudnormDeps(),
+	)
+	if err == nil || !strings.Contains(err.Error(), "normalisation output measurements are nil") {
+		t.Fatalf("nil output measurements error = %v, want output guard", err)
+	}
+}
+
+func TestFinalizeLoudnormOutputMeasurementsSkipsRegionsWithoutFinalMeasurements(t *testing.T) {
+	t.Parallel()
+
+	input := &AudioMeasurements{
+		Regions: RegionMetrics{
+			NoiseProfile: &NoiseProfile{
+				Start:    time.Second,
+				Duration: time.Second,
+			},
+			SpeechProfile: &SpeechCandidateMetrics{
+				Region: SpeechRegion{
+					Start:    2 * time.Second,
+					End:      3 * time.Second,
+					Duration: time.Second,
+				},
+			},
+		},
+	}
+
+	measurements, elapsed := finalizeLoudnormOutputMeasurements(
+		context.Background(),
+		"unused.flac",
+		input,
+		&outputMetadataAccumulators{},
+		nil,
+	)
+	if measurements != nil {
+		t.Fatalf("final measurements = %+v, want nil when no output metadata was captured", measurements)
+	}
+	if elapsed != 0 {
+		t.Fatalf("region measurement time = %v, want 0", elapsed)
+	}
 }
 
 func TestApplyNormalisationProgressCadenceGuard(t *testing.T) {
