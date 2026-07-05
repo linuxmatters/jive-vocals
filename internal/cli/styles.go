@@ -84,13 +84,13 @@ var renderTitleOnce = sync.OnceValue(func() string {
 			Foreground(ramp[i]).
 			Render(string(r)))
 	}
-	b.WriteString(" 🕺")
+	b.WriteString(" 🗣️")
 
 	return b.String()
 })
 
-// RenderTitle returns the "Jive Vocals 🕺" wordmark drawn as a per-letter
-// cyan→sky-blue Blend1D gradient (bold per letter), with the 🕺 emoji appended
+// RenderTitle returns the "Jive Vocals 🗣️ wordmark drawn as a per-letter
+// cyan→sky-blue Blend1D gradient (bold per letter), with the 🗣️emoji appended
 // outside the gradient so it keeps its own colours. Shared by the version banner
 // and the processing-TUI header so both render the wordmark identically.
 func RenderTitle() string { return renderTitleOnce() }
