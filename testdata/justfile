@@ -68,9 +68,23 @@ analyse-presenters:
 analyse-all:
     #!/usr/bin/env bash
     set -euo pipefail
+    files=()
     for e in {{ episodes_list }}; do
-        just ep="$e" diagnostics="{{ diagnostics }}" analyse-presenters
+        for presenter in {{ presenters }}; do
+            f="{{ testdata }}/LMP-${e}-${presenter}.flac"
+            [[ -f "$f" ]] && files+=("$f")
+        done
     done
+    if [ ${#files[@]} -eq 0 ]; then
+        echo "=== No presenter audio found, skipping ==="
+        exit 0
+    fi
+    for src in "${files[@]}"; do
+        stem="${src%.*}"
+        rm -f "$stem"-analysis.*
+    done
+    echo "=== Analysing ${#files[@]} presenter files ==="
+    ./jive-vocals -a {{ diag }} "${files[@]}"
 
 # Process Mark's audio for the current episode
 process-mark: (_process-one "mark")
@@ -102,9 +116,23 @@ process-presenters:
 process-all:
     #!/usr/bin/env bash
     set -euo pipefail
+    files=()
     for e in {{ episodes_list }}; do
-        just ep="$e" diagnostics="{{ diagnostics }}" process-presenters
+        for presenter in {{ presenters }}; do
+            f="{{ testdata }}/LMP-${e}-${presenter}.flac"
+            [[ -f "$f" ]] && files+=("$f")
+        done
     done
+    if [ ${#files[@]} -eq 0 ]; then
+        echo "=== No presenter audio found, skipping ==="
+        exit 0
+    fi
+    for src in "${files[@]}"; do
+        stem="${src%.*}"
+        rm -f "$stem"-*-processed.*
+    done
+    echo "=== Processing ${#files[@]} presenter files ==="
+    ./jive-vocals --debug {{ diag }} "${files[@]}"
 
 # Run the whole corpus through one binary version, collect artefacts for A/B analysis
 process-corpus ver="":
