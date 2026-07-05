@@ -1,12 +1,8 @@
 // Package report renders a processor.RunRecord into a Markdown report. It is a
 // clean break from the legacy .log formatters in internal/logging: it reads only
 // the in-memory run record (and optional run metadata via Timings), never the
-// .json artefact or AudioMeasurements. A .json -> .md re-render over RenderMarkdown
-// is currently PARTIAL, not a thin adapter: the elected-profile metric tables and
-// the normalisation (Peak Limiter + Loudnorm) sections do not survive an
-// encoding/json round-trip, because their wrappers hold an unexported src field and
-// apply unit conversions with no reversing UnmarshalJSON. TestRoundTripFromEmittedJSON
-// pins what survives and what does not.
+// AudioMeasurements. A .json -> .md re-render over RenderMarkdown is a thin
+// adapter: the run-record wrappers also unmarshal their emitted JSON shape.
 package report
 
 import (
