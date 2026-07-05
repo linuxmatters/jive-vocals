@@ -21,8 +21,8 @@ const (
 	// fitWidth trailing pad: only the box style's Padding(0,1) remains, giving a
 	// symmetric 1-space gutter on both sides. Widest rows (measured via
 	// lipgloss.Width, wide unit glyphs ㏈/㎑/㎐ count as 2):
-	//   chain:    Mix "● Mix       mono/44.1㎑"        = 23
-	//   analysis: Dynamics "● Dynamics     20.0 LU → 2.5:1" = 30
+	//   chain:    Downmix "● Downmix   mono/44.1㎑"        = 23
+	//   analysis: Dynamic "● Dynamic      20.0 LU → 2.5:1" = 30
 	// Sized against the widest plausible values (3-digit dB, 2-digit LRA, longest
 	// sample rate), so realistic values never overflow fitWidth's hard truncate.
 	chainBoxInnerWidth    = 23
@@ -332,8 +332,8 @@ func renderAnalysisBox(s AdaptedSummary, height int) string {
 	w := analysisLabelWidth
 	if !s.ChainReady {
 		return pendingBox("Analysis", analysisBoxInnerWidth, w, height, []string{
-			"Voice avg", "Noise floor", "SNR Gap", "Dynamics",
-			"True peak", "Gate depth", "Sibilance", "Loudness",
+			"True Peak", "Voice avg", "Noise floor", "SNR Gap",
+			"Gate depth", "Dynamic", "Sibilance", "Loudness",
 		})
 	}
 
@@ -369,15 +369,14 @@ func renderAnalysisBox(s AdaptedSummary, height int) string {
 		gateDepth = activeRow("Gate depth", w, fmt.Sprintf("%.0f %s", s.GateDepthDB, unitDB))
 	}
 
-	// Gate depth on row 6 and Sibilance on row 7 so Sibilance lines up with the
-	// De-esser at Filter Chain row 7 (its driver). Loudness stays the bottom row.
+	// Keep each measured row beside the filter it explains.
 	rows := []string{
+		activeRow("True Peak", w, fmt.Sprintf("%.1f %s", s.TruePeakDBTP, unitDBTP)),
 		voiceAvg,
 		noiseFloor,
 		separation,
-		activeRow("Dynamics", w, fmt.Sprintf("%.1f LU → %.1f:1", s.InputLRA, s.GateRatio)),
-		activeRow("True peak", w, fmt.Sprintf("%.1f %s", s.TruePeakDBTP, unitDBTP)),
 		gateDepth,
+		activeRow("Dynamic", w, fmt.Sprintf("%.1f LU → %.1f:1", s.InputLRA, s.GateRatio)),
 		sibilance,
 		activeRow("Loudness", w, fmt.Sprintf("%.1f LUFS", s.InputLUFS)),
 	}
