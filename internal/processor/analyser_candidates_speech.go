@@ -13,10 +13,10 @@ const (
 
 	// speechMinimumNoiseMarginDB is the protective gap (dB) above the loudest
 	// measured room tone that the VAD split and floor anchor must keep, applied on
-	// the unified momentary-LUFS axis (the axis the VAD split, floor, and seed
-	// share). The former 6.0 silently encoded the RMS-to-LUFS offset (about +4 dB
-	// on HF beds) and over-clamped once the seed moved onto the LUFS axis; 2.0 is
-	// the honest gap on one scale. Corpus-validated to preserve the elected split:
+	// the unified momentary-LUFS signal (the signal the VAD split, floor, and
+	// seed share). The former 6.0 silently encoded the RMS-to-LUFS offset (about
+	// +4 dB on HF beds) and over-clamped once the seed moved onto LUFS; 2.0 is the
+	// honest gap on one scale. Corpus-validated to preserve the elected split:
 	// this is a calibration fix and must not move elections.
 	speechMinimumNoiseMarginDB = 2.0
 
@@ -260,7 +260,7 @@ func findBestSpeechRegion(regions []SpeechRegion, intervals []IntervalSample, no
 		// duration adequacy (saturating), and within-region level consistency
 		// (tie-break). The SNR penalty is folded into the score, so no post-hoc
 		// penalty runs here.
-		levelVar := levelVariance(regionIntervals, axisMomentaryLUFS)
+		levelVar := levelVariance(regionIntervals)
 		score := scoreSpeechCandidateGrounded(metrics, noiseFloorDB, levelVar)
 		metrics.Score = score
 
@@ -304,7 +304,7 @@ func findBestSpeechRegion(regions []SpeechRegion, intervals []IntervalSample, no
 				refinedIntervals := getIntervalsInRange(bestCandidateIntervals, refined.Start, refined.End)
 				refinedMetrics := measureSpeechCandidateFromRegionIntervals(*refined, refinedIntervals)
 				if refinedMetrics != nil {
-					refinedLevelVar := levelVariance(refinedIntervals, axisMomentaryLUFS)
+					refinedLevelVar := levelVariance(refinedIntervals)
 					refinedMetrics.Score = scoreSpeechCandidateGrounded(refinedMetrics, noiseFloorDB, refinedLevelVar)
 
 					// Store refinement metadata
