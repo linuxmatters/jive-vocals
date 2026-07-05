@@ -41,13 +41,6 @@ const speechBandAnalysisFilterFormat = "aformat=channel_layouts=mono,atrim=start
 //
 // log sinks the non-fatal region-seek warning.
 func measureSpeechBandRMS(ctx context.Context, reader *audio.Reader, start, duration time.Duration, lowHz, highHz float64, log debugLogger) (float64, bool, error) {
-	if start < 0 {
-		return 0, false, fmt.Errorf("invalid region: negative start time")
-	}
-	if duration <= 0 {
-		return 0, false, fmt.Errorf("invalid region: non-positive duration")
-	}
-
 	filterSpec := fmt.Sprintf(
 		speechBandAnalysisFilterFormat,
 		start.Seconds(),
@@ -55,18 +48,6 @@ func measureSpeechBandRMS(ctx context.Context, reader *audio.Reader, start, dura
 		lowHz,
 		highHz,
 	)
-
-	// Skip the pre-region span: seek the demuxer near the region before decoding
-	// rather than decoding from frame 0 and letting atrim discard everything
-	// ahead of start. The atrim window stays region-absolute, so the measured
-	// span is unchanged (see regionSeekPreRoll).
-	seekReaderBeforeRegion(reader, start, log)
-
-	filterGraph, bufferSrcCtx, bufferSinkCtx, err := setupFilterGraph(reader.DecoderContext(), filterSpec)
-	if err != nil {
-		return 0, false, fmt.Errorf("failed to create band analysis filter graph: %w", err)
-	}
-	defer ffmpeg.AVFilterGraphFree(&filterGraph)
 
 	var rmsLevel float64
 	var rmsLevelFound bool
@@ -81,7 +62,7 @@ func measureSpeechBandRMS(ctx context.Context, reader *audio.Reader, start, dura
 		return nil
 	}
 
-	if err := runFilterGraph(ctx, reader, bufferSrcCtx, bufferSinkCtx, FrameLoopConfig{
+	if err := runRegionMeasurementGraph(ctx, reader, start, duration, filterSpec, "band analysis", log, FrameLoopConfig{
 		OnPushError: breakOnError,
 		OnPullError: breakOnError,
 		OnFrame:     extract,

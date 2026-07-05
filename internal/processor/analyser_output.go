@@ -17,45 +17,6 @@ import (
 // live source without re-typing the filter string.
 const outputRegionAnalysisFilterFormat = "atrim=start=%f:duration=%f,asetpts=PTS-STARTPTS,astats=metadata=1:measure_perchannel=0,aspectralstats=measure=all,ebur128=metadata=1:peak=sample+true"
 
-// regionSeekPreRoll is the head-start the demuxer seeks before a region's start
-// so decoding skips the pre-region span instead of running from frame 0.
-//
-// Why this never shifts the measured values: atrim is the FIRST filter in the
-// graph and keys off each frame's file-absolute PTS (ReadFrame sets the frame
-// PTS from the demuxer's best-effort timestamp; the abuffer source uses the
-// stream packet time base). Seeking changes where DECODING begins, not the PTS
-// the frames carry, so atrim=start=region.Start selects the exact same absolute
-// samples regardless of the seek point. astats, aspectralstats, and ebur128 all
-// sit after atrim, so they only ever see the windowed frames - the pre-roll span
-// is discarded before it reaches any measurement filter. The measured window is
-// therefore byte-identical to the from-frame-0 path for any seek at or before
-// region.Start.
-//
-// The pre-roll's only job is to guarantee the seek lands at or before
-// region.Start. AVFormatSeekFile (flags=0) seeks BACKWARD to a keyframe at or
-// before the requested timestamp, so the effective decode start is already <=
-// the seek target; the pre-roll adds further slack. 5s comfortably exceeds
-// ebur128's longest integration window (3s short-term, 400ms momentary) so even
-// if a future change moved a measurement filter ahead of atrim, the warm-up
-// would still be covered. Decoder/filter warm-up before atrim is free here:
-// those frames are trimmed away.
-const regionSeekPreRoll = 5 * time.Second
-
-// seekReaderBeforeRegion seeks the demuxer to regionStart-regionSeekPreRoll
-// (floored at 0) so the pre-region span is skipped before the atrim window is
-// decoded. The atrim start stays region-absolute and unchanged; see
-// regionSeekPreRoll for why this preserves byte-identical measurements. A seek
-// failure is non-fatal - decoding simply continues from the current position,
-// and atrim still selects the correct window.
-func seekReaderBeforeRegion(reader *audio.Reader, regionStart time.Duration, log debugLogger) {
-	seekTarget := max(regionStart-regionSeekPreRoll, 0)
-	seekTS := seekTarget.Microseconds() // AV_TIME_BASE is microseconds
-	if err := reader.SeekTo(seekTS); err != nil {
-		log.Logf("Warning: failed to seek before region (start=%.3fs, target=%.3fs): %v; decoding from current position",
-			regionStart.Seconds(), seekTarget.Seconds(), err)
-	}
-}
-
 // regionMeasurements holds the common measurement results from analysing an
 // output audio region. Both room tone and speech region measurement functions
 // share this intermediate type before mapping to their specific candidate types.
@@ -93,30 +54,11 @@ func (r *regionMeasurements) toRegionSample() *RegionSample {
 // shared implementation behind measureOutputRoomToneRegionFromReader and
 // measureOutputSpeechRegionFromReader.
 func measureOutputRegionFromReader(ctx context.Context, reader *audio.Reader, start, duration time.Duration, log debugLogger) (*regionMeasurements, error) {
-	if start < 0 {
-		return nil, fmt.Errorf("invalid region: negative start time")
-	}
-	if duration <= 0 {
-		return nil, fmt.Errorf("invalid region: non-positive duration")
-	}
-
 	filterSpec := fmt.Sprintf(
 		outputRegionAnalysisFilterFormat,
 		start.Seconds(),
 		duration.Seconds(),
 	)
-
-	// Skip the pre-region span: seek the demuxer near the region before decoding
-	// rather than decoding from frame 0 and letting atrim discard everything
-	// ahead of start. The atrim window stays region-absolute, so the measured
-	// span is unchanged (see regionSeekPreRoll).
-	seekReaderBeforeRegion(reader, start, log)
-
-	filterGraph, bufferSrcCtx, bufferSinkCtx, err := setupFilterGraph(reader.DecoderContext(), filterSpec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create analysis filter graph: %w", err)
-	}
-	defer ffmpeg.AVFilterGraphFree(&filterGraph)
 
 	var rmsLevel float64
 	var peakLevel float64
@@ -168,11 +110,13 @@ func measureOutputRegionFromReader(ctx context.Context, reader *audio.Reader, st
 		return nil
 	}
 
-	_ = runFilterGraph(ctx, reader, bufferSrcCtx, bufferSinkCtx, FrameLoopConfig{
+	if err := runRegionMeasurementGraph(ctx, reader, start, duration, filterSpec, "analysis", log, FrameLoopConfig{
 		OnPushError: breakOnError,
 		OnPullError: breakOnError,
 		OnFrame:     extractMeasurements,
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	if framesProcessed == 0 {
 		return nil, fmt.Errorf("no frames processed in region")
