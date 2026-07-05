@@ -34,7 +34,7 @@ type RoomToneRegion struct {
 // NoiseProfile contains measurements from the elected room tone region.
 // These measurements serve as a reference baseline for adaptive filter tuning:
 //   - MeasuredNoiseFloor → elected noise floor (Noise.Floor), which drives the
-//     VAD split, the Recording-score cleanliness axis, and the afftdn nf seed.
+//     VAD split, the Recording-score cleanliness signal, and the afftdn nf seed.
 //   - CrestFactor/PeakLevel → peak-reference input to the no-profile speech gate
 //     threshold path (calculateSpeechGateThresholdNoProfile via adaptive_speech_gate.go),
 //     reached only when no SpeechProfile is elected.
@@ -184,11 +184,11 @@ type DynamicsMetrics struct {
 // the voice-activated flag, the floored-interval fraction behind that flag, and
 // the noise-reduction headroom.
 type NoiseMetrics struct {
-	Floor               float64 `json:"floor_dbfs"`                  // Elected noise floor; under the VAD it is the momentary-LUFS p10 (vad_percentile source), so the value is on the momentary-LUFS axis
+	Floor               float64 `json:"floor_dbfs"`                  // Elected noise floor; under the VAD it is the momentary-LUFS p10 (vad_percentile source)
 	FloorSource         string  `json:"floor_source"`                // Source of Floor: "astats" / "rms_estimate" / "ebur128_estimate" / "vad_percentile"
-	FloorPrescan        float64 `json:"floor_prescan_dbfs"`          // Pre-scan noise floor seed estimated from interval data, on the momentary-LUFS axis (anchors the VAD split clamp)
+	FloorPrescan        float64 `json:"floor_prescan_dbfs"`          // Pre-scan noise floor seed estimated from interval data, using momentary LUFS (anchors the VAD split clamp)
 	FloorAstats         float64 `json:"floor_astats_dbfs"`           // FFmpeg astats noise floor estimate (dBFS)
-	RoomToneDetectLevel float64 `json:"room_tone_detect_level_dbfs"` // Adaptive room tone detection threshold, derived from the momentary-LUFS-axis seed
+	RoomToneDetectLevel float64 `json:"room_tone_detect_level_dbfs"` // Adaptive room tone detection threshold, derived from the momentary-LUFS seed
 	VoiceActivated      bool    `json:"voice_activated"`             // True when the floored (digital-silence) interval fraction is high (platform-gated capture signature)
 	FlooredFraction     float64 `json:"floored_fraction"`            // Fraction (0..1) of intervals at the digital-silence floor; the detection margin behind VoiceActivated (>= vadVoiceActivatedFraction)
 	ReductionHeadroom   float64 `json:"reduction_headroom_db"`       // dB gap between noise and quiet speech
@@ -204,7 +204,7 @@ type RegionMetrics struct {
 	SpeechProfile    *SpeechCandidateMetrics  `json:"speech_profile,omitempty"`    // Elected best speech candidate (pointer into SpeechCandidates)
 	NoiseProfile     *NoiseProfile            `json:"noise_profile,omitempty"`     // Metrics from elected room tone region; nil if extraction failed
 
-	// Gate statistics on the VAD level axis (dBFS-relative momentary LUFS). These
+	// Gate statistics on the VAD momentary-LUFS signal. These
 	// anchor the speech-gate threshold and depth in Phase 4; written from the
 	// elected region's voiced and noise interval populations during Pass 1.
 	VoicedLowPercentile float64 `json:"voiced_low_percentile_dbfs"` // Voiced-speech low percentile (p10) over in-region intervals at or above the clamped Otsu split passing the spectral veto (dBFS-relative momentary LUFS)
@@ -326,10 +326,10 @@ func AnalyseAudio(ctx stdcontext.Context, filename string, config *BaseFilterCon
 
 	// Unified Pass 1 voice-activity detector: one bimodal split feeds both the
 	// elected SpeechProfile and the NoiseProfile / Noise.Floor. The pre-scan floor
-	// anchors the split clamp; the hop and axis are the single configurable choices.
+	// anchors the split clamp; the hop defines the detector's interval duration.
 	// It must finish before either band function runs, because it elects the
 	// speech and room-tone regions that both band functions go on to measure.
-	detectVoiceActivity(measurements, intervals, measurements.Noise.FloorPrescan, analysisIntervalHop, axisMomentaryLUFS, config.logger)
+	detectVoiceActivity(measurements, intervals, measurements.Noise.FloorPrescan, analysisIntervalHop, config.logger)
 
 	// Post-loop band phase: the main decode loop is capped at BandPhaseProgressStart
 	// (0.95); the two band functions drive 0.95..1.0 by reporting each completed

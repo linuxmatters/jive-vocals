@@ -42,20 +42,6 @@ func intervalsForDuration(d, hop time.Duration) int {
 	return int((d + hop/2) / hop)
 }
 
-// levelAxis names the per-interval amplitude signal the detector splits on. It
-// is the single named choice a future validation gate may flip, so the fallback
-// is a one-line change.
-type levelAxis int
-
-const (
-	// axisMomentaryLUFS is the primary axis: ebur128 momentary loudness. It is
-	// steadier across a brief breath than 250 ms RMS and is the BS.1770
-	// foreground-gate signal, already measured per interval.
-	axisMomentaryLUFS levelAxis = iota
-	// axisRMS is the fallback axis: per-interval RMS level.
-	axisRMS
-)
-
 // vadLevelFloorDB is the dB level at or below which an interval is treated as
 // floored (digital silence / unmeasurable) and excluded from the histogram and
 // the level set. The interval finaliser pins both RMS and a silent momentary
@@ -73,14 +59,11 @@ func isFlooredLevel(level float64) bool {
 	return math.IsInf(level, 0) || math.IsNaN(level) || level <= vadLevelFloorDB
 }
 
-// intervalLevel returns the per-interval level on the selected axis.
-func intervalLevel(s IntervalSample, axis levelAxis) float64 {
-	switch axis {
-	case axisRMS:
-		return s.RMSLevel
-	default:
-		return s.MomentaryLUFS
-	}
+// vadLevel returns the per-interval level used by VAD: ebur128 momentary
+// loudness. It is steadier across a brief breath than 250 ms RMS and is the
+// BS.1770 foreground-gate signal, already measured per interval.
+func vadLevel(s IntervalSample) float64 {
+	return s.MomentaryLUFS
 }
 
 // histogram holds bin counts of per-interval levels on a fixed-width grid plus
@@ -100,12 +83,12 @@ func (h histogram) binCentre(i int) float64 {
 	return h.minLevel + (float64(i)+0.5)*h.binWidth
 }
 
-// buildLevelHistogram bins the per-interval levels on the chosen axis into
+// buildLevelHistogram bins per-interval momentary LUFS into
 // fixed-width bins of binWidthDB. Floored intervals (level <= vadLevelFloorDB,
 // or non-finite) are skipped consistently so digital silence does not invent a
 // spurious low mode. Returns the zero histogram when no interval clears the
 // floor or binWidthDB is non-positive.
-func buildLevelHistogram(intervals []IntervalSample, axis levelAxis, binWidthDB float64) histogram {
+func buildLevelHistogram(intervals []IntervalSample, binWidthDB float64) histogram {
 	if binWidthDB <= 0 {
 		return histogram{}
 	}
@@ -114,7 +97,7 @@ func buildLevelHistogram(intervals []IntervalSample, axis levelAxis, binWidthDB 
 	minLevel := math.Inf(1)
 	maxLevel := math.Inf(-1)
 	for _, iv := range intervals {
-		level := intervalLevel(iv, axis)
+		level := vadLevel(iv)
 		if isFlooredLevel(level) {
 			continue
 		}
@@ -148,13 +131,13 @@ func buildLevelHistogram(intervals []IntervalSample, axis levelAxis, binWidthDB 
 	return h
 }
 
-// vadLevels returns the sorted slice of non-floored per-interval levels on the
-// chosen axis. Shared by the percentile floor and the p75 split clamp so both
-// read the same axis the histogram split was computed on.
-func vadLevels(intervals []IntervalSample, axis levelAxis) []float64 {
+// vadLevels returns the sorted slice of non-floored per-interval momentary LUFS.
+// Shared by the percentile floor and the p75 split clamp so both read the same
+// signal the histogram split was computed on.
+func vadLevels(intervals []IntervalSample) []float64 {
 	levels := make([]float64, 0, len(intervals))
 	for _, iv := range intervals {
-		level := intervalLevel(iv, axis)
+		level := vadLevel(iv)
 		if isFlooredLevel(level) {
 			continue
 		}
@@ -189,18 +172,18 @@ const (
 )
 
 // gateStatistics carries the three gate-window measurements derived in Pass 1.
-// VoicedLowPercentile and NoiseHighPercentile are on the VAD level axis (dBFS-
-// relative momentary LUFS by default); SeparationDB is their difference in dB.
+// VoicedLowPercentile and NoiseHighPercentile are on the VAD momentary-LUFS
+// signal; SeparationDB is their difference in dB.
 type gateStatistics struct {
-	VoicedLowPercentile float64 // p10 of voiced-speech levels (level axis)
-	NoiseHighPercentile float64 // p95 of below-split levels (level axis)
+	VoicedLowPercentile float64 // p10 of voiced-speech momentary-LUFS levels
+	NoiseHighPercentile float64 // p95 of below-split momentary-LUFS levels
 	SeparationDB        float64 // VoicedLowPercentile - NoiseHighPercentile (dB)
 }
 
 // deriveGateStatistics computes the voiced low percentile, the noise high
 // percentile, and their separation from the interval stream, the clamped Otsu
-// split, the level axis, and the elected speech region. It is a pure function
-// over its inputs: no decode, no filter pass.
+// split, and the elected speech region. It is a pure function over its inputs:
+// no decode, no filter pass.
 //
 //   - Voiced set: intervals inside speechRegion that are speech under
 //     isSpeechInterval (at or above the split and passing the spectral veto).
@@ -213,14 +196,10 @@ type gateStatistics struct {
 // reads the populated noise percentile and treats a zero voiced percentile as
 // "no profile". An empty noise set (every interval at or above the split)
 // yields a zero noise percentile by the same percentileOfSorted convention.
-//
-// The axis parameter matches every sibling VAD helper (vadLevels,
-// isSpeechInterval, intervalLevel) so detectVoiceActivity threads its one axis
-// choice through.
-func deriveGateStatistics(intervals []IntervalSample, split float64, axis levelAxis, speechRegion *SpeechRegion) gateStatistics {
+func deriveGateStatistics(intervals []IntervalSample, split float64, speechRegion *SpeechRegion) gateStatistics {
 	var voiced, noise []float64
 	for i := range intervals {
-		level := intervalLevel(intervals[i], axis)
+		level := vadLevel(intervals[i])
 		if isFlooredLevel(level) {
 			continue
 		}
@@ -232,8 +211,8 @@ func deriveGateStatistics(intervals []IntervalSample, split float64, axis levelA
 	if speechRegion != nil {
 		regionIntervals := getIntervalsInRange(intervals, speechRegion.Start, speechRegion.End)
 		for i := range regionIntervals {
-			if isSpeechInterval(regionIntervals[i], split, axis) {
-				voiced = append(voiced, intervalLevel(regionIntervals[i], axis))
+			if isSpeechInterval(regionIntervals[i], split) {
+				voiced = append(voiced, vadLevel(regionIntervals[i]))
 			}
 		}
 	}
@@ -313,10 +292,10 @@ const vadNoiseFloorPercentile = 10.0
 // percentileFloor returns the vadNoiseFloorPercentile low percentile of the
 // per-interval level set as the noise floor, clamped not below
 // noiseFloorSeed + speechMinimumNoiseMarginDB. The seed is the measured pre-scan
-// floor, now on the same momentary-LUFS axis as these levels, so the margin
-// spans one scale. The clamp keeps the floor from dropping into digital silence
-// on voice-activated material. levels must already be sorted ascending. The
-// percentile is the named constant, the single tuning seam.
+// floor, now measured with the same momentary-LUFS signal as these levels, so
+// the margin spans one scale. The clamp keeps the floor from dropping into
+// digital silence on voice-activated material. levels must already be sorted
+// ascending. The percentile is the named tuning constant.
 func percentileFloor(levels []float64, noiseFloorSeed float64) float64 {
 	floor := percentileOfSorted(levels, vadNoiseFloorPercentile)
 	anchor := noiseFloorSeed + speechMinimumNoiseMarginDB
@@ -324,11 +303,12 @@ func percentileFloor(levels []float64, noiseFloorSeed float64) float64 {
 }
 
 // clampSplit constrains the split to [noiseFloor + speechMinimumNoiseMarginDB,
-// p75]. The lower clamp (the speechMinimumNoiseMarginDB margin on the momentary-LUFS axis)
-// stops a degenerate low split from admitting room tone; the upper clamp (the
-// 75th percentile of the per-interval level) stops a degenerate high split from
-// rejecting all speech. When the bounds invert (lower > upper, a near-uniform
-// file), the lower bound wins so the split never drops into the noise.
+// p75]. The lower clamp (the speechMinimumNoiseMarginDB margin on the
+// momentary-LUFS signal) stops a degenerate low split from admitting room tone;
+// the upper clamp (the 75th percentile of the per-interval level) stops a
+// degenerate high split from rejecting all speech. When the bounds invert (lower
+// > upper, a near-uniform file), the lower bound wins so the split never drops
+// into the noise.
 func clampSplit(split, noiseFloor, p75 float64) float64 {
 	lower := noiseFloor + speechMinimumNoiseMarginDB
 	if p75 < lower {
@@ -352,8 +332,8 @@ func passesSpectralVeto(s IntervalSample) bool {
 // the split AND the spectral veto passes. No weighted score, no rescue of
 // below-split voiced intervals. This is the same predicate the loud-gap guard
 // applies inside a run.
-func isSpeechInterval(s IntervalSample, split float64, axis levelAxis) bool {
-	return intervalLevel(s, axis) >= split && passesSpectralVeto(s)
+func isSpeechInterval(s IntervalSample, split float64) bool {
+	return vadLevel(s) >= split && passesSpectralVeto(s)
 }
 
 const (
@@ -445,10 +425,10 @@ func gapToleranceIntervals(flags []bool, hop time.Duration) int {
 
 // speechFlags returns the per-interval speech flag (isSpeechInterval) over the
 // whole interval stream, the first pass the gap-tolerance measurement consumes.
-func speechFlags(intervals []IntervalSample, split float64, axis levelAxis) []bool {
+func speechFlags(intervals []IntervalSample, split float64) []bool {
 	flags := make([]bool, len(intervals))
 	for i := range intervals {
-		flags[i] = isSpeechInterval(intervals[i], split, axis)
+		flags[i] = isSpeechInterval(intervals[i], split)
 	}
 	return flags
 }
@@ -470,7 +450,7 @@ func speechFlags(intervals []IntervalSample, split float64, axis levelAxis) []bo
 // There is no hangover and no outward segment-end extension: golden refinement
 // biases the elected sample inward, so outward extension would fight it. Run
 // end times derive from the hop, not a baked-in interval duration.
-func buildSpeechRuns(intervals []IntervalSample, split, margin float64, tol int, axis levelAxis, hop time.Duration) []SpeechRegion {
+func buildSpeechRuns(intervals []IntervalSample, split, margin float64, tol int, hop time.Duration) []SpeechRegion {
 	minIntervals := intervalsForDuration(vadMinSpeechDuration, hop)
 	if len(intervals) < minIntervals || minIntervals <= 0 {
 		return nil
@@ -502,7 +482,7 @@ func buildSpeechRuns(intervals []IntervalSample, split, margin float64, tol int,
 
 	for i := range intervals {
 		s := intervals[i]
-		level := intervalLevel(s, axis)
+		level := vadLevel(s)
 		veto := passesSpectralVeto(s)
 		isSpeech := level >= split && veto
 
@@ -580,7 +560,7 @@ func extractNoiseProfileFromIntervals(region *RoomToneRegion, intervals []Interv
 		Duration: region.Duration,
 		// avgRMS is the local astats-RMS value, not the final one. The caller
 		// detectVoiceActivity overwrites MeasuredNoiseFloor with the percentile
-		// floor on the momentary-LUFS axis.
+		// floor on the momentary-LUFS signal.
 		MeasuredNoiseFloor: avgRMS,
 		PeakLevel:          peakMax,
 		CrestFactor:        peakMax - avgRMS,
@@ -627,7 +607,7 @@ func electSpeechProfile(runs []SpeechRegion, intervals []IntervalSample, noisePr
 // room-tone election: one split places every below-split interval in the noise
 // cluster, and the longest such run is the steadiest sample of it. Returns nil
 // when no below-split run exists.
-func pickLowClusterRegion(intervals []IntervalSample, split float64, axis levelAxis, hop time.Duration) *RoomToneRegion {
+func pickLowClusterRegion(intervals []IntervalSample, split float64, hop time.Duration) *RoomToneRegion {
 	var best *RoomToneRegion
 	var runStart time.Duration
 	var runLen int
@@ -647,7 +627,7 @@ func pickLowClusterRegion(intervals []IntervalSample, split float64, axis levelA
 	}
 
 	for i := range intervals {
-		below := intervalLevel(intervals[i], axis) < split
+		below := vadLevel(intervals[i]) < split
 		if below {
 			if !inRun {
 				runStart = intervals[i].Timestamp
@@ -705,10 +685,10 @@ const vadVoiceActivatedFraction = 0.20
 // count. FFmpeg ebur128 reports that silence as NaN on macOS arm64 and as
 // -inf/finite-low on Linux; counting non-finite as floored keeps voice-activated
 // detection platform-invariant. Below-split-but-measurable intervals do not count.
-func flooredFraction(intervals []IntervalSample, axis levelAxis) float64 {
+func flooredFraction(intervals []IntervalSample) float64 {
 	var counted, floored float64
 	for _, iv := range intervals {
-		level := intervalLevel(iv, axis)
+		level := vadLevel(iv)
 		counted++
 		if math.IsNaN(level) || level <= vadLevelFloorDB {
 			floored++
@@ -725,24 +705,24 @@ func flooredFraction(intervals []IntervalSample, axis levelAxis) float64 {
 // filters consume: the elected SpeechProfile and the NoiseProfile / Noise.Floor.
 // It replaces the selectNoiseProfile + selectSpeechProfile pair. The body only
 // wires the per-stage helpers; the maths lives in those helpers.
-func detectVoiceActivity(measurements *AudioMeasurements, intervals []IntervalSample, noiseFloorSeed float64, hop time.Duration, axis levelAxis, log debugLogger) {
+func detectVoiceActivity(measurements *AudioMeasurements, intervals []IntervalSample, noiseFloorSeed float64, hop time.Duration, log debugLogger) {
 	const histogramBinWidthDB = 1.0
 
-	histogram := buildLevelHistogram(intervals, axis, histogramBinWidthDB)
-	levels := vadLevels(intervals, axis)
+	histogram := buildLevelHistogram(intervals, histogramBinWidthDB)
+	levels := vadLevels(intervals)
 	p75 := percentileOfSorted(levels, 75)
 
 	split := clampSplit(otsuSplit(histogram), noiseFloorSeed, p75)
 	floor := percentileFloor(levels, noiseFloorSeed)
 
-	flags := speechFlags(intervals, split, axis)
+	flags := speechFlags(intervals, split)
 	margin := hysteresisMargin(histogram, split)
 	tol := gapToleranceIntervals(flags, hop)
 
-	runs := buildSpeechRuns(intervals, split, margin, tol, axis, hop)
+	runs := buildSpeechRuns(intervals, split, margin, tol, hop)
 	measurements.Regions.SpeechRegions = runs
 
-	noiseRegion := pickLowClusterRegion(intervals, split, axis, hop)
+	noiseRegion := pickLowClusterRegion(intervals, split, hop)
 	var noiseProfile *NoiseProfile
 	if noiseRegion != nil {
 		noiseProfile = extractNoiseProfileFromIntervals(noiseRegion, intervals)
@@ -759,27 +739,27 @@ func detectVoiceActivity(measurements *AudioMeasurements, intervals []IntervalSa
 		measurements.Regions.SpeechProfile = profile
 	}
 
-	// Derive the gate-window statistics from the same clamped split and axis the
-	// VAD elected with. The voiced set needs the elected region, so pass its
-	// pointer (nil when no profile is elected, which leaves the voiced percentile
-	// zero by the helper's empty-set convention).
+	// Derive the gate-window statistics from the same clamped split the VAD elected
+	// with. The voiced set needs the elected region, so pass its pointer (nil when
+	// no profile is elected, which leaves the voiced percentile zero by the
+	// helper's empty-set convention).
 	var speechRegion *SpeechRegion
 	if profile != nil {
 		speechRegion = &profile.Region
 	}
-	gateStats := deriveGateStatistics(intervals, split, axis, speechRegion)
+	gateStats := deriveGateStatistics(intervals, split, speechRegion)
 	measurements.Regions.VoicedLowPercentile = gateStats.VoicedLowPercentile
 	measurements.Regions.NoiseHighPercentile = gateStats.NoiseHighPercentile
 	measurements.Regions.GateSeparationDB = gateStats.SeparationDB
 
 	measurements.Noise.Floor = floor
 	measurements.Noise.FloorSource = "vad_percentile"
-	flooredFrac := flooredFraction(intervals, axis)
+	flooredFrac := flooredFraction(intervals)
 	measurements.Noise.FlooredFraction = flooredFrac
 	measurements.Noise.VoiceActivated = flooredFrac >= vadVoiceActivatedFraction
 
-	log.Logf("VAD: split=%.1f dB (axis=%d), floor=%.1f dB, margin=%.2f dB, gapTol=%d, runs=%d, speechElected=%v, noiseRegion=%v",
-		split, axis, floor, margin, tol, len(runs), profile != nil, noiseRegion != nil)
+	log.Logf("VAD: split=%.1f dB, floor=%.1f dB, margin=%.2f dB, gapTol=%d, runs=%d, speechElected=%v, noiseRegion=%v",
+		split, floor, margin, tol, len(runs), profile != nil, noiseRegion != nil)
 }
 
 // setVADRoomToneSample measures the elected low-cluster region's RegionSample

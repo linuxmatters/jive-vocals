@@ -17,21 +17,22 @@ func groundedCandidate(rmsLevel float64, duration time.Duration) *SpeechCandidat
 	}
 }
 
-// flatLevelIntervals returns count intervals all at the same RMS level (zero
-// variance on the RMS axis).
+// flatLevelIntervals returns count intervals all at the same momentary level
+// (zero variance on the VAD level signal).
 func flatLevelIntervals(count int, level float64) []IntervalSample {
 	iv := make([]IntervalSample, count)
 	for i := range iv {
 		iv[i] = IntervalSample{
-			Timestamp: time.Duration(i) * analysisIntervalHop,
-			RMSLevel:  level,
+			Timestamp:     time.Duration(i) * analysisIntervalHop,
+			RMSLevel:      level,
+			MomentaryLUFS: level,
 		}
 	}
 	return iv
 }
 
 // spreadLevelIntervals returns count intervals alternating around centre by
-// +/-spread (non-zero variance on the RMS axis).
+// +/-spread (non-zero variance on the VAD level signal).
 func spreadLevelIntervals(count int, centre, spread float64) []IntervalSample {
 	iv := make([]IntervalSample, count)
 	for i := range iv {
@@ -40,8 +41,9 @@ func spreadLevelIntervals(count int, centre, spread float64) []IntervalSample {
 			level = centre - spread
 		}
 		iv[i] = IntervalSample{
-			Timestamp: time.Duration(i) * analysisIntervalHop,
-			RMSLevel:  level,
+			Timestamp:     time.Duration(i) * analysisIntervalHop,
+			RMSLevel:      level,
+			MomentaryLUFS: level,
 		}
 	}
 	return iv
@@ -222,8 +224,8 @@ func TestLevelVariance(t *testing.T) {
 	flat := flatLevelIntervals(20, -20.0)
 	spread := spreadLevelIntervals(20, -20.0, 4.0)
 
-	flatVar := levelVariance(flat, axisRMS)
-	spreadVar := levelVariance(spread, axisRMS)
+	flatVar := levelVariance(flat)
+	spreadVar := levelVariance(spread)
 
 	if flatVar > 1e-9 {
 		t.Errorf("flat level set variance = %.6f, want ~0", flatVar)
@@ -233,7 +235,7 @@ func TestLevelVariance(t *testing.T) {
 	}
 
 	// Empty region is defined to return 0.
-	if got := levelVariance(nil, axisRMS); got != 0 {
+	if got := levelVariance(nil); got != 0 {
 		t.Errorf("levelVariance(nil) = %.4f, want 0", got)
 	}
 }

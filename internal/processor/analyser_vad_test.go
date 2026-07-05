@@ -60,7 +60,7 @@ func TestBuildLevelHistogram(t *testing.T) {
 	// One floored interval, must be skipped.
 	intervals = append(intervals, vadInterval(idx, -130))
 
-	h := buildLevelHistogram(intervals, axisMomentaryLUFS, 2.0)
+	h := buildLevelHistogram(intervals, 2.0)
 
 	if h.count != 60 {
 		t.Fatalf("histogram count = %d, want 60 (floored interval skipped)", h.count)
@@ -92,16 +92,6 @@ func TestBuildLevelHistogram(t *testing.T) {
 	if valley != 0 {
 		t.Errorf("expected empty valley between modes, got %d", valley)
 	}
-
-	// Axis switch reads the other field: set RMS apart from momentary.
-	rmsIntervals := []IntervalSample{
-		{RMSLevel: -60, MomentaryLUFS: -10, Spectral: SpectralMetrics{Found: true}},
-		{RMSLevel: -58, MomentaryLUFS: -10, Spectral: SpectralMetrics{Found: true}},
-	}
-	hr := buildLevelHistogram(rmsIntervals, axisRMS, 2.0)
-	if hr.maxLevel > -50 {
-		t.Errorf("RMS axis maxLevel = %.1f, want near -58 (read RMS not momentary)", hr.maxLevel)
-	}
 }
 
 func TestOtsuSplit(t *testing.T) {
@@ -116,7 +106,7 @@ func TestOtsuSplit(t *testing.T) {
 			intervals = append(intervals, vadInterval(idx, -18+float64(i%2)))
 			idx++
 		}
-		h := buildLevelHistogram(intervals, axisMomentaryLUFS, 1.0)
+		h := buildLevelHistogram(intervals, 1.0)
 		split := otsuSplit(h)
 		if split <= -49 || split >= -18 {
 			t.Errorf("otsuSplit = %.1f, want strictly between mode centres (-49.5 and -17.5)", split)
@@ -128,8 +118,8 @@ func TestOtsuSplit(t *testing.T) {
 		for i := range 80 { // one tight mode near -18 (all speech)
 			intervals = append(intervals, vadInterval(i, -18+float64(i%2)))
 		}
-		h := buildLevelHistogram(intervals, axisMomentaryLUFS, 1.0)
-		levels := vadLevels(intervals, axisMomentaryLUFS)
+		h := buildLevelHistogram(intervals, 1.0)
+		levels := vadLevels(intervals)
 		p75 := percentileOfSorted(levels, 75)
 
 		noiseFloor := -60.0
@@ -149,8 +139,8 @@ func TestOtsuSplit(t *testing.T) {
 		for i := range 80 {
 			intervals = append(intervals, vadInterval(i, -50+float64(i%2)))
 		}
-		h := buildLevelHistogram(intervals, axisMomentaryLUFS, 1.0)
-		levels := vadLevels(intervals, axisMomentaryLUFS)
+		h := buildLevelHistogram(intervals, 1.0)
+		levels := vadLevels(intervals)
 		p75 := percentileOfSorted(levels, 75)
 
 		noiseFloor := -48.0 // anchor = -46, above the ~-49 single mode
@@ -206,7 +196,7 @@ func TestFlooredFraction(t *testing.T) {
 			idx++
 		}
 
-		got := flooredFraction(iv, axisMomentaryLUFS)
+		got := flooredFraction(iv)
 		// 60 of 100 intervals are floored (including -inf windows).
 		want := 60.0 / 100.0
 		if math.Abs(got-want) > 0.001 {
@@ -233,7 +223,7 @@ func TestFlooredFraction(t *testing.T) {
 			idx++
 		}
 
-		got := flooredFraction(iv, axisMomentaryLUFS)
+		got := flooredFraction(iv)
 		if got != 0 {
 			t.Errorf("flooredFraction = %.3f, want 0 (no interval is floored)", got)
 		}
@@ -254,7 +244,7 @@ func TestFlooredFraction(t *testing.T) {
 			idx++
 		}
 
-		got := flooredFraction(iv, axisMomentaryLUFS)
+		got := flooredFraction(iv)
 		if got != 0 {
 			t.Errorf("flooredFraction = %.3f, want 0 (no interval is floored)", got)
 		}
@@ -268,7 +258,7 @@ func TestFlooredFraction(t *testing.T) {
 		for i := range 30 {
 			iv = append(iv, vadInterval(i, -130))
 		}
-		got := flooredFraction(iv, axisMomentaryLUFS)
+		got := flooredFraction(iv)
 		if got != 1.0 {
 			t.Errorf("flooredFraction = %.3f, want 1.0 (every interval floored)", got)
 		}
@@ -285,7 +275,7 @@ func TestFlooredFraction(t *testing.T) {
 			vadInterval(0, math.NaN()),
 			vadInterval(1, -15),
 		}
-		got := flooredFraction(iv, axisMomentaryLUFS)
+		got := flooredFraction(iv)
 		if want := 0.5; math.Abs(got-want) > 0.001 {
 			t.Errorf("flooredFraction = %.3f, want %.3f (NaN counts as floored)", got, want)
 		}
@@ -309,7 +299,7 @@ func TestFlooredFraction(t *testing.T) {
 			idx++
 		}
 
-		got := flooredFraction(iv, axisMomentaryLUFS)
+		got := flooredFraction(iv)
 		if want := 50.0 / 100.0; math.Abs(got-want) > 0.001 {
 			t.Errorf("flooredFraction = %.3f, want %.3f (NaN + finite-low both floor)", got, want)
 		}
@@ -320,13 +310,13 @@ func TestFlooredFraction(t *testing.T) {
 		for i := range 20 {
 			iv = append(iv, vadInterval(i, math.NaN()))
 		}
-		if got := flooredFraction(iv, axisMomentaryLUFS); got != 1.0 {
+		if got := flooredFraction(iv); got != 1.0 {
 			t.Errorf("flooredFraction = %.3f, want 1.0 (every window is digital silence)", got)
 		}
 	})
 
 	t.Run("empty slice returns 0 via the zero-guard", func(t *testing.T) {
-		if got := flooredFraction(nil, axisMomentaryLUFS); got != 0 {
+		if got := flooredFraction(nil); got != 0 {
 			t.Errorf("flooredFraction = %.3f, want 0 (no intervals)", got)
 		}
 	})
@@ -494,7 +484,7 @@ func TestFlooredFraction_BoundaryAtThreshold(t *testing.T) {
 
 	t.Run("exactly 0.20 floored passes the >= test", func(t *testing.T) {
 		iv := build(20, 100) // 0.20 exactly
-		got := flooredFraction(iv, axisMomentaryLUFS)
+		got := flooredFraction(iv)
 		if math.Abs(got-0.20) > 0.001 {
 			t.Fatalf("flooredFraction = %.3f, want 0.200", got)
 		}
@@ -505,7 +495,7 @@ func TestFlooredFraction_BoundaryAtThreshold(t *testing.T) {
 
 	t.Run("just under 0.20 fails the >= test", func(t *testing.T) {
 		iv := build(19, 100) // 0.19
-		got := flooredFraction(iv, axisMomentaryLUFS)
+		got := flooredFraction(iv)
 		if math.Abs(got-0.19) > 0.001 {
 			t.Fatalf("flooredFraction = %.3f, want 0.190", got)
 		}
@@ -536,7 +526,7 @@ func TestIsSpeechInterval(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isSpeechInterval(tt.s, split, axisMomentaryLUFS); got != tt.want {
+			if got := isSpeechInterval(tt.s, split); got != tt.want {
 				t.Errorf("isSpeechInterval = %v, want %v", got, tt.want)
 			}
 		})
@@ -565,7 +555,7 @@ func TestBuildSpeechRuns(t *testing.T) {
 	tol := intervalsForDuration(vadGapToleranceFloor, hop)  // 8 at 250ms
 
 	build := func(intervals []IntervalSample) []SpeechRegion {
-		return buildSpeechRuns(intervals, split, margin, tol, axisMomentaryLUFS, hop)
+		return buildSpeechRuns(intervals, split, margin, tol, hop)
 	}
 
 	t.Run("short gap yields one run", func(t *testing.T) {
@@ -759,7 +749,7 @@ func buildBimodal(lowCentre, highCentre float64) histogram {
 		iv = append(iv, vadInterval(idx, highCentre))
 		idx++
 	}
-	return buildLevelHistogram(iv, axisMomentaryLUFS, 1.0)
+	return buildLevelHistogram(iv, 1.0)
 }
 
 // vadSpeechRich is a speech interval at -16 LUFS with a fuller spectral profile
@@ -806,7 +796,7 @@ func TestElectSpeechProfile(t *testing.T) {
 	}
 
 	// Split at -45 so both runs are above it; floor at -60.
-	runs := buildSpeechRuns(iv, -45, 3, intervalsForDuration(vadGapToleranceFloor, hop), axisMomentaryLUFS, hop)
+	runs := buildSpeechRuns(iv, -45, 3, intervalsForDuration(vadGapToleranceFloor, hop), hop)
 	if len(runs) != 2 {
 		t.Fatalf("expected 2 runs for the elect test, got %d", len(runs))
 	}
@@ -852,7 +842,7 @@ func TestPickLowClusterRegion(t *testing.T) {
 		idx++
 	}
 
-	region := pickLowClusterRegion(iv, -30, axisMomentaryLUFS, hop)
+	region := pickLowClusterRegion(iv, -30, hop)
 	if region == nil {
 		t.Fatal("pickLowClusterRegion returned nil, want the long quiet run")
 	}
@@ -865,7 +855,7 @@ func TestPickLowClusterRegion(t *testing.T) {
 		t.Fatal("extractNoiseProfileFromIntervals returned nil")
 	}
 	// Detector overrides MeasuredNoiseFloor with the percentile floor.
-	levels := vadLevels(iv, axisMomentaryLUFS)
+	levels := vadLevels(iv)
 	floor := percentileFloor(levels, -200)
 	profile.MeasuredNoiseFloor = floor
 	if profile.MeasuredNoiseFloor != floor {
@@ -970,7 +960,7 @@ func TestDeriveGateStatistics(t *testing.T) {
 		regionEnd := time.Duration(idx) * analysisIntervalHop
 
 		region := &SpeechRegion{Start: regionStart, End: regionEnd, Duration: regionEnd - regionStart}
-		got := deriveGateStatistics(iv, split, axisMomentaryLUFS, region)
+		got := deriveGateStatistics(iv, split, region)
 
 		const wantVoiced = -23.0
 		const wantNoise = -42.0
@@ -1007,7 +997,7 @@ func TestDeriveGateStatistics(t *testing.T) {
 		regionEnd := time.Duration(idx) * analysisIntervalHop
 
 		region := &SpeechRegion{Start: regionStart, End: regionEnd, Duration: regionEnd - regionStart}
-		got := deriveGateStatistics(iv, split, axisMomentaryLUFS, region)
+		got := deriveGateStatistics(iv, split, region)
 		if math.Abs(got.VoicedLowPercentile-(-19.0)) > 0.001 {
 			t.Errorf("VoicedLowPercentile = %.3f, want -19.000 (veto failures excluded)", got.VoicedLowPercentile)
 		}
@@ -1033,7 +1023,7 @@ func TestDeriveGateStatistics(t *testing.T) {
 		regionEnd := time.Duration(idx) * analysisIntervalHop
 
 		region := &SpeechRegion{Start: regionStart, End: regionEnd, Duration: regionEnd - regionStart}
-		got := deriveGateStatistics(iv, split, axisMomentaryLUFS, region)
+		got := deriveGateStatistics(iv, split, region)
 		if math.Abs(got.VoicedLowPercentile-(-15.0)) > 0.001 {
 			t.Errorf("VoicedLowPercentile = %.3f, want -15.000 (out-of-region speech ignored)", got.VoicedLowPercentile)
 		}
@@ -1048,7 +1038,7 @@ func TestDeriveGateStatistics(t *testing.T) {
 			iv = append(iv, vadInterval(idx, -60+float64(i))) // -60..-41, all below split
 			idx++
 		}
-		got := deriveGateStatistics(iv, split, axisMomentaryLUFS, nil)
+		got := deriveGateStatistics(iv, split, nil)
 		if got.VoicedLowPercentile != 0 {
 			t.Errorf("VoicedLowPercentile = %.3f, want 0 (no region, empty voiced set)", got.VoicedLowPercentile)
 		}
@@ -1074,7 +1064,7 @@ func TestDeriveGateStatistics(t *testing.T) {
 		regionEnd := time.Duration(idx) * analysisIntervalHop
 
 		region := &SpeechRegion{Start: regionStart, End: regionEnd, Duration: regionEnd - regionStart}
-		got := deriveGateStatistics(iv, split, axisMomentaryLUFS, region)
+		got := deriveGateStatistics(iv, split, region)
 		if got.NoiseHighPercentile != 0 {
 			t.Errorf("NoiseHighPercentile = %.3f, want 0 (empty noise set)", got.NoiseHighPercentile)
 		}
@@ -1097,7 +1087,7 @@ func TestDeriveGateStatistics(t *testing.T) {
 		regionEnd := time.Duration(idx) * analysisIntervalHop
 
 		region := &SpeechRegion{Start: regionStart, End: regionEnd, Duration: regionEnd - regionStart}
-		got := deriveGateStatistics(iv, split, axisMomentaryLUFS, region)
+		got := deriveGateStatistics(iv, split, region)
 		if math.Abs(got.VoicedLowPercentile-(-12.0)) > 0.001 {
 			t.Errorf("VoicedLowPercentile = %.3f, want -12.000 (lone voiced sample)", got.VoicedLowPercentile)
 		}
@@ -1125,7 +1115,7 @@ func TestDeriveGateStatistics(t *testing.T) {
 		region := &SpeechRegion{Start: regionStart, End: regionEnd, Duration: regionEnd - regionStart}
 
 		// Split -45: levels at or above -45 are voiced; below -45 are noise.
-		got := deriveGateStatistics(iv, -45.0, axisMomentaryLUFS, region)
+		got := deriveGateStatistics(iv, -45.0, region)
 		// Voiced set sorted {-45,-44,-43,-42,-41,-40}; p10 index int(0.10*5)=0 -> -45.
 		if math.Abs(got.VoicedLowPercentile-(-45.0)) > 0.001 {
 			t.Errorf("VoicedLowPercentile = %.3f, want -45.000 at split -45", got.VoicedLowPercentile)
@@ -1149,7 +1139,7 @@ func TestDeriveGateStatistics(t *testing.T) {
 			iv = append(iv, vadInterval(idx, -60+float64(i))) // -60..-41 measurable noise
 			idx++
 		}
-		got := deriveGateStatistics(iv, split, axisMomentaryLUFS, nil)
+		got := deriveGateStatistics(iv, split, nil)
 		const wantNoise = -42.0 // p95 over the 20 measurable levels, floored excluded
 		if math.Abs(got.NoiseHighPercentile-wantNoise) > 0.001 {
 			t.Errorf("NoiseHighPercentile = %.3f, want %.3f (floored excluded)", got.NoiseHighPercentile, wantNoise)
@@ -1173,7 +1163,7 @@ func TestDetectVoiceActivity(t *testing.T) {
 	}
 
 	m := &AudioMeasurements{}
-	detectVoiceActivity(m, iv, -70, hop, axisMomentaryLUFS, nil)
+	detectVoiceActivity(m, iv, -70, hop, nil)
 
 	if m.Regions.SpeechProfile == nil {
 		t.Error("SpeechProfile nil, want elected speech region")
@@ -1205,11 +1195,12 @@ func TestDetectVoiceActivity(t *testing.T) {
 	}
 
 	// The written fields match deriveGateStatistics called directly on the same
-	// inputs: the clamped Otsu split, the same axis, and the elected region.
-	histogram := buildLevelHistogram(iv, axisMomentaryLUFS, 1.0)
-	levels := vadLevels(iv, axisMomentaryLUFS)
+	// inputs: the clamped Otsu split, the same momentary-LUFS signal, and the
+	// elected region.
+	histogram := buildLevelHistogram(iv, 1.0)
+	levels := vadLevels(iv)
 	split := clampSplit(otsuSplit(histogram), -70, percentileOfSorted(levels, 75))
-	want := deriveGateStatistics(iv, split, axisMomentaryLUFS, &m.Regions.SpeechProfile.Region)
+	want := deriveGateStatistics(iv, split, &m.Regions.SpeechProfile.Region)
 	if m.Regions.VoicedLowPercentile != want.VoicedLowPercentile {
 		t.Errorf("VoicedLowPercentile = %.3f, want %.3f (direct helper)", m.Regions.VoicedLowPercentile, want.VoicedLowPercentile)
 	}
@@ -1231,7 +1222,7 @@ func TestDetectVoiceActivity_NoProfileLeavesVoicedPercentileZero(t *testing.T) {
 	}
 
 	m := &AudioMeasurements{}
-	detectVoiceActivity(m, iv, -70, hop, axisMomentaryLUFS, nil)
+	detectVoiceActivity(m, iv, -70, hop, nil)
 
 	if m.Regions.SpeechProfile != nil {
 		t.Fatal("SpeechProfile elected, want none for a flat low-level stream")
