@@ -76,3 +76,18 @@ that does not ship in the repo. They are evidence summaries, not files you can o
 - **Why this value:** This is the alimiter engine floor, not a tuning constant.
   `limit=0.0625` equals `20*log10(0.0625)` which is about -24.08 dBTP; -24.0 sits
   just inside it with a small buffer.
+
+## maxLimiterCeilingDB
+
+- **Value:** 0.0 dBTP.
+- **What it does:** The maximum for FFmpeg's alimiter ceiling. `deriveLimiterAndPreGain`
+  clamps higher derived ceilings down to it without setting `clamped` (no pre-gain or
+  target adjustment applies to the high clamp).
+- **Why this value:** Engine ceiling, not a tuning constant. alimiter's `limit` option
+  range is 0.0625..1.0 (`af_alimiter.c`), and `limit=1.0` is 0 dBFS. A derived ceiling
+  above 0 dBTP (Pass 2 output louder than -15 LUFS with a true-peak-to-loudness spread
+  over the crest budget, i.e. filtered TP > 0 dBTP) would emit `limit > 1.0`, which
+  `AVFilterGraphParsePtr` rejects with `AVERROR(ERANGE)` ("Numerical result out of
+  range") and Pass 3 fails. The clamp is delivery-safe: it only fires when loudnorm
+  attenuates (gainRequired < 0), so peaks limited to 0 dBFS land at gainRequired dBTP,
+  below target TP by construction, and the brickwall still owns the final true peak.
