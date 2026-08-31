@@ -151,7 +151,9 @@ jive-vocals [flags] <files...>
 | `-v, --version` | Show version and exit |
 | `-a, --analysis-only` | Run analysis only (Pass 1), display results, skip processing |
 | `-d, --debug` | Enable debug logging to `jive-vocals-debug.log` |
-| `--diagnostics` | Write extra diagnostic artefacts: before/after spectrogram PNGs plus `.intervals.jsonl`/`.candidates.jsonl` sidecars. Adds extra FFmpeg passes. Off by default |
+| `--diagnostics` | Write extra diagnostic artefacts: before/after spectrogram PNGs plus `.intervals.jsonl`/`.candidates.jsonl` 
+| `-k, --keep-rate` | Keep original sample rate instead of resampling to 44.1 kHz |
+sidecars. Adds extra FFmpeg passes. Off by default |
 
 
 ### Examples
