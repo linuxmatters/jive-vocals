@@ -153,6 +153,7 @@ jive-vocals [flags] <files...>
 | `-d, --debug` | Enable debug logging to `jive-vocals-debug.log` |
 | `--diagnostics` | Write extra diagnostic artefacts: before/after spectrogram PNGs plus `.intervals.jsonl`/`.candidates.jsonl` 
 | `-k, --keep-rate` | Keep original sample rate instead of resampling to 44.1 kHz |
+| `-q, --quiet` | Suppress the interactive progress display and non-fatal warnings; errors still print. Processing runs without a TUI |
 sidecars. Adds extra FFmpeg passes. Off by default |
 
 
