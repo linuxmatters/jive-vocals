@@ -118,7 +118,7 @@ func main() {
 	config.SetLogger(log)
 
 	if cliArgs.AnalysisOnly {
-		if failed := runAnalysisOnly(cliArgs.Files, config, log, resolveJobs(len(cliArgs.Files), runtime.NumCPU()), cliArgs.Diagnostics); failed > 0 {
+		if failed := runAnalysisOnly(cliArgs.Files, config, log, resolveJobs(len(cliArgs.Files), runtime.NumCPU()), cliArgs.Diagnostics, cliArgs.Quiet); failed > 0 {
 			if debugLog != nil {
 				debugLog.Close()
 			}
@@ -255,6 +255,7 @@ func formatDroppedWarningCount(count uint64) string {
 type analysisOnlyDeps struct {
 	stdout              io.Writer
 	hasTTY              func() bool
+	quiet               bool
 	openMetadata        func(string) (*audio.Metadata, error)
 	analyse             func(context.Context, string, *processor.BaseFilterConfig, processor.ProgressCallback) (*processor.AnalysisResult, error)
 	printError          func(string)
@@ -396,8 +397,10 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 // pool, then displays results to console in input order. Skips full 4-pass
 // processing. Returns the number of files whose analysis failed with a real
 // (non-cancellation) error.
-func runAnalysisOnly(files []string, config *processor.BaseFilterConfig, log func(string, ...any), jobs int, diagnostics bool) int {
-	return runAnalysisOnlyWithDeps(files, config, log, jobs, diagnostics, defaultAnalysisOnlyDeps())
+func runAnalysisOnly(files []string, config *processor.BaseFilterConfig, log func(string, ...any), jobs int, diagnostics, quiet bool) int {
+	deps := defaultAnalysisOnlyDeps()
+	deps.quiet = quiet
+	return runAnalysisOnlyWithDeps(files, config, log, jobs, diagnostics, deps)
 }
 
 // runAnalysisOnlyWithDeps drives the analysis-only path with injected
@@ -432,7 +435,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 		specCancel()
 	}()
 
-	tty := deps.hasTTY()
+	tty := deps.hasTTY() && !deps.quiet
 
 	if tty {
 		model := ui.NewAnalysisModel(files)
@@ -461,7 +464,9 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 	} else {
 		// No terminal: one up-front banner, then the pool runs synchronously.
 		log("[ANALYSIS] No TTY available, running without progress UI")
-		fmt.Fprintf(deps.stdout, "Analysing %d files…\n", len(files))
+		if !deps.quiet {
+			fmt.Fprintf(deps.stdout, "Analysing %d files…\n", len(files))
+		}
 
 		env := poolEnv{ctx: runCtx, p: nil, files: files, base: config, sharedLog: log, jobs: jobs}
 		runAnalysisPool(env, slots, poolDeps)
@@ -493,7 +498,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 	}
 
 	render := analysisRenderScheduler{ctx: specCtx, sem: specSem, wg: &specWG, reportErr: reportErr}
-	noTTY := !tty
+	noTTY := !tty && !deps.quiet
 	failed := 0
 	for i := range files {
 		if slots[i].err != nil {
