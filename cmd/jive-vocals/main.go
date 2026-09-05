@@ -141,7 +141,6 @@ func main() {
 		// analysis-only no-TTY path in runAnalysisOnlyWithDeps. Per-file failures
 		// still print immediately via cli.PrintError from the pool body, since
 		// there is no TUI to surface them otherwise.
-		fmt.Fprintf(os.Stdout, "Processing %d files…\n", len(cliArgs.Files))
 
 		env := poolEnv{
 			ctx:       runCtx,
