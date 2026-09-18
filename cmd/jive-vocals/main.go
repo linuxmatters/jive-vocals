@@ -41,6 +41,8 @@ type CLI struct {
 	Debug        bool     `short:"d" help:"Enable debug logging to jive-vocals-debug.log"`
 	AnalysisOnly bool     `short:"a" help:"Run analysis only (Pass 1), display results, skip processing"`
 	Diagnostics  bool     `name:"diagnostics" help:"Write bulk diagnostic artefacts for sweeps and quality comparison: the .intervals.jsonl and .candidates.jsonl sidecars plus before/after spectrogram PNGs (whole-file and elected room-tone/speech regions). Adds extra FFmpeg passes. Off by default." default:"false"`
+	KeepRate     bool     `short:"k" name:"keep-rate" help:"Keep original sample rate instead of resampling to 44.1 kHz" default:"false"`
+	Quiet        bool     `short:"q" name:"quiet" help:"Suppress the interactive progress display and non-fatal warnings; errors still print. Processing runs without a TUI" default:"false"`
 	Files        []string `arg:"" name:"files" help:"Audio files to process" type:"existingfile" optional:""`
 }
 
@@ -83,6 +85,10 @@ func main() {
 	// section matches --version output.
 	processor.RunVersion = version
 
+	// Applies package-wide: gates cli.PrintWarning everywhere in this run.
+	// cli.PrintError is never gated, so failures always surface.
+	cli.SetQuiet(cliArgs.Quiet)
+
 	if len(cliArgs.Files) == 0 {
 		cli.PrintError("No input files specified")
 		_ = ctx.PrintUsage(false)
@@ -90,6 +96,10 @@ func main() {
 	}
 
 	config := processor.DefaultFilterConfig()
+
+	if cliArgs.KeepRate {
+		config.Resample.KeepRate = true
+	}
 
 	debugLog, err := openDebugLog(cliArgs.Debug)
 	if err != nil {
@@ -108,7 +118,7 @@ func main() {
 	config.SetLogger(log)
 
 	if cliArgs.AnalysisOnly {
-		if failed := runAnalysisOnly(cliArgs.Files, config, log, resolveJobs(len(cliArgs.Files), runtime.NumCPU()), cliArgs.Diagnostics); failed > 0 {
+		if failed := runAnalysisOnly(cliArgs.Files, config, log, resolveJobs(len(cliArgs.Files), runtime.NumCPU()), cliArgs.Diagnostics, cliArgs.Quiet); failed > 0 {
 			if debugLog != nil {
 				debugLog.Close()
 			}
@@ -117,15 +127,46 @@ func main() {
 		return
 	}
 
-	model := ui.NewModel(cliArgs.Files)
-
-	p := tea.NewProgram(model)
 	reportWarnings := make(chan string, len(cliArgs.Files))
 	resetDroppedWarnings()
 
 	runCtx, cancel := context.WithCancel(context.Background())
 
 	jobs := resolveJobs(len(cliArgs.Files), runtime.NumCPU())
+
+	if cliArgs.Quiet {
+		// No TUI is built at all: env.p stays nil, and every p.Send call along
+		// the processing path (progressHandler.callback, the pool body, and
+		// emitProcessingReport) is guarded to skip when p is nil, mirroring the
+		// analysis-only no-TTY path in runAnalysisOnlyWithDeps. Per-file failures
+		// still print immediately via cli.PrintError from the pool body, since
+		// there is no TUI to surface them otherwise.
+
+		env := poolEnv{
+			ctx:       runCtx,
+			p:         nil,
+			files:     cliArgs.Files,
+			base:      config,
+			sharedLog: log,
+			jobs:      jobs,
+		}
+		poolDone := launchWorkerPool(env, cliArgs.Diagnostics, reportWarnings, defaultWorkerPoolDeps())
+
+		// No keypress capture without a running program, so unlike the TUI path
+		// there is no live interrupt route into cancel(); the pool always runs to
+		// natural completion first and this is inert cleanup, matching the
+		// no-TTY analysis-only path's ordering.
+		failedFiles := <-poolDone
+		cancel()
+		close(reportWarnings)
+
+		finishProcessingRun(reportWarnings, failedFiles, debugLog)
+		return
+	}
+
+	model := ui.NewModel(cliArgs.Files)
+
+	p := tea.NewProgram(model)
 
 	env := poolEnv{
 		ctx:       runCtx,
@@ -166,6 +207,14 @@ func main() {
 		fmt.Fprintln(colorprofile.NewWriter(os.Stdout, os.Environ()), ui.FinalSummary(m))
 	}
 
+	finishProcessingRun(reportWarnings, failedFiles, debugLog)
+}
+
+// finishProcessingRun drains reportWarnings (already closed by the caller),
+// printing each as a warning, then exits non-zero if any file genuinely
+// failed. Shared by the TUI and --quiet (no-TUI) processing paths so both
+// apply identical warning and exit-code behaviour.
+func finishProcessingRun(reportWarnings <-chan string, failedFiles int, debugLog *os.File) {
 	for warning := range reportWarnings {
 		cli.PrintWarning(warning)
 	}
@@ -206,6 +255,7 @@ func formatDroppedWarningCount(count uint64) string {
 type analysisOnlyDeps struct {
 	stdout              io.Writer
 	hasTTY              func() bool
+	quiet               bool
 	openMetadata        func(string) (*audio.Metadata, error)
 	analyse             func(context.Context, string, *processor.BaseFilterConfig, processor.ProgressCallback) (*processor.AnalysisResult, error)
 	printError          func(string)
@@ -297,16 +347,21 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 		}
 	}
 
-	ph.p.Send(ui.ProgressMsg{
-		FileIndex:    ph.fileIndex,
-		Pass:         update.Pass,
-		PassName:     update.PassName,
-		Progress:     update.Progress,
-		Level:        update.Level,
-		HasLevel:     update.HasLevel,
-		Duration:     update.Duration,
-		Measurements: update.Measurements,
-	})
+	// ph.p is nil in --quiet mode (no TUI built); every Send below is
+	// guarded so the callback stays a no-op past the timing/summary
+	// bookkeeping above, mirroring runAnalysisPool's p != nil gating.
+	if ph.p != nil {
+		ph.p.Send(ui.ProgressMsg{
+			FileIndex:    ph.fileIndex,
+			Pass:         update.Pass,
+			PassName:     update.PassName,
+			Progress:     update.Progress,
+			Level:        update.Level,
+			HasLevel:     update.HasLevel,
+			Duration:     update.Duration,
+			Measurements: update.Measurements,
+		})
+	}
 
 	// At Pass-2 start the update carries the post-AdaptConfig config + diagnostics.
 	// Build the filter-chain status summary (chain + analysis rows; limiter pending)
@@ -315,10 +370,12 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 	// summary, no message.
 	if update.Config != nil {
 		ph.summary = ui.NewAdaptedSummary(update.Config, update.Diagnostics, update.Measurements)
-		ph.p.Send(ui.AdaptedSummaryMsg{
-			FileIndex: ph.fileIndex,
-			Summary:   ph.summary,
-		})
+		if ph.p != nil {
+			ph.p.Send(ui.AdaptedSummaryMsg{
+				FileIndex: ph.fileIndex,
+				Summary:   ph.summary,
+			})
+		}
 	}
 
 	// At Pass-4 start the update carries the just-computed limiter ceiling. Merge it
@@ -327,10 +384,12 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 	// Read-only surfacing: the ceiling is the same value the final NormResult reports.
 	if update.Limiter != nil {
 		ph.summary = ph.summary.WithLimiterProgress(update.Limiter)
-		ph.p.Send(ui.AdaptedSummaryMsg{
-			FileIndex: ph.fileIndex,
-			Summary:   ph.summary,
-		})
+		if ph.p != nil {
+			ph.p.Send(ui.AdaptedSummaryMsg{
+				FileIndex: ph.fileIndex,
+				Summary:   ph.summary,
+			})
+		}
 	}
 }
 
@@ -338,8 +397,10 @@ func (ph *progressHandler) callback(update processor.ProgressUpdate) {
 // pool, then displays results to console in input order. Skips full 4-pass
 // processing. Returns the number of files whose analysis failed with a real
 // (non-cancellation) error.
-func runAnalysisOnly(files []string, config *processor.BaseFilterConfig, log func(string, ...any), jobs int, diagnostics bool) int {
-	return runAnalysisOnlyWithDeps(files, config, log, jobs, diagnostics, defaultAnalysisOnlyDeps())
+func runAnalysisOnly(files []string, config *processor.BaseFilterConfig, log func(string, ...any), jobs int, diagnostics, quiet bool) int {
+	deps := defaultAnalysisOnlyDeps()
+	deps.quiet = quiet
+	return runAnalysisOnlyWithDeps(files, config, log, jobs, diagnostics, deps)
 }
 
 // runAnalysisOnlyWithDeps drives the analysis-only path with injected
@@ -374,7 +435,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 		specCancel()
 	}()
 
-	tty := deps.hasTTY()
+	tty := deps.hasTTY() && !deps.quiet
 
 	if tty {
 		model := ui.NewAnalysisModel(files)
@@ -403,7 +464,9 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 	} else {
 		// No terminal: one up-front banner, then the pool runs synchronously.
 		log("[ANALYSIS] No TTY available, running without progress UI")
-		fmt.Fprintf(deps.stdout, "Analysing %d files…\n", len(files))
+		if !deps.quiet {
+			fmt.Fprintf(deps.stdout, "Analysing %d files…\n", len(files))
+		}
 
 		env := poolEnv{ctx: runCtx, p: nil, files: files, base: config, sharedLog: log, jobs: jobs}
 		runAnalysisPool(env, slots, poolDeps)
@@ -435,7 +498,7 @@ func runAnalysisOnlyWithDeps(files []string, config *processor.BaseFilterConfig,
 	}
 
 	render := analysisRenderScheduler{ctx: specCtx, sem: specSem, wg: &specWG, reportErr: reportErr}
-	noTTY := !tty
+	noTTY := !tty && !deps.quiet
 	failed := 0
 	for i := range files {
 		if slots[i].err != nil {
