@@ -8,6 +8,12 @@ correct; this doc keeps the long rationale out of the code, where it would rot.
 The corpus references name validation sweeps run by hand against gitignored audio
 that does not ship in the repo. They are evidence summaries, not files you can open.
 
+[![Pass 3 measurement and Pass 4 linear normalisation flow](diagrams/normalisation-process.png)](diagrams/normalisation-process.png)
+
+Read the [Pipeline explanation](Pipeline.md#pass-3-measure-through-the-same-chain-it-will-be-normalised-through)
+for the shared limiter prefix, measurement handoff, and final brickwall boundary.
+[Open the HTML source](diagrams/normalisation-process.html).
+
 ## brickwallTruePeakHeadroomDB
 
 - **Value:** 0.9 dB.
@@ -42,12 +48,15 @@ that does not ship in the repo. They are evidence summaries, not files you can o
   peak about 0.04 dB hotter on every file). 0.2 clears the measured 0.05 bias about
   4 times, leaving headroom for off-corpus material (other producers' audio) where
   the Go-vs-FFmpeg estimator gap could be larger.
-- **Invariant:** This is the only static margin left in loudnorm's internal
-  targeting. The variable, corpus-dependent loudness shortfall the former 0.5 relax
-  constant covered is now derived per file from each file's Pass-3 measured_I and
-  measured_TP (see `loudnormInternalTargetTP`), so no corpus-tuned number remains.
-  It applies only to loudnorm's internal targeting; the brickwall ceiling stays at
-  `TargetTP - brickwallTruePeakHeadroomDB`, unchanged.
+- **Invariant:** Two static terms have distinct jobs in loudnorm's internal target.
+  `measurementCushionDB` adds 0.2 dB for disagreement between the Pass 3 and
+  loudnorm peak estimates. `linearSafetyMargin` adds 0.1 dB to offset the same
+  0.1 dB that `calculateLinearModeTarget` subtracts in its linear-mode guard. The
+  variable loudness shortfall that the former 0.5 dB relax constant covered is now
+  derived per file from `measured_I` and `measured_TP` in
+  `loudnormInternalTargetTP`, so no corpus-tuned shortfall remains. Neither term
+  changes the brickwall ceiling, which stays at
+  `TargetTP - brickwallTruePeakHeadroomDB`.
 
 ## linearSafetyMargin
 

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="diagram-profile" content="catppuccin-blue">
+  <meta name="diagram-mode" content="light">
+  <meta name="diagram-size" content="doc-wide 1280x720">
+  <title>How Pass 1 selects speech and room tone</title>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Fira+Code:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--paper:#eff1f5;--ink:#4c4f69;--muted:#5c5f77;--soft:#6c6f85;--rule:#ccd0da;--accent:#1e66f5;--sans:'Work Sans',system-ui,sans-serif;--mono:'Fira Code',ui-monospace,monospace}body{min-height:100vh;padding:32px;background:var(--paper);color:var(--ink);font-family:var(--sans);display:flex;align-items:center;justify-content:center}main{width:min(100%,1280px)}.eyebrow{margin-bottom:8px;color:var(--muted);font:500 8px var(--mono);letter-spacing:.18em;text-transform:uppercase}h1{margin-bottom:24px;font-size:28px;line-height:1.15}.diagram{overflow-x:auto}svg{display:block;width:100%;min-width:760px;height:auto}.name{fill:var(--ink);font:600 16px var(--sans);text-anchor:middle}.sub{fill:var(--muted);font:400 12px var(--mono);text-anchor:middle}.tag{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.12em;text-anchor:middle}.zone{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.12em;text-anchor:start}.edge{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.08em;text-anchor:middle}.legend{fill:var(--muted);font:400 12px var(--mono)}footer{margin-top:12px;color:var(--muted);font:400 12px var(--mono)}a{color:var(--ink);text-decoration:underline}
+  </style>
+</head>
+<body><main>
+  <p class="eyebrow">Flowchart · Pass 1 voice-activity detector</p>
+  <h1>One level model, two independent selections</h1>
+  <div class="diagram"><svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="speech-selection-title speech-selection-desc">
+    <title id="speech-selection-title">How Pass 1 selects speech and room tone</title>
+    <desc id="speech-selection-desc">Pass 1 derives a clamped level split and a separate percentile floor from 250 millisecond intervals. Speech selection applies a spectral veto, hysteresis, and scoring. Room-tone selection uses the longest quiet run. Gate statistics and voice-activated detection use their own interval sets.</desc>
+    <defs>
+      <marker id="speech-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#5c5f77"/></marker>
+      <marker id="speech-accent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#1e66f5"/></marker>
+      <marker id="speech-link" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#1e66f5"/></marker>
+    </defs>
+    <rect width="1280" height="720" fill="#eff1f5"/>
+
+    <!-- Branch containers. -->
+    <rect data-zone="speech" x="304" y="240" width="616" height="304" rx="8" fill="rgba(76,79,105,.02)" stroke="#ccd0da"/>
+    <text data-zone-caption="speech" x="632" y="264" class="zone">SPEECH BRANCH · LEVEL + SPECTRUM</text>
+    <rect data-zone="quiet" x="952" y="240" width="288" height="304" rx="8" fill="rgba(76,79,105,.02)" stroke="#ccd0da"/>
+    <text data-zone-caption="quiet" x="968" y="264" class="zone">QUIET BRANCH · LEVEL ONLY</text>
+
+    <!-- Connectors use separate lanes. -->
+    <path d="M248 136 H304" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#speech-arrow)"/>
+    <path d="M400 192 V288" fill="none" stroke="#1e66f5" stroke-width="2" marker-end="url(#speech-accent)"/>
+    <path d="M624 120 H1184 Q1192 120 1192 128 V296" fill="none" stroke="#1e66f5" stroke-width="2" marker-end="url(#speech-link)"/>
+    <path d="M648 344 H688" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#speech-arrow)"/>
+    <path d="M792 392 V440" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#speech-arrow)"/>
+    <path d="M1096 392 V440" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#speech-arrow)"/>
+    <path d="M792 520 V540 Q792 548 784 548 H768 Q760 548 760 556 V576" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#speech-arrow)"/>
+    <path d="M544 192 V208 Q544 216 552 216 H924 Q932 216 932 224 V560 Q932 568 924 568 H824 Q816 568 816 576" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#speech-arrow)"/>
+    <path d="M144 176 V548 Q144 556 152 556 H296 Q304 556 304 564 V576" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#speech-arrow)"/>
+
+    <!-- Edge labels. -->
+    <rect x="256" y="108" width="48" height="12" rx="4" fill="#eff1f5"/><text x="280" y="116" class="edge">LEVELS</text>
+    <rect x="820" y="92" width="96" height="12" rx="4" fill="#eff1f5"/><text x="868" y="100" class="edge">BELOW SPLIT</text>
+
+    <!-- Nodes. -->
+    <g data-node="intervals" data-x="40" data-y="96" data-w="208" data-h="80"><rect x="40" y="96" width="208" height="80" rx="8" fill="#eff1f5"/><rect x="40" y="96" width="208" height="80" rx="8" fill="rgba(92,95,119,.10)" stroke="#6c6f85"/><text x="144" y="128" class="name">250 ms intervals</text><text x="144" y="152" class="sub">level + spectral metrics</text></g>
+    <g data-node="model" data-x="304" data-y="88" data-w="320" data-h="104"><rect x="304" y="88" width="320" height="104" rx="8" fill="#eff1f5"/><rect x="304" y="88" width="320" height="104" rx="8" fill="rgba(30,102,245,.08)" stroke="#1e66f5" stroke-width="1.2"/><text x="464" y="120" class="name">Shared level model</text><text x="464" y="144" class="sub">Otsu split · seed + p75 clamp</text><text x="464" y="168" class="sub">separate low-percentile floor</text></g>
+    <g data-node="builder" data-x="328" data-y="288" data-w="320" data-h="112"><rect x="328" y="288" width="320" height="112" rx="8" fill="#eff1f5"/><rect x="328" y="288" width="320" height="112" rx="8" fill="#eff1f5" stroke="#4c4f69"/><text x="488" y="320" class="name">Speech run builder</text><text x="488" y="344" class="sub">at/above split · spectral veto</text><text x="488" y="364" class="sub">hysteresis · quiet-gap bridge</text><text x="488" y="384" class="sub">loud veto ends runs</text></g>
+    <g data-node="candidate" data-x="688" data-y="296" data-w="208" data-h="96"><rect x="688" y="296" width="208" height="96" rx="8" fill="#eff1f5"/><rect x="688" y="296" width="208" height="96" rx="8" fill="#eff1f5" stroke="#4c4f69"/><text x="792" y="328" class="name">Candidate election</text><text x="792" y="352" class="sub">SNR · adequate duration</text><text x="792" y="372" class="sub">consistency tie-break</text></g>
+    <g data-node="speech-profile" data-x="688" data-y="440" data-w="208" data-h="80"><rect x="688" y="440" width="208" height="80" rx="8" fill="#eff1f5"/><rect x="688" y="440" width="208" height="80" rx="8" fill="rgba(30,102,245,.08)" stroke="#1e66f5" stroke-width="1.2"/><text x="792" y="472" class="name">Speech profile</text><text x="792" y="496" class="sub">highest-scoring region</text></g>
+    <g data-node="quiet" data-x="976" data-y="296" data-w="240" data-h="96"><rect x="976" y="296" width="240" height="96" rx="8" fill="#eff1f5"/><rect x="976" y="296" width="240" height="96" rx="8" fill="#eff1f5" stroke="#4c4f69"/><text x="1096" y="328" class="name">Quiet runs</text><text x="1096" y="352" class="sub">all intervals below split</text><text x="1096" y="372" class="sub">no spectral veto</text></g>
+    <g data-node="room-tone" data-x="976" data-y="440" data-w="240" data-h="80"><rect x="976" y="440" width="240" height="80" rx="8" fill="#eff1f5"/><rect x="976" y="440" width="240" height="80" rx="8" fill="#eff1f5" stroke="#4c4f69"/><text x="1096" y="468" class="name">Room-tone profile</text><text x="1096" y="488" class="sub">longest run</text><text x="1096" y="508" class="sub">clean inner window</text></g>
+    <g data-node="voice-flag" data-x="184" data-y="576" data-w="240" data-h="72"><rect x="184" y="576" width="240" height="72" rx="8" fill="#eff1f5"/><rect x="184" y="576" width="240" height="72" rx="8" fill="rgba(76,79,105,.05)" stroke="#5c5f77"/><text x="304" y="604" class="name">Voice-activated flag</text><text x="304" y="628" class="sub">digital-silence fraction only</text></g>
+    <g data-node="gate" data-x="592" data-y="576" data-w="240" data-h="72"><rect x="592" y="576" width="240" height="72" rx="8" fill="#eff1f5"/><rect x="592" y="576" width="240" height="72" rx="8" fill="rgba(76,79,105,.05)" stroke="#5c5f77"/><text x="712" y="604" class="name">Gate statistics</text><text x="712" y="628" class="sub">voiced p10 · noise p95 · gap</text></g>
+
+    <line x1="40" y1="676" x2="1240" y2="676" stroke="#ccd0da"/><text x="40" y="704" class="zone">KEY</text><text x="104" y="704" class="legend">Blue: classification</text><text x="336" y="704" class="legend">Grey: selection</text><text x="548" y="704" class="legend">Dashed: derived statistics</text><text x="868" y="704" class="legend">Floor ≠ elected room tone</text>
+  </svg></div>
+  <footer>Sources: <a href="../../internal/processor/analyser_vad.go">analyser_vad.go</a> · <a href="../../internal/processor/analyser_candidates_speech.go">analyser_candidates_speech.go</a></footer>
+</main></body></html>
