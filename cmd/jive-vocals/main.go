@@ -41,6 +41,7 @@ type CLI struct {
 	Debug        bool     `short:"d" help:"Enable debug logging to jive-vocals-debug.log"`
 	AnalysisOnly bool     `short:"a" help:"Run analysis only (Pass 1), display results, skip processing"`
 	Diagnostics  bool     `name:"diagnostics" help:"Write bulk diagnostic artefacts for sweeps and quality comparison: the .intervals.jsonl and .candidates.jsonl sidecars plus before/after spectrogram PNGs (whole-file and elected room-tone/speech regions). Adds extra FFmpeg passes. Off by default." default:"false"`
+	KeepRate     bool     `short:"k" name:"keep-rate" help:"Keep original sample rate instead of resampling to 44.1 kHz" default:"false"`
 	Files        []string `arg:"" name:"files" help:"Audio files to process" type:"existingfile" optional:""`
 }
 
@@ -90,6 +91,10 @@ func main() {
 	}
 
 	config := processor.DefaultFilterConfig()
+
+	if cliArgs.KeepRate {
+		config.Resample.KeepRate = true
+	}
 
 	debugLog, err := openDebugLog(cliArgs.Debug)
 	if err != nil {
