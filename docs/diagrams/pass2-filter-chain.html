@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="diagram-profile" content="catppuccin-blue"><meta name="diagram-mode" content="light"><meta name="diagram-size" content="doc-wide 1280x720">
+  <title>Pass 2 filter chain</title>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Fira+Code:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--paper:#eff1f5;--ink:#4c4f69;--muted:#5c5f77;--rule:#ccd0da;--accent:#1e66f5;--sans:'Work Sans',system-ui,sans-serif;--mono:'Fira Code',ui-monospace,monospace}body{min-height:100vh;padding:32px;background:var(--paper);color:var(--ink);font-family:var(--sans);display:flex;align-items:center;justify-content:center}main{width:min(100%,1280px)}.eyebrow{margin-bottom:8px;color:var(--muted);font:500 8px var(--mono);letter-spacing:.18em;text-transform:uppercase}h1{margin-bottom:24px;font-size:28px;line-height:1.15}.diagram{overflow-x:auto}svg{display:block;width:100%;min-width:760px;height:auto}.name{fill:var(--ink);font:600 16px var(--sans);text-anchor:middle}.sub{fill:var(--muted);font:400 12px var(--mono);text-anchor:middle}.tag{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.12em;text-anchor:start}.num{fill:var(--muted);font:600 12px var(--mono);text-anchor:middle}.zone{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.14em;text-anchor:start}
+  </style>
+</head>
+<body><main>
+  <p class="eyebrow">Pass 2 · Exact filter order</p><h1>Nine stages prepare, clean, level, and measure the signal</h1>
+  <div class="diagram"><svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pass2-filter-chain-title pass2-filter-chain-desc">
+    <title id="pass2-filter-chain-title">Pass 2 filter chain</title>
+    <desc id="pass2-filter-chain-desc">The exact nine-stage Pass 2 order runs from downmix through frequency preparation, cleanup and dynamics, then analysis and resampling.</desc>
+    <defs><marker id="chain-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#5c5f77"/></marker><marker id="chain-accent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#1e66f5"/></marker></defs>
+    <rect width="1280" height="720" fill="#eff1f5"/>
+
+    <!-- Group containers. -->
+    <rect data-zone="format" x="40" y="68" width="1200" height="156" rx="8" fill="rgba(76,79,105,.03)" stroke="#ccd0da"/><text data-zone-caption="format" x="56" y="92" class="zone">FORMAT PREPARATION</text>
+    <rect data-zone="cleanup" x="456" y="260" width="784" height="156" rx="8" fill="rgba(76,79,105,.03)" stroke="#ccd0da"/><text data-zone-caption="cleanup" x="472" y="284" class="zone">CLEANUP</text>
+    <rect data-zone="dynamics" x="40" y="260" width="368" height="348" rx="8" fill="rgba(30,102,245,.04)" stroke="#ccd0da"/><text data-zone-caption="dynamics" x="56" y="284" class="zone">DYNAMICS</text>
+    <rect data-zone="output" x="456" y="452" width="784" height="156" rx="8" fill="rgba(76,79,105,.03)" stroke="#ccd0da"/><text data-zone-caption="output" x="472" y="476" class="zone">MEASUREMENT / OUTPUT</text>
+
+    <!-- Exact order, routed as a serpentine chain. -->
+    <path d="M360 156 H472" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#chain-arrow)"/>
+    <path d="M776 156 H888" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#chain-arrow)"/>
+    <path d="M1040 196 V300" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#chain-arrow)"/>
+    <path d="M888 348 H776" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#chain-arrow)"/>
+    <path d="M472 348 H360" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#chain-arrow)"/>
+    <path d="M208 396 V492" fill="none" stroke="#1e66f5" stroke-width="2" marker-end="url(#chain-accent)"/>
+    <path d="M360 540 H472" fill="none" stroke="#1e66f5" stroke-width="2" marker-end="url(#chain-accent)"/>
+    <path d="M776 540 H888" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#chain-arrow)"/>
+
+    <g data-node="downmix" data-x="56" data-y="116" data-w="304" data-h="80"><rect x="56" y="116" width="304" height="80" rx="8" fill="#eff1f5"/><rect x="56" y="116" width="304" height="80" rx="8" fill="#eff1f5" stroke="#4c4f69"/><circle cx="84" cy="140" r="12" fill="#eff1f5" stroke="#acb0be"/><text x="84" y="144" class="num">1</text><text x="208" y="148" class="name">Downmix to mono</text><text x="208" y="176" class="sub">downmix</text></g>
+    <g data-node="highpass" data-x="472" data-y="116" data-w="304" data-h="80"><rect x="472" y="116" width="304" height="80" rx="8" fill="#eff1f5"/><rect x="472" y="116" width="304" height="80" rx="8" fill="#eff1f5" stroke="#4c4f69"/><circle cx="500" cy="140" r="12" fill="#eff1f5" stroke="#acb0be"/><text x="500" y="144" class="num">2</text><text x="624" y="148" class="name">Remove low rumble</text><text x="624" y="176" class="sub">rumble_highpass</text></g>
+    <g data-node="lowpass" data-x="888" data-y="116" data-w="304" data-h="80"><rect x="888" y="116" width="304" height="80" rx="8" fill="#eff1f5"/><rect x="888" y="116" width="304" height="80" rx="8" fill="#eff1f5" stroke="#4c4f69"/><circle cx="916" cy="140" r="12" fill="#eff1f5" stroke="#acb0be"/><text x="916" y="144" class="num">3</text><text x="1040" y="148" class="name">Limit the top band</text><text x="1040" y="176" class="sub">bandlimit_lowpass</text></g>
+
+    <g data-node="noise" data-x="888" data-y="300" data-w="304" data-h="96"><rect x="888" y="300" width="304" height="96" rx="8" fill="#eff1f5"/><rect x="888" y="300" width="304" height="96" rx="8" fill="#eff1f5" stroke="#4c4f69"/><circle cx="916" cy="324" r="12" fill="#eff1f5" stroke="#acb0be"/><text x="916" y="328" class="num">4</text><text x="1040" y="332" class="name">Reduce background noise</text><text x="1040" y="364" class="sub">noise_reduction</text></g>
+    <g data-node="gate" data-x="472" data-y="300" data-w="304" data-h="96"><rect x="472" y="300" width="304" height="96" rx="8" fill="#eff1f5"/><rect x="472" y="300" width="304" height="96" rx="8" fill="#eff1f5" stroke="#4c4f69"/><circle cx="500" cy="324" r="12" fill="#eff1f5" stroke="#acb0be"/><text x="500" y="328" class="num">5</text><text x="624" y="332" class="name">Quiet the gaps</text><text x="624" y="364" class="sub">speech_gate</text></g>
+    <g data-node="compressor" data-x="56" data-y="300" data-w="304" data-h="96"><rect x="56" y="300" width="304" height="96" rx="8" fill="#eff1f5"/><rect x="56" y="300" width="304" height="96" rx="8" fill="rgba(30,102,245,.08)" stroke="#1e66f5" stroke-width="1.2"/><circle cx="84" cy="324" r="12" fill="#eff1f5" stroke="#1e66f5"/><text x="84" y="328" class="num">6</text><text x="208" y="332" class="name">Level the delivery</text><text x="208" y="364" class="sub">levelling_compressor</text></g>
+
+    <g data-node="deesser" data-x="56" data-y="492" data-w="304" data-h="96"><rect x="56" y="492" width="304" height="96" rx="8" fill="#eff1f5"/><rect x="56" y="492" width="304" height="96" rx="8" fill="rgba(30,102,245,.08)" stroke="#1e66f5" stroke-width="1.2"/><circle cx="84" cy="516" r="12" fill="#eff1f5" stroke="#1e66f5"/><text x="84" y="520" class="num">7</text><text x="208" y="524" class="name">Tame sibilance</text><text x="208" y="556" class="sub">deesser</text></g>
+    <g data-node="analysis" data-x="472" data-y="492" data-w="304" data-h="96"><rect x="472" y="492" width="304" height="96" rx="8" fill="#eff1f5"/><rect x="472" y="492" width="304" height="96" rx="8" fill="#eff1f5" stroke="#4c4f69"/><circle cx="500" cy="516" r="12" fill="#eff1f5" stroke="#acb0be"/><text x="500" y="520" class="num">8</text><text x="624" y="524" class="name">Measure the result</text><text x="624" y="556" class="sub">analysis</text></g>
+    <g data-node="resample" data-x="888" data-y="492" data-w="304" data-h="96"><rect x="888" y="492" width="304" height="96" rx="8" fill="#eff1f5"/><rect x="888" y="492" width="304" height="96" rx="8" fill="#eff1f5" stroke="#4c4f69"/><circle cx="916" cy="516" r="12" fill="#eff1f5" stroke="#acb0be"/><text x="916" y="520" class="num">9</text><text x="1040" y="524" class="name">Set the output format</text><text x="1040" y="556" class="sub">resample</text></g>
+
+    <line x1="40" y1="652" x2="1240" y2="652" stroke="#ccd0da"/><text x="40" y="688" class="zone">READ LEFT → RIGHT, THEN DOWN AND BACK</text><text x="1000" y="688" class="sub">exact Pass 2 order</text>
+  </svg></div>
+</main></body></html>

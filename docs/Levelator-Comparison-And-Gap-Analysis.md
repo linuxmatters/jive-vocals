@@ -103,6 +103,12 @@ This section describes the current branch, not a historical release. Code citati
 
 Jive Vocals is a Go CLI tool using embedded FFmpeg. It transforms raw voice recordings into podcast-ready audio at -16 LUFS through a **four-pass, pre-calculated** pipeline.
 
+[![Jive Vocals four-pass pipeline from analysis to normalised output](diagrams/pipeline-overview.png)](diagrams/pipeline-overview.png)
+
+[Open the HTML source](diagrams/pipeline-overview.html). The diagram shows Jive
+Vocals, not Levelator. Levelator's unpublished internal architecture is described
+only from the qualified primary-source evidence in Section 1.
+
 | Pass | Purpose | Where |
 |------|---------|-------|
 | 1 Analysis | Measures LUFS, true peak, LRA, noise floor, spectral metrics, and runs the unified VAD | `ProcessAudio` in `processor.go`, `analyser.go` |
@@ -237,13 +243,13 @@ This is the crux of the revision. The honest verdict: **there is no gap to close
 
 ### Medium priority
 
-2. **Document the pipeline as an "Algorithms" page.** Levelator's algorithm page is still cited 18 years on. Jive Vocals has the material in AGENTS.md, Pipeline.md, and Normalisation-Tuning.md; a public-facing version would build the same trust.
+1. **Document the pipeline as an "Algorithms" page.** Levelator's algorithm page is still cited 18 years on. Jive Vocals has the material in AGENTS.md, Pipeline.md, and Normalisation-Tuning.md; a public-facing version would build the same trust.
 
-3. **Position against the real Levelator status.** Levelator survives only on macOS, and its Linux build is dead. Jive Vocals' maintained Linux build is a concrete advantage to state plainly for Levelator refugees on Linux. Neither tool has a current Windows release.
+2. **Position against the real Levelator status.** Levelator survives only on macOS, and its Linux build is dead. Jive Vocals' maintained Linux build is a concrete advantage to state plainly for Levelator refugees on Linux. Neither tool has a current Windows release.
 
 ### Low priority
 
-4. **Reconsider format-preserving output as an option.** A flag to keep input rate and channels would ease migration for users who expect Levelator's behaviour, without changing the -16 LUFS default.
+1. **Reconsider format-preserving output as an option.** A flag to keep input rate and channels would ease migration for users who expect Levelator's behaviour, without changing the -16 LUFS default.
 
 ### Tested and rejected
 
@@ -272,27 +278,27 @@ Not a clean death. The Conversations Network shut down in 2012 [13], the 32-bit 
 
 ## Sources
 
-[1] The Levelator on the Mac App Store: https://apps.apple.com/us/app/the-levelator/id1493326487 - current listing, v3.0.3, free, macOS 12+, universal binary.
-[2] The Levelator Loudness Algorithms (archived): https://web.archive.org/web/20130729204708id_/http://www.conversationsnetwork.org/levelatorAlgorithm - primary algorithm page: -18 dB RMS, no weighting, 50 ms / -44 dB silence, iterative peak-safe gain, multi-pass, infinite look-ahead, -1.0 dB peak, plus or minus 1 dB tolerance.
-[3] The Levelator product page (archived): http://web.archive.org/web/20201212171812id_/http://www.conversationsnetwork.org/levelatorAlgorithm - "not a compressor, normalizer or limiter"; short/medium/long-term framing; loudness map; riding the fader.
-[4] Levelator change history (archived): http://web.archive.org/web/20200717102511/http://conversationsnetwork.org:80/levelator-change-history - version chain 0.1 beta to 2.1.2.
-[5] Levelator, Wikipedia: https://en.wikipedia.org/wiki/Levelator - PCM/WAV/AIFF only, same-format output, `.output` suffix, compression plus normalisation plus limiting over long and short segments.
-[6] The Levelator launch, Doug Kaye (2006): https://blogarithms.com/2006/09/28/the-levelator/ - Sept 2006 beta; built by Bruce and Malcolm Sharpe.
-[8] The Levelator 2.0, Doug Kaye (2010): https://blogarithms.com/2010/01/07/levelator-2-0/ - dates 2.0.3; "reduction in certain unnatural volume adjustments" via the changelog.
-[9] The Levelator 2.1.2 works in El Capitan, TidBITS (2015): https://tidbits.com/2015/12/01/the-levelator-2-1-2-works-in-el-capitan/ - macOS-only 2.1.2, "no other changes".
-[11] Levelator 3.0.2, MacUpdater: https://www.macupdater.com/app_updates/appinfo/com.singularsoftware.levelator/index.html - 64-bit revival, 2020-06-19.
-[12] The Levelator licence (archived): http://web.archive.org/web/20120630094404/http://www.conversationsnetwork.org/levelator-license - proprietary freeware; no modify, redistribute, reverse-engineer, or derivative; libsndfile LGPL.
-[13] The Conversations Network: Mission Accomplished, Doug Kaye (2012): https://blogarithms.com/2012/09/16/cn-mission-accomplished/ - shutdown end of 2012; assets to the Internet Archive.
-[3-hist] The Levelator version history, VideoHelp: https://www.videohelp.com/software/The-Levelator/version-history - "Linux version is locked to Ubuntu 7.10 x86"; Windows 2.1.1 runs on Windows 11 (user review).
-[15] Levelator, VO2GoGo: https://www.vo2gogo.com/levelator/ - confirms -1.0 dB output peak and `<name>.output.wav` naming.
-[16-recv] The Levelator, Podfeet (2020): https://www.podfeet.com/blog/2020/06/the-levelator/ - "drag, drop, wait, done"; revival narrative.
-[9-recv] Best audio levelling solution, Christopher Penn (2020): https://www.christopherspenn.com/2020/06/you-ask-i-answer-best-audio-leveling-solution-for-podcasting/ - A/B vs Auphonic; close levelling, Auphonic ahead on noise reduction.
-[10-recv] Audio processing with Levelator, Church Training Academy: https://www.churchtrainingacademy.com/audio-processing-easy-levelator/ - Levelator does not remove buzz, hum, or glitches; no noise reduction.
-[11-recv] iZotope RX Leveler docs: https://docs.izotope.com/rx11/en/leveler.html - modern leveller with K-weighting and a de-esser, features Levelator lacks.
-[18] Levelator binaries and source, Internet Archive (2013): https://archive.org/details/conversationsnetwork_org-levelator - preserved installers and source.
-[19] Levelator on Catalina, Apple StackExchange (2019): https://apple.stackexchange.com/questions/371919/levelator-working-with-catalina - 32-bit app fails on Catalina.
-[20] Alternatives to Levelator, Podcasting Hacks: https://podcastinghacks.com/alternatives-to-levelator/ - confirms Catalina break; Auphonic as successor.
-[bs1770] ITU-R BS.1770 (true-peak): https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.1770-5-202311-I!!PDF-E.pdf - K-weighting and 4x-oversampled true peak; basis for sample-peak vs true-peak.
+[1] The Levelator on the Mac App Store: <https://apps.apple.com/us/app/the-levelator/id1493326487> - current listing, v3.0.3, free, macOS 12+, universal binary.
+[2] The Levelator Loudness Algorithms (archived): <https://web.archive.org/web/20130729204708id_/http://www.conversationsnetwork.org/levelatorAlgorithm> - primary algorithm page: -18 dB RMS, no weighting, 50 ms / -44 dB silence, iterative peak-safe gain, multi-pass, infinite look-ahead, -1.0 dB peak, plus or minus 1 dB tolerance.
+[3] The Levelator product page (archived): <http://web.archive.org/web/20201212171812id_/http://www.conversationsnetwork.org/levelatorAlgorithm> - "not a compressor, normalizer or limiter"; short/medium/long-term framing; loudness map; riding the fader.
+[4] Levelator change history (archived): <http://web.archive.org/web/20200717102511/http://conversationsnetwork.org:80/levelator-change-history> - version chain 0.1 beta to 2.1.2.
+[5] Levelator, Wikipedia: <https://en.wikipedia.org/wiki/Levelator> - PCM/WAV/AIFF only, same-format output, `.output` suffix, compression plus normalisation plus limiting over long and short segments.
+[6] The Levelator launch, Doug Kaye (2006): <https://blogarithms.com/2006/09/28/the-levelator/> - Sept 2006 beta; built by Bruce and Malcolm Sharpe.
+[8] The Levelator 2.0, Doug Kaye (2010): <https://blogarithms.com/2010/01/07/levelator-2-0/> - dates 2.0.3; "reduction in certain unnatural volume adjustments" via the changelog.
+[9] The Levelator 2.1.2 works in El Capitan, TidBITS (2015): <https://tidbits.com/2015/12/01/the-levelator-2-1-2-works-in-el-capitan/> - macOS-only 2.1.2, "no other changes".
+[11] Levelator 3.0.2, MacUpdater: <https://www.macupdater.com/app_updates/appinfo/com.singularsoftware.levelator/index.html> - 64-bit revival, 2020-06-19.
+[12] The Levelator licence (archived): <http://web.archive.org/web/20120630094404/http://www.conversationsnetwork.org/levelator-license> - proprietary freeware; no modify, redistribute, reverse-engineer, or derivative; libsndfile LGPL.
+[13] The Conversations Network: Mission Accomplished, Doug Kaye (2012): <https://blogarithms.com/2012/09/16/cn-mission-accomplished/> - shutdown end of 2012; assets to the Internet Archive.
+[3-hist] The Levelator version history, VideoHelp: <https://www.videohelp.com/software/The-Levelator/version-history> - "Linux version is locked to Ubuntu 7.10 x86"; Windows 2.1.1 runs on Windows 11 (user review).
+[15] Levelator, VO2GoGo: <https://www.vo2gogo.com/levelator/> - confirms -1.0 dB output peak and `<name>.output.wav` naming.
+[16-recv] The Levelator, Podfeet (2020): <https://www.podfeet.com/blog/2020/06/the-levelator/> - "drag, drop, wait, done"; revival narrative.
+[9-recv] Best audio levelling solution, Christopher Penn (2020): <https://www.christopherspenn.com/2020/06/you-ask-i-answer-best-audio-leveling-solution-for-podcasting/> - A/B vs Auphonic; close levelling, Auphonic ahead on noise reduction.
+[10-recv] Audio processing with Levelator, Church Training Academy: <https://www.churchtrainingacademy.com/audio-processing-easy-levelator/> - Levelator does not remove buzz, hum, or glitches; no noise reduction.
+[11-recv] iZotope RX Leveler docs: <https://docs.izotope.com/rx11/en/leveler.html> - modern leveller with K-weighting and a de-esser, features Levelator lacks.
+[18] Levelator binaries and source, Internet Archive (2013): <https://archive.org/details/conversationsnetwork_org-levelator> - preserved installers and source.
+[19] Levelator on Catalina, Apple StackExchange (2019): <https://apple.stackexchange.com/questions/371919/levelator-working-with-catalina> - 32-bit app fails on Catalina.
+[20] Alternatives to Levelator, Podcasting Hacks: <https://podcastinghacks.com/alternatives-to-levelator/> - confirms Catalina break; Auphonic as successor.
+[bs1770] ITU-R BS.1770 (true-peak): <https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.1770-5-202311-I!!PDF-E.pdf> - K-weighting and 4x-oversampled true peak; basis for sample-peak vs true-peak.
 
 ### Jive Vocals code (current branch)
 

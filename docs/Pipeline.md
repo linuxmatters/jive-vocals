@@ -26,66 +26,30 @@ the result, and sets the loudness last.
 2. **Process (Pass 2).** Run the adapted filter chain: downmix, clean up the
    frequency extremes, reduce noise, gate the gaps, level the dynamics, tame
    sibilance, then measure the result for comparison.
-3. **Measure (Pass 3).** Run loudnorm in measure-only mode over the processed
-   signal, through the same limiter prefix Pass 4 will apply, so the loudness
-   pass gets accurate numbers to work from.
+3. **Measure (Pass 3).** Run loudnorm over the processed signal through the same
+   limiter prefix Pass 4 will apply. Discard its audio and keep the statistics
+   that the loudness pass needs.
 4. **Normalise (Pass 4).** Set the final loudness to -16 LUFS using loudnorm in
    linear mode, with a limiter ahead of it to create the headroom that keeps
    loudnorm linear, and a final brickwall limiter that delivers -1 dBTP.
 
-The audio output is identical whether or not diagnostics are enabled; the
-`--diagnostics` flag only adds reports and spectrograms, it never touches the
-signal.
+The audio output is identical whether or not diagnostics are enabled. Every run
+writes a report. The `--diagnostics` flag adds interval and candidate sidecars,
+plus before-and-after spectrograms, but it never touches the signal.
 
 ## The whole pipeline
 
-```mermaid
-flowchart TD
-    IN([Raw recording]) --> P1
+[![Jive Vocals four-pass pipeline and control flow](diagrams/pipeline-overview.png)](diagrams/pipeline-overview.png)
 
-    subgraph P1 [Pass 1: Analyse]
-        A1[Measure loudness, true peak, LRA] --> A2[Measure noise floor, spectral shape]
-        A2 --> A3[Voice-activity detector:<br/>split speech from silence]
-    end
-
-    P1 --> P2A[Pass 1.5: Adapt<br/>derive per-file settings]
-
-    P2A --> P2
-
-    subgraph P2 [Pass 2: Process]
-        direction TB
-        F1[downmix] --> F2[rumble_highpass]
-        F2 --> F3[bandlimit_lowpass]
-        F3 --> F4[noise_reduction]
-        F4 --> F5[speech_gate]
-        F5 --> F6[levelling_compressor]
-        F6 --> F7[deesser]
-        F7 --> F8[analysis]
-        F8 --> F9[resample]
-    end
-
-    P2 --> P3
-
-    subgraph P3 [Pass 3: Measure]
-        M1[levelling limiter prefix] --> M2[loudnorm measure-only]
-    end
-
-    P3 --> P4
-
-    subgraph P4 [Pass 4: Normalise]
-        N1[pre-gain + levelling limiter] --> N2[loudnorm linear mode]
-        N2 --> N3[adeclick] --> N4[peak limiter brickwall]
-        N4 --> N5[measure output]
-    end
-
-    P4 --> OUT([Broadcast-ready -16 LUFS / -1 dBTP])
-```
+[Open the HTML source](diagrams/pipeline-overview.html). The solid paths show
+audio reads and outputs. The dashed paths show measurements and settings, so the
+derivation step is clearly a calculation rather than an audio pass.
 
 ## The Pass 2 filter chain
 
-```text
-downmix → rumble_highpass → bandlimit_lowpass → noise_reduction → speech_gate → levelling_compressor → deesser → analysis → resample
-```
+[![Pass 2 filter chain from downmix through cleanup, dynamics, analysis, and resampling](diagrams/pass2-filter-chain.png)](diagrams/pass2-filter-chain.png)
+
+[Open the HTML source](diagrams/pass2-filter-chain.html).
 
 The order is deliberate. Each stage hands the next one a cleaner signal to work
 on.
@@ -274,6 +238,13 @@ The adaptive filters need to know two things about each recording: where the
 person is speaking, and what the quiet background sounds like. A single
 voice-activity detector answers both from the 250 ms interval measurements.
 
+[![Pass 1 speech and room-tone selection flow](diagrams/speech-selection.png)](diagrams/speech-selection.png)
+
+[Open the HTML source](diagrams/speech-selection.html). The speech branch uses
+level and spectral measurements. The quiet branch uses only the shared level
+split, while the noise floor and voice-activated flag come from separate
+statistics over the interval levels.
+
 **One level split divides speech from silence.** The detector builds a histogram
 of how loud each interval is, then finds the level that best separates the loud
 group from the quiet group (Otsu's method, the same threshold trick used in image
@@ -307,9 +278,9 @@ long but noisier one.
 
 **Room tone is the longest quiet stretch.** Every interval below the split is
 background; the longest unbroken run of them is the steadiest sample of the room,
-trimmed inward to its cleanest window. That sample sets the noise floor (taken as
-a low percentile of the interval levels) and the noise profile the gate adapts
-against.
+trimmed inward to its cleanest window. That region supplies the room-tone profile.
+A separate low percentile of all non-floored interval levels sets the noise floor,
+clamped against the pre-scan seed. The elected room tone does not set that floor.
 
 **The gate window is measured too.** From the same split, Pass 1 measures the
 soft-speech level (the quiet edge of the spoken passages), the loud-noise level
@@ -422,10 +393,17 @@ The trick is to give loudnorm the headroom it needs **before** it runs.
 
 ### Pass 3: measure through the same chain it will be normalised through
 
-Pass 3 runs loudnorm in measure-only mode over the Pass 2 output, with the same
-limiter prefix that Pass 4 will apply. Measuring through that prefix means the
-loudness and true-peak numbers loudnorm gets already reflect the limiting to
-come, so its second pass has no surprise to recover from.
+Pass 3 runs loudnorm over the Pass 2 output with the same limiter prefix that
+Pass 4 will apply. It discards loudnorm's processed audio and keeps the measured
+statistics. Those loudness and true-peak numbers already reflect the limiting to
+come, so the second pass has no surprise to recover from.
+
+[![Pass 3 measurement and Pass 4 linear normalisation flow](diagrams/normalisation-process.png)](diagrams/normalisation-process.png)
+
+[Open the HTML source](diagrams/normalisation-process.html). The diagram focuses
+on the shared prefix, measured statistics, linear loudnorm, and the separate
+final brickwall. It explicitly omits the rate barriers, `adeclick`, output
+meters, and the final format resample.
 
 ### The levelling limiter creates the headroom
 

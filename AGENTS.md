@@ -68,6 +68,12 @@ internal/
 └── cli/                    # Help styling, version output, error formatting
 ```
 
+[![Bounded worker execution in processing and analysis-only modes](docs/diagrams/worker-execution.png)](docs/diagrams/worker-execution.png)
+
+[Open the editable HTML source](docs/diagrams/worker-execution.html). The diagram
+separates per-file work from post-pool analysis report writing. It also marks the
+mode-specific relationship between `ui.AllCompleteMsg` and diagnostic rendering.
+
 **Data flow (processing):** `main.go` resolves worker count via `resolveJobs()` (number of input files, capped at `NumCPU`, floored at 1; no flag), creates a cancellable `ctx`, then launches `runWorkerPool()` (`pool.go`) → up to `jobs` files run concurrently, each a goroutine bounded by a semaphore, taking a `CloneForWorker()` config copy and `FileIndex`-routed TUI messages → `ProcessAudio(ctx, …)` → Pass 1 (`AnalyseAudio`) → `AdaptConfig()` → Pass 2 (filter chain) → Pass 3/4 (`ApplyNormalisation`) → `report.WriteMarkdownReport()` renders an always-on Markdown report (`<name>-LUFS-NN-processed.md`) from the run's `RunRecord` → sends `ui.*Msg` to TUI via `tea.Program.Send()`. After `WaitGroup` drains, the pool sends `ui.AllCompleteMsg`. `cancel()` fires after `p.Run()` returns; `runFilterGraph` checks `ctx.Err()` each frame so in-flight workers abort and run deferred temp cleanup. `runWorkerPool` returns the count of per-file failures (errors wrapping `context.Canceled` are excluded); `launchWorkerPool`'s done channel is a buffered `chan int` carrying that count to `main.go`, which exits 1 when it is nonzero. Cancellation (`q` or `Ctrl+C`) exits 0; report, run-record, sidecar, and spectrogram write failures stay warnings and never affect the exit code.
 
 With `--diagnostics`, each worker attaches the deterministic before/after PNG path list to the `RunRecord` synchronously (`DeriveSpectrogramImages`, pure string work) **before** the `.md`/`.json` write, so the report carries resolving image links; the actual `showspectrumpic` renders run in **bounded background goroutines** off the critical path (`RenderSpectrogramImage`), sharing the pool's semaphore budget and tracked by a `sync.WaitGroup` that gates program exit. Renders honour `ctx` (abort + remove partial PNGs on cancellation) and are non-fatal (a failed render surfaces a warning; audio/`.json`/`.md` still land). The flag touches no DSP, so the `.flac` output is byte-identical with it on or off.
@@ -86,6 +92,7 @@ With `--diagnostics`, each worker attaches the deterministic before/after PNG pa
 4. **Pass 4 (Normalising):** Applies `volume` (pre-gain, when ceiling clamped) + `alimiter` (levelling limiter) + `loudnorm` (linear mode) + `aresample` (source rate) + `adeclick` + `alimiter` (final-stage brickwall); pre-gain raises very quiet recordings so the alimiter can use a viable ceiling; the prefix `alimiter` creates headroom so loudnorm achieves full linear gain to reach -16 LUFS; ceiling is derived as `targetTP − gainRequired`; loudnorm targets its own per-file internal TP (`loudnormInternalTargetTP` = projected post-gain peak + `linearSafetyMargin` + `measurementCushionDB`, with the emitted `TP=` clamped to FFmpeg's `[-9, 0]` range), while the final-stage brickwall `alimiter` (pinned to `targetTP − brickwallTruePeakHeadroomDB`) owns true-peak delivery; output lands at the canonical -16 LUFS / -1 dBTP. `linearSafetyMargin = 0.1` (numeric Go-vs-FFmpeg agreement) and `measurementCushionDB = 0.2` (Go-vs-FFmpeg measurement disagreement) are the only static loudnorm-internal margins; the per-file derivation makes the linear-mode cap in `calculateLinearModeTarget` inert by construction, so every file reaches full -16 LUFS in linear mode
 
 **Filter chain order (Pass 2):**
+
 ```
 downmix → rumble_highpass → bandlimit_lowpass → noise_reduction (anlmdn at source rate, r=0.0020, m=3 → afftdn FFT spectral denoise, fixed nr=12, adaptive enable + nf + measured custom band-noise shape) → speech_gate → levelling_compressor → deesser → analysis → resample
 ```
@@ -97,6 +104,7 @@ Order rationale: downmix to mono first; HP/LP removes frequency extremes before 
 **Adeclick default:** Production uses `adeclick=t=1.7:w=55:o=50:m=s` (spline interpolation, halved overlap vs prior default) for ~75% Pass 4 runtime reduction at metric-parity quality; the gentle limiter attack keeps source clicks below the relaxed threshold. In benchmark context, refer to the production path as `adeclick_current_t_1_7_w_55_o_50_m_s`. No legacy variant is retained in the matrix. Note: adeclick runs at the source sample rate via an `aresample` inserted before it; loudnorm emits at 192 kHz when it falls back to dynamic mode (linear mode preserves the source rate), and running adeclick at that rate quadrupled its sample count - the dominant Pass 4 cost on long files until the resample was added.
 
 **Normalisation (Pass 3/4):**
+
 ```
 Pass 3: [volume (pre-gain, when clamped) → alimiter (levelling limiter)] → loudnorm (measure-only, print_format=json, stats_file) → reads back LoudnormStats JSON from the stats file
 Pass 4: volume (pre-gain, when clamped) → alimiter (levelling limiter, peak reduction) → loudnorm (linear mode, input stats from Pass 3) → aresample (source rate) → adeclick → alimiter (final-stage brickwall, source rate) → astats → aspectralstats → ebur128
@@ -107,6 +115,7 @@ Pass 4: volume (pre-gain, when clamped) → alimiter (levelling limiter, peak re
 **Output filename:** `<name>-LUFS-NN-processed.<ext>` where NN is the rounded (nearest whole) absolute LUFS value of the final output (e.g., -26.8 LUFS produces `LUFS-27`). The matching always-on report is `<name>-LUFS-NN-processed.md`; analysis-only writes `<input>-analysis.md`.
 
 **Diagnostic artefacts (`--diagnostics`, default OFF):** the flag gates three bulk diagnostic outputs written beside the `.md`/`.json`/`.flac`:
+
 - The `.intervals.jsonl` + `.candidates.jsonl` sidecars. 📌 **Behaviour change:** these were always-on before the spectrogram feature; they are now opt-in. The `.json` run-record's inline summaries cover the OFF path (interval percentiles + largest gap; elected candidate + count/score), so the `.md`/`.json` stay fully populated without the flag.
 - Before/after spectrogram PNGs, `<name>-LUFS-NN-processed.spectrogram-<kind>-<stage>.png` where `<kind>` is `whole`/`roomtone`/`speech` and `<stage>` is `before`/`after` (processing, ≤6 images: a kind's pair drops cleanly when no profile is elected) or `input` (analysis-only, ≤3 images, no "after"). Rendered via `showspectrumpic` from frozen parameters (`frozenSpectrogramSpec`: identical dimensions and dB/frequency scale across a before/after pair for honest comparison). The `## Spectrograms` report section links them.
 
@@ -137,12 +146,14 @@ Pass 4: volume (pre-gain, when clamped) → alimiter (levelling limiter, peak re
 Two separate message sets exist for the two TUI modes.
 
 **Processing mode** (`ui/messages.go`) - sent by the main processing goroutine:
+
 - `ui.FileStartMsg` - file processing started
 - `ui.ProgressMsg` - pass number, progress (0.0-1.0), current level, measurements
 - `ui.FileCompleteMsg` - processing finished with result (or error in `Error` field); carries `Quality` (Processed score) + `RecordingQuality` (Recording score) for the done box
 - `ui.AllCompleteMsg` - all files finished
 
 **Analysis-only mode** (`ui/analysis_model.go`) - sent by `runAnalysisPool()` goroutines, routed by `FileIndex`:
+
 - `ui.AnalysisStartMsg` - analysis started; carries `FileIndex`, `FileName`, `FilePath`
 - `ui.AnalysisProgressMsg` - progress (0.0-1.0) and level update; carries `FileIndex`
 - `ui.AnalysisCompleteMsg` - analysis finished; carries `FileIndex`, `Result`, and `Error`
