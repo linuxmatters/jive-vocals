@@ -33,9 +33,10 @@ the result, and sets the loudness last.
    linear mode, with a limiter ahead of it to create the headroom that keeps
    loudnorm linear, and a final brickwall limiter that delivers -1 dBTP.
 
-The audio output is identical whether or not diagnostics are enabled. Every run
-writes a report. The `--diagnostics` flag adds interval and candidate sidecars,
-plus before-and-after spectrograms, but it never touches the signal.
+The audio output is identical whether or not diagnostics are enabled. Report
+generation is enabled by default. The `--diagnostics` flag adds interval and
+candidate sidecars, plus before-and-after spectrograms, but it never touches the
+signal.
 
 ## The whole pipeline
 
