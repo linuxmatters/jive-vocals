@@ -3,7 +3,7 @@ module github.com/linuxmatters/jive-vocals
 go 1.26
 
 require (
-	charm.land/bubbles/v2 v2.2.0
+	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/alecthomas/kong v1.16.1
@@ -11,7 +11,7 @@ require (
 	github.com/charmbracelet/harmonica v0.2.0
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/linuxmatters/ffmpeg-statigo v0.0.0-00010101000000-000000000000
-	github.com/mattn/go-runewidth v0.0.28
+	github.com/mattn/go-runewidth v0.0.30
 )
 
 replace github.com/linuxmatters/ffmpeg-statigo => ./third_party/ffmpeg-statigo
