@@ -15,7 +15,8 @@ Go CLI tool for podcast audio preprocessing using embedded FFmpeg. Transforms ra
 
 - **Build binary:** `just build` (never use `go build` directly - requires CGO + version injection)
 - **Run tests:** `just test`
-- **Run linters:** `just lint` (runs `gocyclo`, `ineffassign`, `golangci-lint` including `govet`, and `actionlint`)
+- **Run linters:** `just lint` (read-only module, formatting, `golangci-lint`, `govulncheck`, `gocyclo`, and `actionlint` checks). Use `just lint correct` only when changes are intended.
+- Keep the versioned root binary build in `just/project/build.sh`, after the managed build. Keep setup explicitly invoked and outside quality commands.
 - **Clean artifacts:** `just clean`
 - **Install to ~/.local/bin:** `just install`
 - **VHS demo recording:** `just vhs`
@@ -222,5 +223,5 @@ GitHub Actions automatically builds binaries for linux-amd64, linux-arm64, darwi
 - Use Conventional Commits format
 - Run `just lint` and `just test` before committing
 - Version is injected at build time via ldflags from git tags
-- GitHub Actions owns the pinned `govulncheck` SARIF scan; do not add it to `just lint` or flag local lint for omitting it
+- Run the managed local `govulncheck` scan through `just lint`. Preserve the separate pinned GitHub Actions SARIF scan.
 - `.github/dependabot.yml` keeps its `nix` ecosystem entry. GitHub Dependabot supports Nix flake inputs and the entry is intentional; never remove it

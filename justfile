@@ -1,9 +1,13 @@
 # Jive Vocals - Just Commands
 
+set allow-duplicate-recipes
+import 'just/loader.just'
+
 # Import presenter integration tests if testdata/justfile exists (not in git)
 import? 'testdata/justfile'
 
 # List commands
+[default]
 default:
     @just --list
 
@@ -19,69 +23,6 @@ _check-submodule:
         exit 1
     fi
 
-# Get latest stable ffmpeg-statigo release tag from GitHub
-_get-latest-tag:
-    #!/usr/bin/env bash
-    curl -s https://api.github.com/repos/linuxmatters/ffmpeg-statigo/releases | \
-        jq -r '[.[] | select(.prerelease == false and .draft == false and (.tag_name | startswith("v")))][0].tag_name'
-
-# Setup or update ffmpeg-statigo submodule and library
-setup:
-    #!/usr/bin/env bash
-    set -e
-    echo "Configuring git for submodule-friendly pulls..."
-    git config pull.ff only
-    git config submodule.recurse true
-
-    TAG=$(just _get-latest-tag)
-    if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-        echo "Error: Could not fetch latest release tag"
-        exit 1
-    fi
-
-    if [ ! -f "third_party/ffmpeg-statigo/go.mod" ]; then
-        echo "Initialising ffmpeg-statigo submodule..."
-        git submodule update --init --recursive
-    fi
-
-    cd third_party/ffmpeg-statigo
-    git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
-    CURRENT=$(git describe --tags --exact-match 2>/dev/null || echo "")
-
-    if [ "$CURRENT" = "$TAG" ]; then
-        echo "ffmpeg-statigo already at latest version ($TAG)"
-        cd ../..
-    else
-        if [ -n "$CURRENT" ]; then
-            echo "Updating ffmpeg-statigo from $CURRENT to $TAG..."
-        else
-            echo "Setting up ffmpeg-statigo $TAG..."
-        fi
-        git checkout "$TAG"
-        cd ../..
-        rm -f third_party/ffmpeg-statigo/lib/*/libffmpeg.a
-        git add third_party/ffmpeg-statigo
-    fi
-
-    echo "Checking ffmpeg-statigo libraries..."
-    cd third_party/ffmpeg-statigo && go run ./cmd/download-lib
-    cd ../..
-
-    if git diff --cached --quiet third_party/ffmpeg-statigo; then
-        echo "Setup complete!"
-    else
-        echo ""
-        echo "Setup complete! Submodule updated to $TAG"
-        echo "Don't forget to commit: git commit -m 'chore: update ffmpeg-statigo to $TAG'"
-    fi
-
-# Build jive-vocals
-build: _check-submodule
-    #!/usr/bin/env bash
-    VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
-    echo "Building jive-vocals version: $VERSION"
-    CGO_ENABLED=1 go build -ldflags="-X main.version=$VERSION" -o jive-vocals ./cmd/jive-vocals
-
 # Clean build artifacts and generated reports/data (.log, .json run-records, .jsonl sidecars)
 clean:
     @rm -fv jive-vocals 2>/dev/null || true
@@ -90,10 +31,6 @@ clean:
     @rm -fv testdata/LMP-*-stashed.* 2>/dev/null || true
     @rm -fv testdata/*.png 2>/dev/null || true
     @rm -fv testdata/*.txt 2>/dev/null || true
-
-# Run tests
-test: _check-submodule
-    go test ./...
 
 # Install jive-vocals to ~/.local/bin
 install: build
@@ -161,10 +98,3 @@ release VERSION:
     echo "  - Build binaries for all platforms"
     echo "  - Generate changelog from commits"
     echo "  - Create GitHub release with downloadable assets"
-
-# Run linters
-lint: _check-submodule
-    @gocyclo -top 20 -avg -ignore '_test\.go$' .
-    @ineffassign ./...
-    @golangci-lint run
-    @actionlint

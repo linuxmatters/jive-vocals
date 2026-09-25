@@ -211,6 +211,22 @@ just install
 
 The full source layout, architecture, and contribution standards live in [AGENTS.md](AGENTS.md).
 
+### Tailor integration
+
+The root `justfile` imports the managed Tailor commands with Go, CGO, and ffmpeg-statigo enabled in `.tailor.yml`.
+Use `just build`, `just test`, and `just lint` for quality checks.
+The build also writes the versioned root binary through `just/project/build.sh`, with the existing flags.
+Default tests remain hermetic. The optional `testdata/justfile` keeps audio integration tests and manual validation separate.
+
+`just lint` checks without changing source and includes local `govulncheck`. Use `just lint correct` only to tidy modules and format source.
+The pinned GitHub Actions SARIF scan and specialised release builds remain unchanged.
+The root `release` recipe overrides the generic recipe and keeps unprefixed `X.Y.Z` tags.
+
+Run `just setup` explicitly to update the ffmpeg-statigo submodule and download libraries. Quality commands never run setup.
+The Nix shell imports managed packages and hooks with the existing `go_1_26` selection and native dependencies.
+`.envrc` watches the Nix fragments and keeps manual reloads. After review, include the new files in Git before normal flake use.
+Review and approve `.envrc` through the usual direnv process, then reload the development shell manually.
+
 ### Design Documentation
 
 - [Usage Guide](docs/Usage.md): driving Jive Vocals in depth: quality ratings, analysis-only mode, and diagnostics

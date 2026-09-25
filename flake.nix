@@ -16,10 +16,12 @@
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        basePkgs = import nixpkgs { inherit system; };
+        pkgs = basePkgs // { go = basePkgs.go_1_26; };
       in
       {
         devShells.default = pkgs.mkShell {
+          shellHook = import ./nix/hooks.nix { inherit pkgs; };
           packages = with pkgs; [
             actionlint
             curl
@@ -33,7 +35,7 @@
             jq
             just
             mediainfo
-          ];
+          ] ++ import ./nix/loader.nix { inherit pkgs; };
         };
       }
     );
