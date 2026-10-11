@@ -117,6 +117,26 @@ func TestPrintHelpersUseNoTTYWriterPolicy(t *testing.T) {
 	}
 }
 
+// TestSetQuietGatesWarningNotError verifies QuietMode (set via SetQuiet)
+// suppresses PrintWarning but never PrintError, and resets it afterwards so
+// later tests in this package see the default (non-quiet) behaviour.
+func TestSetQuietGatesWarningNotError(t *testing.T) {
+	SetQuiet(true)
+	defer SetQuiet(false)
+
+	stderr := captureFileOutput(t, &os.Stderr, func() {
+		PrintError("still shown")
+		PrintWarning("should be suppressed")
+	})
+
+	if !strings.Contains(stderr, "Error: still shown") {
+		t.Errorf("PrintError output missing under QuietMode:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "should be suppressed") {
+		t.Errorf("PrintWarning printed despite QuietMode:\n%s", stderr)
+	}
+}
+
 // titleColors extracts the distinct RGB foreground triples from a styled
 // string. Letters carry a bold prefix (1;38;2;r;g;b), so match the 38;2;r;g;b
 // foreground regardless of any leading SGR attributes.

@@ -116,6 +116,16 @@ func printLabelled(w io.Writer, style lipgloss.Style, label, message string) {
 	fmt.Fprintf(styledWriter(w), "%s %s\n", style.Render(label), message)
 }
 
+// QuietMode suppresses PrintWarning when set via SetQuiet. PrintError always
+// prints regardless of QuietMode, so a quiet run stays silent on progress and
+// non-fatal warnings but never swallows a failure.
+var QuietMode bool
+
+// SetQuiet sets the package-level quiet flag consulted by PrintWarning.
+func SetQuiet(quiet bool) {
+	QuietMode = quiet
+}
+
 // PrintError prints an error message
 func PrintError(message string) {
 	printLabelled(os.Stderr, errorStyle, "Error:", message)
@@ -123,5 +133,8 @@ func PrintError(message string) {
 
 // PrintWarning prints a warning message
 func PrintWarning(message string) {
+	if QuietMode {
+		return
+	}
 	printLabelled(os.Stderr, warningStyle, "Warning:", message)
 }
