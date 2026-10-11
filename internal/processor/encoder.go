@@ -17,11 +17,12 @@ type Encoder struct {
 	packet *ffmpeg.AVPacket
 }
 
-// createOutputEncoder creates an encoder for FLAC output
-func createOutputEncoder(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContext) (*Encoder, error) {
+// createOutputEncoder creates an encoder for the given outputFormat ("flac"
+// or "mp3"). outputFormat also selects the muxer name passed to FFmpeg.
+func createOutputEncoder(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContext, outputFormat string) (*Encoder, error) {
 	outputPathC := ffmpeg.ToCStr(outputPath)
 	defer outputPathC.Free()
-	fmtNameC := ffmpeg.ToCStr("flac")
+	fmtNameC := ffmpeg.ToCStr(outputFormat)
 	defer fmtNameC.Free()
 
 	var fmtCtx *ffmpeg.AVFormatContext
@@ -51,9 +52,13 @@ func createOutputEncoder(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContex
 		}
 	}()
 
-	codec := ffmpeg.AVCodecFindEncoder(ffmpeg.AVCodecIdFlac)
+	codecID := ffmpeg.AVCodecIdFlac
+	if outputFormat == "mp3" {
+		codecID = ffmpeg.AVCodecIdMp3
+	}
+	codec := ffmpeg.AVCodecFindEncoder(codecID)
 	if codec == nil {
-		return nil, fmt.Errorf("FLAC encoder not found for output: %s", outputPath)
+		return nil, fmt.Errorf("%s encoder not found for output: %s", outputFormat, outputPath)
 	}
 
 	stream := ffmpeg.AVFormatNewStream(fmtCtx, nil)
@@ -66,8 +71,12 @@ func createOutputEncoder(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContex
 		return nil, fmt.Errorf("failed to allocate encoder context for output: %s", outputPath)
 	}
 
-	// Get audio parameters from filter output (we only need sample rate, format is set to S16 via aformat filter)
-	if _, err := ffmpeg.AVBuffersinkGetFormat(bufferSinkCtx); err != nil { // Verify filter output is configured
+	// Get audio parameters from filter output. Sample format is read back
+	// (rather than hardcoded) because it depends on OutputFormat: the aformat
+	// filter emits s16 for FLAC but s16p (planar) for MP3, per
+	// requiredOutputSampleFmt().
+	sampleFmtInt, err := ffmpeg.AVBuffersinkGetFormat(bufferSinkCtx)
+	if err != nil {
 		return nil, fmt.Errorf("failed to get sample format: %w", err)
 	}
 
@@ -79,7 +88,8 @@ func createOutputEncoder(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContex
 	timeBase := ffmpeg.AVBuffersinkGetTimeBase(bufferSinkCtx)
 
 	// Configure encoder - FLAC supports S16 and S32, we use S16 which matches our aformat filter
-	encCtx.SetSampleFmt(ffmpeg.AVSampleFmtS16)
+	// Configure encoder with the sample format the aformat filter actually produced.
+	encCtx.SetSampleFmt(ffmpeg.AVSampleFormat(sampleFmtInt))
 	encCtx.SetSampleRate(sampleRate)
 
 	channels, err := ffmpeg.AVBuffersinkGetChannels(bufferSinkCtx)
@@ -96,6 +106,13 @@ func createOutputEncoder(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContex
 		}
 		// FLAC encoder requires fixed frame size - must match asetnsamples filter (4096)
 		encCtx.SetFrameSize(4096)
+	}
+
+	// Set bitrate for MP3 - libmp3lame requires fixed frame size (1152), must
+	// match the asetnsamples filter driven by requiredOutputFrameSize().
+	if codec.Id() == ffmpeg.AVCodecIdMp3 {
+		encCtx.SetBitRate(128000)
+		encCtx.SetFrameSize(1152)
 	}
 
 	// Set global header flag if needed by the format

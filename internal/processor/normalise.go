@@ -155,12 +155,12 @@ type loudnormDeps struct {
 	rename           func(oldpath, newpath string) error
 }
 
-func defaultLoudnormDeps() loudnormDeps {
+func defaultLoudnormDeps(outputFormat string) loudnormDeps {
 	return loudnormDeps{
 		runFilterGraph:   runFilterGraph,
 		setupFilterGraph: setupFilterGraph,
 		createEncoder: func(outputPath string, bufferSinkCtx *ffmpeg.AVFilterContext) (loudnormOutputEncoder, error) {
-			return createOutputEncoder(outputPath, bufferSinkCtx)
+			return createOutputEncoder(outputPath, bufferSinkCtx, outputFormat)
 		},
 		rename: os.Rename,
 	}
@@ -501,7 +501,7 @@ func ApplyNormalisation(
 	progressCallback ProgressCallback,
 	log debugLogger,
 ) (*NormalisationResult, error) {
-	return applyNormalisationWithDeps(ctx, inputPath, config, outputMeasurements, inputMeasurements, progressCallback, log, defaultLoudnormDeps())
+	return applyNormalisationWithDeps(ctx, inputPath, config, outputMeasurements, inputMeasurements, progressCallback, log, defaultLoudnormDeps(config.OutputFormat))
 }
 
 // normProgressEmitter sends the normalisation passes' lifecycle progress updates,
