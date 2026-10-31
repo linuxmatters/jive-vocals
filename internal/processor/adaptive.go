@@ -63,6 +63,36 @@ const (
 	afftdnCustomMinFlatness = 0.45
 )
 
+// afftdnMinNoiseReductionWhiteFallback is the nr floor used on the white-noise
+// fallback path (nt=w) when GateSeparationDB is near zero. afftdn's flat noise
+// model assumes equal noise energy at every frequency; real high-frequency
+// content naturally carries less speech energy than low/mid, so under that
+// assumption a fixed nr=12 subtracts real high-frequency signal along with
+// noise, far more at high frequencies than low (issue #155: measured -0.3 dB
+// at 80-250 Hz vs -7.9 dB at 9-12 kHz on a 0.88 dB-separation file). Below
+// afftdnCustomMinSeparationDB the room tone is already too speech-contaminated
+// to trust for the custom band-noise shape; in that same low-confidence band,
+// full-strength flat-white suppression does more harm than good, so nr ramps
+// down toward this floor as separation approaches 0.
+const afftdnMinNoiseReductionWhiteFallback = 6.0
+
+// scaleAfftdnNoiseReductionForSeparation ramps afftdn's nr linearly between
+// afftdnMinNoiseReductionWhiteFallback (at 0 dB separation) and the fixed 12
+// (at afftdnCustomMinSeparationDB and above) on the white-noise fallback path.
+// At or above afftdnCustomMinSeparationDB this returns the unmodified 12, so
+// well-separated files see no change in behaviour.
+func scaleAfftdnNoiseReductionForSeparation(separationDB float64) float64 {
+	const fullNR = 12.0
+	if separationDB >= afftdnCustomMinSeparationDB {
+		return fullNR
+	}
+	if separationDB < 0 {
+		separationDB = 0
+	}
+	t := separationDB / afftdnCustomMinSeparationDB
+	return afftdnMinNoiseReductionWhiteFallback + t*(fullNR-afftdnMinNoiseReductionWhiteFallback)
+}
+
 // afftdnBandShapeClipDB bounds each emitted bn value; afftdn clips bn to
 // [-24, +24] dB internally, so the builder matches that range.
 const afftdnBandShapeClipDB = 24.0
@@ -170,6 +200,13 @@ func tuneNoiseReduction(config *EffectiveFilterConfig, diagnostics *AdaptiveDiag
 			config.NoiseReduction.AfftdnNoiseType = "custom"
 			config.NoiseReduction.AfftdnBandNoise = bn
 		}
+	}
+	// GateSeparationDB degrades to a non-informative value when no SpeechProfile
+	// was elected (deriveGateStatistics' documented "no profile" case), so only
+	// scale nr down on the white path when there is a real profile behind the
+	// separation number.
+	if config.NoiseReduction.AfftdnNoiseType == "w" && measurements.Regions.SpeechProfile != nil {
+		config.NoiseReduction.AfftdnNoiseReduction = scaleAfftdnNoiseReductionForSeparation(measurements.Regions.GateSeparationDB)
 	}
 	if diagnostics != nil {
 		diagnostics.AfftdnNoiseType = config.NoiseReduction.AfftdnNoiseType
