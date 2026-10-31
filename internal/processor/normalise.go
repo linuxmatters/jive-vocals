@@ -1095,10 +1095,15 @@ func buildLoudnormFilterSpec(config *EffectiveFilterConfig, measurement *Loudnor
 	filters = append(filters, aspectralstatsAnalysisSpec)
 	filters = append(filters, ebur128AnalysisSpecPrefix)
 
-	// 8. Resample back to output format (44.1kHz/s16/mono)
+	// 8. Resample back to output format, preserving sample rate if requested.
 	// Required for the f64->s16 conversion ebur128 forces (output format f64, not a
 	// rate change); encoder expects s16 at 44.1kHz
-	filters = append(filters, config.buildRequiredOutputFormatFilter())
+	// rate change); encoder expects s16 at the target output sample rate.
+	if config.Resample.KeepRate {
+		filters = append(filters, config.buildKeptRateOutputFormatFilter())
+	} else {
+		filters = append(filters, config.buildRequiredOutputFormatFilter())
+	}
 
 	return strings.Join(filters, ",")
 }
