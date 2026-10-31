@@ -213,6 +213,46 @@ func TestRunAnalysisOnlyWithDeps_NonTTYOmitsBenchPath(t *testing.T) {
 	}
 }
 
+func TestRunAnalysisOnlyWithDeps_QuietSuppressesOutput(t *testing.T) {
+	inputPath := "quiet.wav"
+	config := processor.DefaultFilterConfig()
+	var output bytes.Buffer
+	reports := newReportCapture()
+
+	measurements := makeAnalysisOnlyTestMeasurements()
+	effective, diagnostics := processor.AdaptConfig(config, measurements)
+	failed := runAnalysisOnlyWithDeps([]string{inputPath}, config, func(string, ...any) {}, 1, false, analysisOnlyDeps{
+		stdout: &output,
+		hasTTY: func() bool { return true },
+		quiet:  true,
+		openMetadata: func(string) (*audio.Metadata, error) {
+			return &audio.Metadata{Duration: 120, SampleRate: 48000, Channels: 1}, nil
+		},
+		analyse: func(context.Context, string, *processor.BaseFilterConfig, processor.ProgressCallback) (*processor.AnalysisResult, error) {
+			return &processor.AnalysisResult{
+				Measurements:       measurements,
+				Config:             effective,
+				Diagnostics:        diagnostics,
+				AnalysisDuration:   2 * time.Second,
+				AdaptationDuration: 100 * time.Millisecond,
+			}, nil
+		},
+		printError:          func(string) { t.Fatal("printError called") },
+		writeMarkdownReport: reports.write,
+		writeRunRecord:      func(*processor.RunRecord, string) error { return nil },
+		writeSidecars:       func(*processor.AudioMeasurements, string) error { return nil },
+	})
+	if failed != 0 {
+		t.Fatalf("failure count = %d, want 0", failed)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("quiet analysis wrote stdout: %q", output.String())
+	}
+	if _, ok := reports.content(report.AnalysisReportPath(inputPath)); !ok {
+		t.Fatal("quiet analysis did not write the analysis report")
+	}
+}
+
 // TestRunAnalysisOnlyWithDeps_DiagnosticsGatesSidecars proves the diagnostics
 // gate on the analysis-only path: with --diagnostics off the .jsonl sidecar write is
 // skipped while the .md report and .json record still write; with it on the

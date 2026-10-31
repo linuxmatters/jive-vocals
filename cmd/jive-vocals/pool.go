@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/linuxmatters/jive-vocals/internal/cli"
 	"github.com/linuxmatters/jive-vocals/internal/processor"
 	"github.com/linuxmatters/jive-vocals/internal/report"
 	"github.com/linuxmatters/jive-vocals/internal/ui"
@@ -226,11 +227,13 @@ func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, 
 		func(i int, inputPath string, wlog func(string, ...any)) {
 			fileStartTime := time.Now()
 
-			wlog("[POOL] Sending FileStartMsg for file %d: %s", i, inputPath)
-			env.p.Send(ui.FileStartMsg{
-				FileIndex: i,
-				FileName:  inputPath,
-			})
+			if env.p != nil {
+				wlog("[POOL] Sending FileStartMsg for file %d: %s", i, inputPath)
+				env.p.Send(ui.FileStartMsg{
+					FileIndex: i,
+					FileName:  inputPath,
+				})
+			}
 
 			ph := &progressHandler{
 				p:         env.p,
@@ -245,12 +248,21 @@ func runWorkerPool(env poolEnv, diagnostics bool, reportWarnings chan<- string, 
 			if err != nil {
 				if !errors.Is(err, context.Canceled) {
 					failedFiles.Add(1)
+					// No TUI to surface the failure in --quiet mode (env.p ==
+					// nil), so print it directly. A cancelled worker (user
+					// quit) has nothing to report and stays silent here on
+					// both paths.
+					if env.p == nil {
+						cli.PrintError(fmt.Sprintf("%s: %v", inputPath, err))
+					}
 				}
 				wlog("[POOL] ProcessAudio failed: %v", err)
-				env.p.Send(ui.FileCompleteMsg{
-					FileIndex:        i,
-					CompletionResult: ui.CompletionResult{Error: err},
-				})
+				if env.p != nil {
+					env.p.Send(ui.FileCompleteMsg{
+						FileIndex:        i,
+						CompletionResult: ui.CompletionResult{Error: err},
+					})
+				}
 				return
 			}
 
@@ -460,27 +472,32 @@ func emitProcessingReport(env poolEnv, inputPath string, result *processor.Proce
 	// from the authoritative NormResult. ph.summary already carries the Pass-4
 	// limiter merge, so WithLimiter here re-applies the identical value.
 	// State-change only; no per-frame work.
-	env.p.Send(ui.AdaptedSummaryMsg{
-		FileIndex: i,
-		Summary:   ph.summary.WithLimiter(result.NormResult),
-	})
+	// State-change only; no per-frame work. Both Sends below are no-ops in
+	// --quiet mode (env.p nil, no TUI); a completed file prints nothing extra
+	// there, matching the old CLI's quiet mode (errors only).
+	if env.p != nil {
+		env.p.Send(ui.AdaptedSummaryMsg{
+			FileIndex: i,
+			Summary:   ph.summary.WithLimiter(result.NormResult),
+		})
 
-	wlog("[POOL] Sending FileCompleteMsg for file %d", i)
-	env.p.Send(ui.FileCompleteMsg{
-		FileIndex: i,
-		CompletionResult: ui.CompletionResult{
-			InputLUFS:           result.InputLUFS,
-			OutputLUFS:          result.OutputLUFS,
-			FinalNoiseFloor:     finalNoiseFloor,
-			InputNoiseFloor:     inputNoiseFloor,
-			HaveFinalNoiseFloor: haveFinalNoiseFloor,
-			HaveInputNoiseFloor: haveInputNoiseFloor,
-			OutputTP:            outputTP,
-			OutputLRA:           outputLRA,
-			OutputPath:          result.OutputPath,
-			Quality:             processor.ComputeQualityScore(result),
-			RecordingQuality:    processor.ComputeRecordingScore(result.Measurements),
-			ProcessingTime:      time.Since(t.fileStart),
-		},
-	})
+		wlog("[POOL] Sending FileCompleteMsg for file %d", i)
+		env.p.Send(ui.FileCompleteMsg{
+			FileIndex: i,
+			CompletionResult: ui.CompletionResult{
+				InputLUFS:           result.InputLUFS,
+				OutputLUFS:          result.OutputLUFS,
+				FinalNoiseFloor:     finalNoiseFloor,
+				InputNoiseFloor:     inputNoiseFloor,
+				HaveFinalNoiseFloor: haveFinalNoiseFloor,
+				HaveInputNoiseFloor: haveInputNoiseFloor,
+				OutputTP:            outputTP,
+				OutputLRA:           outputLRA,
+				OutputPath:          result.OutputPath,
+				Quality:             processor.ComputeQualityScore(result),
+				RecordingQuality:    processor.ComputeRecordingScore(result.Measurements),
+				ProcessingTime:      time.Since(t.fileStart),
+			},
+		})
+	}
 }
