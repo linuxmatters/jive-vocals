@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="diagram-profile" content="catppuccin-blue"><meta name="diagram-mode" content="light"><meta name="diagram-size" content="doc-wide 1280x720">
+  <title>Bounded worker execution</title>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Fira+Code:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--paper:#eff1f5;--ink:#4c4f69;--muted:#5c5f77;--rule:#ccd0da;--accent:#1e66f5;--sans:'Work Sans',system-ui,sans-serif;--mono:'Fira Code',ui-monospace,monospace}body{min-height:100vh;padding:32px;background:var(--paper);color:var(--ink);font-family:var(--sans);display:flex;align-items:center;justify-content:center}main{width:min(100%,1280px)}.eyebrow{margin-bottom:8px;color:var(--muted);font:500 8px var(--mono);letter-spacing:.18em;text-transform:uppercase}h1{margin-bottom:24px;font-size:28px;line-height:1.15}.diagram{overflow-x:auto}svg{display:block;width:100%;min-width:760px;height:auto}.name{fill:var(--ink);font:600 16px var(--sans);text-anchor:middle}.sub{fill:var(--muted);font:400 12px var(--mono);text-anchor:middle}.tag{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.12em;text-anchor:middle}.zone{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.12em;text-anchor:start}.edge{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.08em;text-anchor:middle}.legend{fill:var(--muted);font:400 12px var(--mono)}footer{margin-top:12px;color:var(--muted);font:400 12px var(--mono)}a{color:var(--ink);text-decoration:underline}
+  </style>
+</head>
+<body><main>
+  <p class="eyebrow">Data flow · Processing and analysis-only modes</p><h1>Bounded file work, ordered completion</h1>
+  <div class="diagram"><svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="worker-execution-title worker-execution-desc">
+    <title id="worker-execution-title">Bounded worker execution</title>
+    <desc id="worker-execution-desc">A jobs-sized worker pool processes indexed files. Processing writes reports inside each worker, while analysis-only stores indexed results and writes reports after the pool returns. Both use a shared band-measurement limit and optional bounded diagnostic renders, but their AllComplete messages occur at different points.</desc>
+    <defs>
+      <marker id="worker-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#5c5f77"/></marker>
+      <marker id="worker-data" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#1e66f5"/></marker>
+      <marker id="worker-control" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#5c5f77"/></marker>
+    </defs>
+    <rect width="1280" height="720" fill="#eff1f5"/>
+
+    <!-- Mode containers. -->
+    <rect data-zone="processing" x="320" y="204" width="904" height="168" rx="8" fill="rgba(30,102,245,.04)" stroke="#ccd0da"/>
+    <text data-zone-caption="processing" x="688" y="224" class="zone">PROCESSING · WRITES STAY WITH THE FILE WORKER</text>
+    <rect data-zone="analysis" x="320" y="396" width="904" height="164" rx="8" fill="rgba(76,79,105,.03)" stroke="#ccd0da"/>
+    <text data-zone-caption="analysis" x="672" y="420" class="zone">ANALYSIS-ONLY · ORDERED REPORTS FOLLOW THE POOL</text>
+
+    <!-- Work, data, and control paths use separate corridors. -->
+    <path d="M424 180 V264" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#worker-arrow)"/>
+    <path d="M536 180 V184 Q536 192 528 192 H304 Q296 192 296 200 V484 Q296 492 304 492 H344" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#worker-arrow)"/>
+    <path d="M360 128 H160 Q152 128 152 136 V244" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#worker-control)"/>
+    <path d="M584 304 H648" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#worker-control)"/>
+    <path d="M472 264 V244 Q472 236 480 236 H1064 Q1072 236 1072 244 V252" fill="none" stroke="#1e66f5" stroke-width="2" marker-end="url(#worker-data)"/>
+    <path d="M536 444 V384 H840 Q848 384 848 376 V344" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#worker-control)"/>
+    <path d="M584 492 H648" fill="none" stroke="#1e66f5" stroke-width="2" marker-end="url(#worker-data)"/>
+    <path d="M872 492 H936" fill="none" stroke="#1e66f5" stroke-width="2" marker-end="url(#worker-data)"/>
+    <path d="M1200 304 H1232 Q1240 304 1240 312 V608 Q1240 616 1232 616 H1200" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#worker-control)"/>
+    <path d="M1040 540 V576" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#worker-arrow)"/>
+
+    <!-- Nodes. -->
+    <g data-node="pool" data-x="360" data-y="72" data-w="240" data-h="108"><rect x="360" y="72" width="240" height="108" rx="8" fill="#eff1f5"/><rect x="360" y="72" width="240" height="108" rx="8" fill="rgba(30,102,245,.08)" stroke="#1e66f5" stroke-width="1.2"/><text x="480" y="104" class="name">Bounded file pool</text><text x="480" y="128" class="sub">indexed queue</text><text x="480" y="148" class="sub">min(jobs, files) workers</text><text x="480" y="168" class="sub">≤ jobs files active</text></g>
+    <g data-node="tui" data-x="40" data-y="244" data-w="232" data-h="264"><rect x="40" y="244" width="232" height="264" rx="8" fill="#eff1f5"/><rect x="40" y="244" width="232" height="264" rx="8" fill="rgba(76,79,105,.02)" stroke="#5c5f77" stroke-dasharray="8 8"/><text x="156" y="280" class="name">TUI messages</text><text x="156" y="312" class="sub">processing and analysis</text><text x="156" y="332" class="sub">start · progress · complete</text><line x1="72" y1="352" x2="240" y2="352" stroke="#ccd0da"/><text x="156" y="384" class="sub">AllComplete timing</text><text x="156" y="404" class="sub">depends on mode</text><text x="156" y="432" class="sub">processing: after PNG wait</text><text x="156" y="460" class="sub">analysis: after pool drain</text></g>
+    <g data-node="process" data-x="344" data-y="264" data-w="240" data-h="96"><rect x="344" y="264" width="240" height="96" rx="8" fill="#eff1f5"/><rect x="344" y="264" width="240" height="96" rx="8" fill="#eff1f5" stroke="#4c4f69"/><text x="464" y="296" class="name">Process one file</text><text x="464" y="320" class="sub">four passes · cloned config</text><text x="464" y="340" class="sub">audio result</text></g>
+    <g data-node="bands" data-x="648" data-y="264" data-w="224" data-h="80"><rect x="648" y="264" width="224" height="80" rx="8" fill="#eff1f5"/><rect x="648" y="264" width="224" height="80" rx="8" fill="rgba(76,79,105,.05)" stroke="#5c5f77"/><text x="760" y="296" class="name">Band measurements</text><text x="760" y="320" class="sub">shared NumCPU semaphore</text></g>
+    <g data-node="processing-artifacts" data-x="936" data-y="252" data-w="264" data-h="104"><rect x="936" y="252" width="264" height="104" rx="8" fill="#eff1f5"/><rect x="936" y="252" width="264" height="104" rx="8" fill="#eff1f5" stroke="#4c4f69"/><text x="1068" y="284" class="name">Processing artefacts</text><text x="1068" y="308" class="sub">audio · report · record</text><text x="1068" y="332" class="sub">FileComplete after writes</text></g>
+    <g data-node="analyse" data-x="344" data-y="444" data-w="240" data-h="96"><rect x="344" y="444" width="240" height="96" rx="8" fill="#eff1f5"/><rect x="344" y="444" width="240" height="96" rx="8" fill="#eff1f5" stroke="#4c4f69"/><text x="464" y="476" class="name">Analyse one file</text><text x="464" y="500" class="sub">Pass 1 · cloned config</text><text x="464" y="520" class="sub">indexed result slot</text></g>
+    <g data-node="drain" data-x="648" data-y="444" data-w="224" data-h="88"><rect x="648" y="444" width="224" height="88" rx="8" fill="#eff1f5"/><rect x="648" y="444" width="224" height="88" rx="8" fill="rgba(76,79,105,.05)" stroke="#5c5f77"/><text x="760" y="476" class="name">Pool drain</text><text x="760" y="500" class="sub">wg.Wait</text><text x="760" y="520" class="sub">ordered slots ready</text></g>
+    <g data-node="analysis-artifacts" data-x="936" data-y="432" data-w="264" data-h="108"><rect x="936" y="432" width="264" height="108" rx="8" fill="#eff1f5"/><rect x="936" y="432" width="264" height="108" rx="8" fill="#eff1f5" stroke="#4c4f69"/><text x="1068" y="464" class="name">Analysis artefacts</text><text x="1068" y="488" class="sub">report · record · input order</text><text x="1068" y="512" class="sub">written outside file workers</text></g>
+    <g data-node="png" data-x="936" data-y="576" data-w="264" data-h="72"><rect x="936" y="576" width="264" height="72" rx="8" fill="#eff1f5"/><rect x="936" y="576" width="264" height="72" rx="8" fill="rgba(30,102,245,.08)" stroke="#1e66f5" stroke-width="1.2"/><text x="1068" y="604" class="name">Optional PNG renders</text><text x="1068" y="628" class="sub">bounded · waited before return</text></g>
+
+    <line x1="40" y1="676" x2="1240" y2="676" stroke="#ccd0da"/><text x="40" y="704" class="zone">FLOW</text><line x1="112" y1="700" x2="164" y2="700" stroke="#5c5f77" stroke-width="2" marker-end="url(#worker-arrow)"/><text x="180" y="704" class="legend">work</text><line x1="284" y1="700" x2="336" y2="700" stroke="#1e66f5" stroke-width="2" marker-end="url(#worker-data)"/><text x="352" y="704" class="legend">data / result</text><line x1="520" y1="700" x2="572" y2="700" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#worker-control)"/><text x="588" y="704" class="legend">control / message</text><text x="820" y="704" class="legend">Analysis AllComplete precedes report and PNG work</text>
+  </svg></div>
+  <footer>Sources: <a href="../../cmd/jive-vocals/pool.go">pool.go</a> · <a href="../../cmd/jive-vocals/analysispool.go">analysispool.go</a> · <a href="../../cmd/jive-vocals/main.go">main.go</a> · <a href="../../internal/processor/analyser_band_runner.go">analyser_band_runner.go</a></footer>
+</main></body></html>
