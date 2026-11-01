@@ -1,6 +1,12 @@
 # Initially fitted by tailor on 2026-03-13
 license: GPL-3.0
 
+languages:
+  go:
+    enabled: true
+    cgo: true
+    ffmpeg-statigo: true
+
 repository:
   description: Raw microphone recordings into broadcast-ready audio in one command. No configuration, and no surprises 🗣️
   homepage: https://linuxmatters.sh

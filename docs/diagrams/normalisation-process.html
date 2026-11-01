@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Two-pass loudness normalisation</title>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Fira+Code:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #eff1f5;
+      --paper-2: #e6e9ef;
+      --ink: #4c4f69;
+      --muted: #5c5f77;
+      --rule: #ccd0da;
+      --accent: #1e66f5;
+      --sans: 'Work Sans', system-ui, sans-serif;
+      --mono: 'Fira Code', ui-monospace, monospace;
+    }
+    body {
+      min-height: 100vh;
+      padding: 32px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    main { width: min(100%, 1280px); }
+    .eyebrow {
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    h1 { margin-bottom: 24px; font-size: 28px; font-weight: 600; line-height: 1.15; }
+    .diagram { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 880px; height: auto; display: block; }
+    .node-name { fill: var(--ink); font: 600 16px var(--sans); text-anchor: middle; }
+    .node-sub { fill: var(--muted); font: 400 12px var(--mono); text-anchor: middle; }
+    .tag { fill: var(--muted); font: 500 8px var(--mono); letter-spacing: 0.12em; text-anchor: middle; }
+    .lane { fill: var(--muted); font: 500 12px var(--mono); letter-spacing: 0.12em; text-anchor: middle; }
+    .legend { fill: var(--muted); font: 400 12px var(--mono); }
+    .scope { fill: var(--ink); font: 400 12px var(--sans); }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Process · Pass 3 and Pass 4</p>
+    <h1>Measure and apply the same limiter prefix</h1>
+    <div class="diagram">
+      <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="normalisation-process-title normalisation-process-desc">
+        <title id="normalisation-process-title">Two-pass loudness normalisation</title>
+        <desc id="normalisation-process-desc">Pass 3 measures the processed audio through the same optional pre-gain and limiter prefix that Pass 4 uses, then Pass 4 gives the measured statistics to linear loudnorm before a separate final brickwall limiter.</desc>
+        <defs>
+          <marker id="normalisation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#5c5f77"/></marker>
+          <marker id="normalisation-control-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#1e66f5"/></marker>
+          <marker id="normalisation-link-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#1e66f5"/></marker>
+        </defs>
+        <rect width="1280" height="720" fill="#eff1f5"/>
+
+        <!-- Lane backgrounds and labels. -->
+        <rect x="184" y="88" width="1056" height="200" rx="8" fill="#e6e9ef" stroke="#ccd0da"/>
+        <rect x="184" y="336" width="1056" height="200" rx="8" fill="#eff1f5" stroke="#ccd0da"/>
+        <text x="96" y="176" class="lane"><tspan x="96">PASS 3</tspan><tspan x="96" dy="20">MEASURE</tspan></text>
+        <text x="96" y="424" class="lane"><tspan x="96">PASS 4</tspan><tspan x="96" dy="20">NORMALISE</tspan></text>
+
+        <!-- Audio paths. -->
+        <path d="M172 312 H224 Q232 312 232 304 V200 Q232 192 240 192 H300" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#normalisation-arrow)"/>
+        <path d="M500 184 H568" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#normalisation-arrow)"/>
+        <path d="M172 328 H224 Q232 328 232 336 V448 Q232 456 240 456 H300" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#normalisation-arrow)"/>
+        <path d="M500 456 H568" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#normalisation-arrow)"/>
+        <path d="M768 456 H836" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#normalisation-arrow)"/>
+        <path d="M1036 456 H1088" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#normalisation-arrow)"/>
+
+        <!-- Statistics paths. -->
+        <path d="M768 184 H836" fill="none" stroke="#1e66f5" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#normalisation-control-arrow)"/>
+        <path d="M936 224 V304 Q936 312 928 312 H676 Q668 312 668 320 V416" fill="none" stroke="#1e66f5" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#normalisation-control-arrow)"/>
+
+        <!-- Shared input. -->
+        <g>
+          <rect x="24" y="280" width="148" height="80" rx="8" fill="#eff1f5"/>
+          <rect x="24" y="280" width="148" height="80" rx="8" fill="rgba(92,95,119,0.10)" stroke="#6c6f85"/>
+          <text x="98" y="316" class="node-name">Pass 2 output</text>
+          <text x="98" y="340" class="node-sub">same source file</text>
+        </g>
+
+        <!-- Pass 3 nodes. -->
+        <g>
+          <rect x="300" y="144" width="200" height="80" rx="8" fill="#eff1f5"/>
+          <rect x="300" y="144" width="200" height="80" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+          <rect x="312" y="152" width="80" height="16" rx="4" fill="none" stroke="#acb0be"/>
+          <text x="352" y="164" class="tag">SAME PREFIX</text>
+          <text x="400" y="188" class="node-name">Prepare peaks</text>
+          <text x="400" y="208" class="node-sub">pre-gain? · limiter?</text>
+        </g>
+        <g>
+          <rect x="568" y="144" width="200" height="80" rx="8" fill="#eff1f5"/>
+          <rect x="568" y="144" width="200" height="80" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+          <text x="668" y="180" class="node-name">loudnorm measure</text>
+          <text x="668" y="204" class="node-sub">read audio · write JSON</text>
+        </g>
+        <g>
+          <rect x="836" y="144" width="200" height="80" rx="8" fill="#eff1f5"/>
+          <rect x="836" y="144" width="200" height="80" rx="8" fill="rgba(30,102,245,0.08)" stroke="#1e66f5" stroke-width="1.2"/>
+          <text x="936" y="180" class="node-name">Measured statistics</text>
+          <text x="936" y="204" class="node-sub">I · TP · LRA · threshold</text>
+        </g>
+
+        <!-- Pass 4 nodes. -->
+        <g>
+          <rect x="300" y="416" width="200" height="80" rx="8" fill="#eff1f5"/>
+          <rect x="300" y="416" width="200" height="80" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+          <rect x="312" y="424" width="80" height="16" rx="4" fill="none" stroke="#acb0be"/>
+          <text x="352" y="436" class="tag">SAME PREFIX</text>
+          <text x="400" y="460" class="node-name">Prepare peaks</text>
+          <text x="400" y="480" class="node-sub">pre-gain? · limiter?</text>
+        </g>
+        <g>
+          <rect x="568" y="416" width="200" height="80" rx="8" fill="#eff1f5"/>
+          <rect x="568" y="416" width="200" height="80" rx="8" fill="rgba(30,102,245,0.08)" stroke="#1e66f5" stroke-width="1.2"/>
+          <text x="668" y="452" class="node-name">loudnorm linear</text>
+          <text x="668" y="476" class="node-sub">single static gain</text>
+        </g>
+        <g>
+          <rect x="836" y="416" width="200" height="80" rx="8" fill="#eff1f5"/>
+          <rect x="836" y="416" width="200" height="80" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+          <text x="936" y="452" class="node-name">Final brickwall</text>
+          <text x="936" y="476" class="node-sub">protects −1 dBTP delivery</text>
+        </g>
+        <g>
+          <rect x="1088" y="416" width="152" height="80" rx="8" fill="#eff1f5"/>
+          <rect x="1088" y="416" width="152" height="80" rx="8" fill="rgba(92,95,119,0.10)" stroke="#6c6f85"/>
+          <text x="1164" y="452" class="node-name">Output</text>
+          <text x="1164" y="476" class="node-sub">−16 LUFS · −1 dBTP</text>
+        </g>
+
+        <!-- Scope and legend. -->
+        <rect x="40" y="584" width="1200" height="56" rx="8" fill="#e6e9ef" stroke="#ccd0da"/>
+        <text x="64" y="608" class="tag" text-anchor="start">SCOPE</text>
+        <text x="64" y="628" class="scope">The diagram omits rate barriers, adeclick, output meters, and the final format resample.</text>
+        <line x1="40" y1="672" x2="1240" y2="672" stroke="#ccd0da"/>
+        <line x1="64" y1="696" x2="128" y2="696" stroke="#5c5f77" stroke-width="2" marker-end="url(#normalisation-arrow)"/>
+        <text x="144" y="700" class="legend">audio</text>
+        <line x1="264" y1="696" x2="328" y2="696" stroke="#1e66f5" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#normalisation-control-arrow)"/>
+        <text x="344" y="700" class="legend">measured statistics</text>
+        <text x="596" y="700" class="legend">? = included only when the limiter plan needs it</text>
+      </svg>
+    </div>
+  </main>
+</body>
+</html>
