@@ -18,17 +18,13 @@ Your files emerge at -16 LUFS / -1 dBTP, the loudness standard for spoken-word p
 
 ## The Typical Workflow
 
-```
-Record → Process → Edit → Export
-  │         │         │        │
-  │         │         │        └─ Export
-  │         │         │
-  │         │         └─ Import to Audacity, top/tail, edit
-  │         │
-  │         └─ $ jive-vocals *.flac (-16 LUFS, matched levels)
-  │
-  └─ Each presenter records separately, exports FLAC
-```
+[![Creator workflow from separate recordings to a finished podcast](docs/diagrams/creator-workflow.png)](docs/diagrams/creator-workflow.png)
+
+[Open the HTML source](docs/diagrams/creator-workflow.html).
+
+Each presenter records a separate FLAC file. Jive Vocals processes the files to
+matched -16 LUFS levels. Import them into Audacity to trim and edit, then export
+the finished episode.
 
 ---
 
@@ -72,7 +68,11 @@ mv jive-vocals-darwin-arm64 ~/.local/bin/jive-vocals
 
 ## The Four-Pass Pipeline
 
-Jive Vocals treats audio processing as measurement science, not guesswork. It analyses your recording first, then adapts every filter to match. A dark-voiced narrator gets gentler de-essing, pre-compressed audio gets lighter compression, and a noisy home office gets different treatment than a clean studio.
+Jive Vocals analyses each recording before it selects the settings that benefit from measurement. Measured speech RMS sets the compressor threshold, and measured sibilance controls whether the de-esser engages and how strongly it acts. Other filter settings stay fixed where one value is right for spoken word.
+
+[![Jive Vocals four-pass pipeline from analysis to normalised output](docs/diagrams/pipeline-overview.png)](docs/diagrams/pipeline-overview.png)
+
+[Open the HTML source](docs/diagrams/pipeline-overview.html).
 
 Four passes carry a raw recording to a broadcast-ready master:
 
@@ -81,11 +81,11 @@ Four passes carry a raw recording to a broadcast-ready master:
 3. **Measure:** read the processed signal back so normalisation has accurate numbers.
 4. **Normalise:** set the final loudness to -16 LUFS / -1 dBTP.
 
-The Pass 2 filter chain, each stage handing the next a cleaner signal:
+The Pass 2 filter chain has each stage hand the next a cleaner signal:
 
-```text
-downmix → rumble high-pass → band-limit low-pass → noise reduction → speech gate → levelling compressor → de-esser → analysis → resample
-```
+[![Pass 2 filter chain from downmix through cleanup, dynamics, analysis, and resampling](docs/diagrams/pass2-filter-chain.png)](docs/diagrams/pass2-filter-chain.png)
+
+[Open the HTML source](docs/diagrams/pass2-filter-chain.html).
 
 For the full walkthrough, see **[docs/Pipeline.md](docs/Pipeline.md)**: what each stage does, why it sits where it does, how the adaptive tuning works, and how normalisation reaches -16 LUFS honestly, with a diagram.
 
@@ -156,7 +156,6 @@ jive-vocals [flags] <files...>
 | `-q, --quiet` | Suppress the interactive progress display and non-fatal warnings; errors still print. Processing runs without a TUI |
 sidecars. Adds extra FFmpeg passes. Off by default |
 
-
 ### Examples
 
 ```bash
@@ -214,6 +213,22 @@ just install
 ```
 
 The full source layout, architecture, and contribution standards live in [AGENTS.md](AGENTS.md).
+
+### Tailor integration
+
+The root `justfile` imports the managed Tailor commands with Go, CGO, and ffmpeg-statigo enabled in `.tailor.yml`.
+Use `just build`, `just test`, and `just lint` for quality checks.
+The build also writes the versioned root binary through `just/project/build.sh`, with the existing flags.
+Default tests remain hermetic. The optional `testdata/justfile` keeps audio integration tests and manual validation separate.
+
+`just lint` checks without changing source and includes local `govulncheck`. Use `just lint correct` only to tidy modules and format source.
+The pinned GitHub Actions SARIF scan and specialised release builds remain unchanged.
+The root `release` recipe overrides the generic recipe and keeps unprefixed `X.Y.Z` tags.
+
+Run `just setup` explicitly to update the ffmpeg-statigo submodule and download libraries. Quality commands never run setup.
+The Nix shell imports managed packages and hooks with the existing `go_1_26` selection and native dependencies.
+`.envrc` watches the Nix fragments and keeps manual reloads. After review, include the new files in Git before normal flake use.
+Review and approve `.envrc` through the usual direnv process, then reload the development shell manually.
 
 ### Design Documentation
 
