@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="diagram-profile" content="catppuccin-blue"><meta name="diagram-mode" content="light"><meta name="diagram-size" content="doc-inline 960x600">
+  <title>Podcast creator workflow</title>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Fira+Code:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--paper:#eff1f5;--ink:#4c4f69;--muted:#5c5f77;--rule:#ccd0da;--accent:#1e66f5;--sans:'Work Sans',system-ui,sans-serif;--mono:'Fira Code',ui-monospace,monospace}body{min-height:100vh;padding:32px;background:var(--paper);color:var(--ink);font-family:var(--sans);display:flex;align-items:center;justify-content:center}main{width:min(100%,960px)}.eyebrow{margin-bottom:8px;color:var(--muted);font:500 8px var(--mono);letter-spacing:.18em;text-transform:uppercase}h1{margin-bottom:24px;font-size:28px;line-height:1.15}.diagram{overflow-x:auto}svg{display:block;width:100%;min-width:760px;height:auto}.name{fill:var(--ink);font:600 20px var(--sans);text-anchor:start}.sub{fill:var(--muted);font:400 12px var(--mono);text-anchor:start}.tag{fill:var(--muted);font:500 8px var(--mono);letter-spacing:.12em;text-anchor:start}.step{fill:var(--ink);font:600 12px var(--mono);text-anchor:middle}.note{fill:var(--muted);font:400 12px var(--sans);text-anchor:middle}
+  </style>
+</head>
+<body><main>
+  <p class="eyebrow">Creator workflow · Separate recordings to final export</p><h1>Prepare each voice before the edit</h1>
+  <div class="diagram"><svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="creator-workflow-title creator-workflow-desc">
+    <title id="creator-workflow-title">Podcast creator workflow</title>
+    <desc id="creator-workflow-desc">Each presenter records a separate FLAC file. Jive Vocals processes those files before the creator edits them in an editor such as Audacity and makes the final export.</desc>
+    <defs><marker id="creator-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#5c5f77"/></marker></defs>
+    <rect width="960" height="600" fill="#eff1f5"/>
+
+    <!-- Ordered connectors. -->
+    <path d="M408 184 H552" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#creator-arrow)"/>
+    <path d="M688 256 V344" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#creator-arrow)"/>
+    <path d="M552 416 H408" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#creator-arrow)"/>
+
+    <g data-node="record" data-x="72" data-y="112" data-w="336" data-h="144">
+      <rect x="72" y="112" width="336" height="144" rx="8" fill="#eff1f5"/><rect x="72" y="112" width="336" height="144" rx="8" fill="rgba(92,95,119,.10)" stroke="#6c6f85"/>
+      <circle cx="104" cy="144" r="16" fill="#eff1f5" stroke="#5c5f77"/><text x="104" y="148" class="step">1</text><text x="132" y="132" class="tag">RECORD</text><text x="132" y="160" class="name">Separate presenter tracks</text>
+      <text x="104" y="196" class="sub">presenter-a.flac</text><text x="104" y="220" class="sub">presenter-b.flac</text><text x="104" y="244" class="sub">presenter-c.flac</text>
+    </g>
+    <g data-node="process" data-x="552" data-y="112" data-w="336" data-h="144">
+      <rect x="552" y="112" width="336" height="144" rx="8" fill="#eff1f5"/><rect x="552" y="112" width="336" height="144" rx="8" fill="rgba(30,102,245,.08)" stroke="#1e66f5" stroke-width="1.2"/>
+      <circle cx="584" cy="144" r="16" fill="#eff1f5" stroke="#1e66f5"/><text x="584" y="148" class="step">2</text><text x="612" y="132" class="tag">PROCESS</text><text x="612" y="160" class="name">Run Jive Vocals</text>
+      <text x="584" y="204" class="sub">jive-vocals *.flac</text><text x="584" y="232" class="sub">one processed file per presenter</text>
+    </g>
+    <g data-node="edit" data-x="552" data-y="344" data-w="336" data-h="144">
+      <rect x="552" y="344" width="336" height="144" rx="8" fill="#eff1f5"/><rect x="552" y="344" width="336" height="144" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+      <circle cx="584" cy="376" r="16" fill="#eff1f5" stroke="#5c5f77"/><text x="584" y="380" class="step">3</text><text x="612" y="364" class="tag">EDIT</text><text x="612" y="392" class="name">Make the episode edit</text>
+      <text x="584" y="436" class="sub">import · top and tail · arrange</text><text x="584" y="464" class="sub">for example, Audacity</text>
+    </g>
+    <g data-node="export" data-x="72" data-y="344" data-w="336" data-h="144">
+      <rect x="72" y="344" width="336" height="144" rx="8" fill="#eff1f5"/><rect x="72" y="344" width="336" height="144" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+      <circle cx="104" cy="376" r="16" fill="#eff1f5" stroke="#5c5f77"/><text x="104" y="380" class="step">4</text><text x="132" y="364" class="tag">EXPORT</text><text x="132" y="392" class="name">Create the final file</text>
+      <text x="104" y="436" class="sub">export from the editor</text><text x="104" y="464" class="sub">episode master</text>
+    </g>
+
+    <line x1="40" y1="536" x2="920" y2="536" stroke="#ccd0da"/>
+    <text x="480" y="568" class="note">Jive Vocals prepares the recordings. Your editor creates the episode.</text>
+  </svg></div>
+</main></body></html>
