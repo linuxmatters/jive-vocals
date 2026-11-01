@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jive Vocals pipeline overview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Fira+Code:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #eff1f5;
+      --ink: #4c4f69;
+      --muted: #5c5f77;
+      --rule: #ccd0da;
+      --accent: #1e66f5;
+      --accent-tint: rgba(30,102,245,0.08);
+      --sans: 'Work Sans', system-ui, sans-serif;
+      --mono: 'Fira Code', ui-monospace, monospace;
+    }
+    body {
+      min-height: 100vh;
+      padding: 32px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    main { width: min(100%, 960px); }
+    .eyebrow {
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    h1 { margin-bottom: 24px; font-size: 28px; font-weight: 600; line-height: 1.15; }
+    .diagram { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 720px; height: auto; display: block; }
+    .node-name { fill: var(--ink); font: 600 16px var(--sans); text-anchor: middle; }
+    .node-sub { fill: var(--muted); font: 400 12px var(--mono); text-anchor: middle; }
+    .tag { fill: var(--muted); font: 500 8px var(--mono); letter-spacing: 0.12em; text-anchor: middle; }
+    .legend { fill: var(--muted); font: 400 12px var(--mono); }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Data flow · Four-pass overview</p>
+    <h1>From raw recording to broadcast-ready output</h1>
+    <div class="diagram">
+      <svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-overview-title pipeline-overview-desc">
+        <title id="pipeline-overview-title">Jive Vocals pipeline overview</title>
+        <desc id="pipeline-overview-desc">Audio flows from the raw recording through processing and normalisation, while analysis and measurement supply settings and statistics through separate control paths.</desc>
+        <defs>
+          <marker id="pipeline-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#5c5f77"/></marker>
+          <marker id="pipeline-control-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#5c5f77"/></marker>
+          <marker id="pipeline-link-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#1e66f5"/></marker>
+        </defs>
+        <rect width="960" height="600" fill="#eff1f5"/>
+
+        <!-- Audio paths. -->
+        <path d="M192 316 H300" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#pipeline-arrow)"/>
+        <path d="M460 316 H560" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#pipeline-arrow)"/>
+        <path d="M720 316 H768" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#pipeline-arrow)"/>
+        <path d="M120 280 V216 Q120 208 128 208 H316 Q324 208 324 200 V176" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#pipeline-arrow)"/>
+        <path d="M380 352 V384 Q380 392 388 392 H572 Q580 392 580 400 V420" fill="none" stroke="#5c5f77" stroke-width="2" marker-end="url(#pipeline-arrow)"/>
+
+        <!-- Measurement and settings paths. -->
+        <path d="M404 140 H444" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#pipeline-control-arrow)"/>
+        <path d="M532 176 V224 Q532 232 524 232 H428 Q420 232 420 240 V280" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#pipeline-control-arrow)"/>
+        <path d="M660 456 H696 Q704 456 704 448 V368 Q704 360 696 360 H648 Q640 360 640 352" fill="none" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#pipeline-control-arrow)"/>
+
+        <!-- Nodes. Opaque masks are below translucent fills. -->
+        <g>
+          <rect x="48" y="280" width="144" height="72" rx="8" fill="#eff1f5"/>
+          <rect x="48" y="280" width="144" height="72" rx="8" fill="rgba(92,95,119,0.10)" stroke="#6c6f85"/>
+          <text x="120" y="312" class="node-name">Raw recording</text>
+          <text x="120" y="332" class="node-sub">source audio</text>
+        </g>
+        <g>
+          <rect x="244" y="104" width="160" height="72" rx="8" fill="#eff1f5"/>
+          <rect x="244" y="104" width="160" height="72" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+          <rect x="256" y="112" width="48" height="16" rx="4" fill="none" stroke="#acb0be"/>
+          <text x="280" y="124" class="tag">PASS 1</text>
+          <text x="324" y="144" class="node-name">Analyse</text>
+          <text x="324" y="164" class="node-sub">measure source</text>
+        </g>
+        <g>
+          <rect x="444" y="104" width="176" height="72" rx="8" fill="#eff1f5"/>
+          <rect x="444" y="104" width="176" height="72" rx="8" fill="rgba(30,102,245,0.08)" stroke="#1e66f5" stroke-width="1.2"/>
+          <rect x="456" y="112" width="72" height="16" rx="4" fill="none" stroke="#1e66f5"/>
+          <text x="492" y="124" class="tag">CALCULATE</text>
+          <text x="532" y="144" class="node-name">Derive settings</text>
+          <text x="532" y="164" class="node-sub">no audio pass</text>
+        </g>
+        <g>
+          <rect x="300" y="280" width="160" height="72" rx="8" fill="#eff1f5"/>
+          <rect x="300" y="280" width="160" height="72" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+          <rect x="312" y="288" width="48" height="16" rx="4" fill="none" stroke="#acb0be"/>
+          <text x="336" y="300" class="tag">PASS 2</text>
+          <text x="380" y="320" class="node-name">Process</text>
+          <text x="380" y="340" class="node-sub">adapted filter chain</text>
+        </g>
+        <g>
+          <rect x="500" y="420" width="160" height="72" rx="8" fill="#eff1f5"/>
+          <rect x="500" y="420" width="160" height="72" rx="8" fill="#eff1f5" stroke="#4c4f69"/>
+          <rect x="512" y="428" width="48" height="16" rx="4" fill="none" stroke="#acb0be"/>
+          <text x="536" y="440" class="tag">PASS 3</text>
+          <text x="580" y="460" class="node-name">Measure</text>
+          <text x="580" y="480" class="node-sub">loudnorm statistics</text>
+        </g>
+        <g>
+          <rect x="560" y="280" width="160" height="72" rx="8" fill="#eff1f5"/>
+          <rect x="560" y="280" width="160" height="72" rx="8" fill="rgba(30,102,245,0.08)" stroke="#1e66f5" stroke-width="1.2"/>
+          <rect x="572" y="288" width="48" height="16" rx="4" fill="none" stroke="#1e66f5"/>
+          <text x="596" y="300" class="tag">PASS 4</text>
+          <text x="640" y="320" class="node-name">Normalise</text>
+          <text x="640" y="340" class="node-sub">linear loudnorm</text>
+        </g>
+        <g>
+          <rect x="768" y="280" width="152" height="72" rx="8" fill="#eff1f5"/>
+          <rect x="768" y="280" width="152" height="72" rx="8" fill="rgba(92,95,119,0.10)" stroke="#6c6f85"/>
+          <text x="844" y="312" class="node-name">Output</text>
+          <text x="844" y="332" class="node-sub">−16 LUFS · −1 dBTP</text>
+        </g>
+
+        <line x1="40" y1="536" x2="920" y2="536" stroke="#ccd0da" stroke-width="1"/>
+        <text x="40" y="568" class="tag" text-anchor="start">FLOW</text>
+        <line x1="112" y1="564" x2="176" y2="564" stroke="#5c5f77" stroke-width="2" marker-end="url(#pipeline-arrow)"/>
+        <text x="192" y="568" class="legend">audio read or output</text>
+        <line x1="416" y1="564" x2="480" y2="564" stroke="#5c5f77" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#pipeline-control-arrow)"/>
+        <text x="496" y="568" class="legend">measurements or settings</text>
+      </svg>
+    </div>
+  </main>
+</body>
+</html>
