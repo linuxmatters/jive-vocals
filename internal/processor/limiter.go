@@ -18,6 +18,14 @@ const (
 	// See docs/Normalisation-Tuning.md for the corpus derivation.
 	minLimiterCeilingDB = -24.0 // dBTP
 
+	// maxLimiterCeilingDB is FFmpeg alimiter's ceiling maximum (dBTP): the
+	// `limit` option is capped at 1.0 (0 dBFS), so any higher derived ceiling
+	// makes AVFilterGraphParsePtr fail with AVERROR(ERANGE). Engine ceiling,
+	// not a tuning constant. Reached when the filtered signal is louder than
+	// target_I + (target_TP - 0) (i.e. loudnorm will attenuate) yet its
+	// peak-to-loudness spread still exceeds the crest budget.
+	maxLimiterCeilingDB = 0.0 // dBTP
+
 	// brickwallTruePeakHeadroomDB is the inter-sample allowance (dB) subtracted
 	// from loudnorm's TargetTP to set the brickwall's sample-peak ceiling.
 	// See docs/Normalisation-Tuning.md for the corpus derivation.
@@ -59,6 +67,14 @@ type limiterDerivation struct {
 // ceiling re-derived from the post-gain values. Both are 0.0 when not clamped,
 // and the whole derivation is zero when limiting is not needed (so diagnostics
 // never report a pre-gain alongside a disabled limiter).
+//
+// Ceilings above alimiter's engine ceiling (maxLimiterCeilingDB, 0 dBFS) are
+// clamped down to it WITHOUT setting clamped: that flag drives the pre-gain /
+// target-adjustment path, which only applies to the low clamp. The high clamp
+// is delivery-safe: it only occurs when gainRequired < 0 (loudnorm attenuates),
+// so peaks limited to 0 dBFS land at gainRequired dBTP, which is below targetTP
+// exactly when the unclamped ceiling exceeded 0; the downstream brickwall still
+// owns the final true peak.
 // See docs/Normalisation-Tuning.md for the minLimiterCeilingDB derivation.
 //
 // Parameters:
@@ -101,6 +117,12 @@ func deriveLimiterAndPreGain(measuredI, measuredTP, targetI, targetTP float64) l
 	if d.ceiling < minLimiterCeilingDB {
 		d.ceiling = minLimiterCeilingDB
 		d.clamped = true
+	}
+
+	// Clamp to alimiter's maximum supported ceiling (limit=1.0). Not flagged as
+	// clamped: no pre-gain or target adjustment applies (see doc comment).
+	if d.ceiling > maxLimiterCeilingDB {
+		d.ceiling = maxLimiterCeilingDB
 	}
 
 	return d
