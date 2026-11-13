@@ -7,8 +7,10 @@ with pkgs;
   curl
   jq
 ]
-++ lib.optionals stdenv.isLinux [
-  vulkan-loader
-  intel-media-driver
-  vpl-gpu-rt
-]
+++ lib.optionals stdenv.isLinux (
+  [ vulkan-loader ]
+  ++ lib.optionals stdenv.hostPlatform.isx86_64 [
+    intel-media-driver
+    vpl-gpu-rt
+  ]
+)

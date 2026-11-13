@@ -33,5 +33,11 @@
     else
       ""
   )
+  (
+    if builtins.pathExists ./hooks/go-ebitengine.nix then
+      import ./hooks/go-ebitengine.nix { inherit pkgs; }
+    else
+      ""
+  )
   (if builtins.pathExists ./hooks/core.nix then import ./hooks/core.nix { inherit pkgs; } else "")
 ]

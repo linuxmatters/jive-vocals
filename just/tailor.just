@@ -4,7 +4,7 @@ export CGO_ENABLED := "1"
 # Run explicitly requested setup for enabled components
 setup:
     #!/usr/bin/env bash
-    set -e
+    set -euo pipefail
     (
     set -e
     if grep -Eq '^module[[:space:]]+"?github\.com/linuxmatters/ffmpeg-statigo"?([[:space:]]|$)' go.mod; then
@@ -17,14 +17,15 @@ setup:
 
     # Get latest stable release tag
     TAG=$(
+        RELEASES=$(curl -fsS https://api.github.com/repos/linuxmatters/ffmpeg-statigo/releases) || exit 1
         if command -v jq &> /dev/null; then
-            curl -s https://api.github.com/repos/linuxmatters/ffmpeg-statigo/releases | \
+            printf '%s\n' "$RELEASES" | \
                 jq -r '[.[] | select(.prerelease == false and .draft == false and (.tag_name | startswith("v")))][0].tag_name'
         else
-            curl -s https://api.github.com/repos/linuxmatters/ffmpeg-statigo/releases | \
-                grep -B5 '"prerelease": false' | grep '"tag_name"' | grep -v 'lib-' | head -1 | cut -d'"' -f4
+            printf '%s\n' "$RELEASES" | \
+                grep -B5 '"prerelease": false' | grep '"tag_name": "v' | grep -v 'lib-' | head -1 | cut -d'"' -f4
         fi
-    )
+    ) || TAG=""
     if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
         echo "Error: Could not fetch latest release tag"
         exit 1
@@ -91,6 +92,7 @@ build:
     goexe="$(go env GOEXE)"
     outputs=()
     owners=()
+    output_count=0
 
     check_bin_directory() {
         if [[ -L bin ]]; then
@@ -116,6 +118,12 @@ build:
     }
 
     check_bin_directory
+    if [[ -z "${main_packages[*]-}" ]]; then
+        go build ./...
+        echo "Go packages built successfully. No executable packages were found."
+        exit 0
+    fi
+
     for package in "${main_packages[@]}"; do
         output="${package##*/}"
         if [[ "${output}" =~ ^v([2-9]|[1-9][0-9]+)$ ]]; then
@@ -123,7 +131,7 @@ build:
             output="${parent##*/}"
         fi
         output="${output}${goexe}"
-        for index in "${!outputs[@]}"; do
+        for ((index = 0; index < output_count; index++)); do
             if [[ "${outputs[${index}]}" == "${output}" ]]; then
                 echo "Error: Go executable packages ${owners[${index}]} and ${package} both produce bin/${output}" >&2
                 exit 1
@@ -132,13 +140,8 @@ build:
         check_output_destination "${output}"
         owners+=("${package}")
         outputs+=("${output}")
+        output_count=$((output_count + 1))
     done
-
-    if (( ${#main_packages[@]} == 0 )); then
-        go build ./...
-        echo "Go packages built successfully. No executable packages were found."
-        exit 0
-    fi
 
     work="$(mktemp -d "${TMPDIR:-/tmp}/tailor-go-build.XXXXXX")"
     trap 'rm -rf "${work}"' EXIT
