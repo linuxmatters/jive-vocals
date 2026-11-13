@@ -14,19 +14,19 @@ let
   libraries = {
     x86_64-linux = {
       target = "linux-amd64";
-      hash = "sha256-8c2NmIMyzuO4XqS9o8cFFiJ4VN50rwyTj4XRKpyb+f0=";
+      hash = "sha256-R/CFjAAq4JWgFhcnauQMcZK8fQa/IDmzfXUE39vE6b0=";
     };
     aarch64-linux = {
       target = "linux-arm64";
-      hash = "sha256-aKmgukikbJVSgEdd3LVmrKyB1vK7JXzxesfGcZvCF/M=";
+      hash = "sha256-kTbh4dYxhbZX2/tr8ZWuV6LxMBgSd0OvxGh1ocwogDc=";
     };
   };
   library = libraries.${pkgs.stdenv.hostPlatform.system} or libraries.x86_64-linux;
-  libffmpeg = pkgs.runCommand "libffmpeg-8.1.2.0-${library.target}" { } ''
+  libffmpeg = pkgs.runCommand "libffmpeg-8.1.2.1-${library.target}" { } ''
     mkdir -p $out
     tar -xzf ${
       pkgs.fetchurl {
-        url = "https://github.com/linuxmatters/ffmpeg-statigo/releases/download/lib-8.1.2.0/ffmpeg-${library.target}.tar.gz";
+        url = "https://github.com/linuxmatters/ffmpeg-statigo/releases/download/lib-8.1.2.1/ffmpeg-${library.target}.tar.gz";
         inherit (library) hash;
       }
     } -C $out
@@ -41,8 +41,7 @@ pkgs.buildGo126Module {
   proxyVendor = true;
   vendorHash = "sha256-nixsPY/TTC5r9C2obZOihwPap5U3Ws3dax6izmGHz4g=";
   subPackages = [ "cmd/jive-vocals" ];
-  # Go rejects the LLVM bitcode sections in libffmpeg.a when the library is
-  # inside the build tree, so link it from the store instead.
+  # Link libffmpeg.a from the store, because the sandbox cannot download it.
   env = {
     CGO_ENABLED = 1;
     CGO_LDFLAGS = "-L${libffmpeg}/${builtins.replaceStrings [ "-" ] [ "_" ] library.target}";
