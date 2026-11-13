@@ -4,6 +4,8 @@
 
 Raw microphone recordings into broadcast-ready audio in one command. No configuration, and no surprises.
 
+Website: [linuxmatters.sh/jive/vocals](https://linuxmatters.sh/jive/vocals/)
+
 ```bash
 jive-vocals LMP-81s-mark.flac LMP-81s-martin.flac LMP-81s-popey.flac
 ```
@@ -28,40 +30,26 @@ the finished episode.
 
 ---
 
-## Installation
+## Install
 
-Single binary. Zero external dependencies. FFmpeg is embedded via ffmpeg-statigo.
+| | Platform | Repository |
+| :-: | --- | --- |
+| <img src="https://apt.wimpys.world/logo.svg" width="32" height="32" alt=""> | Debian and Ubuntu | [apt.wimpys.world](https://apt.wimpys.world/#jive-vocals) |
+| <img src="https://rpm.wimpys.world/logo.svg" width="32" height="32" alt=""> | Fedora and openSUSE | [rpm.wimpys.world](https://rpm.wimpys.world/#jive-vocals) |
+| <img src="https://pkg.wimpys.world/logo.svg" width="32" height="32" alt=""> | Arch Linux | [pkg.wimpys.world](https://pkg.wimpys.world/#jive-vocals) |
+| <img src="https://brew.wimpys.world/logo.svg" width="32" height="32" alt=""> | macOS (Homebrew) | [brew.wimpys.world](https://brew.wimpys.world/#jive-vocals) |
+| <img src="https://nix.wimpys.world/logo.svg" width="32" height="32" alt=""> | Nix and NixOS | [nix.wimpys.world](https://nix.wimpys.world/#jive-vocals) |
 
-### bin (Recommended)
+Each repository is signed, and its page gives the setup steps and keeps Jive Vocals up to date.
 
-Install with [bin](https://github.com/marcosnils/bin), a GitHub-aware binary manager:
+The Linux packages and binaries need glibc 2.38 or later, for example Ubuntu 24.04, Debian 13, or Fedora 39.
 
-```bash
+### Linux and macOS
+
+[bin](https://github.com/marcosnils/bin) installs and updates the release binary:
+
+```shell
 bin install github.com/linuxmatters/jive-vocals
-```
-
-This picks the correct platform and architecture, drops the binary into `~/.local/bin/`, and handles updates via `bin update`. No root required, no path wrangling.
-
-### Manual Download
-
-Fetch from the [releases page](https://github.com/linuxmatters/jive-vocals/releases):
-
-```bash
-# Linux amd64
-chmod +x jive-vocals-linux-amd64
-mv jive-vocals-linux-amd64 ~/.local/bin/jive-vocals
-
-# Linux arm64
-chmod +x jive-vocals-linux-arm64
-mv jive-vocals-linux-arm64 ~/.local/bin/jive-vocals
-
-# macOS Intel
-chmod +x jive-vocals-darwin-amd64
-mv jive-vocals-darwin-amd64 ~/.local/bin/jive-vocals
-
-# macOS Apple Silicon
-chmod +x jive-vocals-darwin-arm64
-mv jive-vocals-darwin-arm64 ~/.local/bin/jive-vocals
 ```
 
 ---

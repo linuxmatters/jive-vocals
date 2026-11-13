@@ -1,0 +1,113 @@
+---
+version: 2
+
+project_name: jive-vocals
+
+git:
+  ignore_tags:
+    - latest
+
+# cgo links the prebuilt static FFmpeg library, so each target builds on its
+# own native runner. TARGET selects the one build that runs; the publish job
+# leaves TARGET unset, skips every build, and releases the runner outputs from
+# ./artifacts.
+builds:
+  - &build
+    id: linux_amd64
+    main: ./cmd/jive-vocals
+    binary: jive-vocals
+    env:
+      - CGO_ENABLED=1
+    targets:
+      - linux_amd64_v1
+    skip: '{{ ne (index .Env "TARGET") "linux_amd64" }}'
+    ldflags:
+      - "-s -w -X main.version={{ .Version }}"
+  - <<: *build
+    id: linux_arm64
+    targets:
+      - linux_arm64_v8.0
+    skip: '{{ ne (index .Env "TARGET") "linux_arm64" }}'
+  - <<: *build
+    id: darwin_amd64
+    targets:
+      - darwin_amd64_v1
+    skip: '{{ ne (index .Env "TARGET") "darwin_amd64" }}'
+  - <<: *build
+    id: darwin_arm64
+    targets:
+      - darwin_arm64_v8.0
+    skip: '{{ ne (index .Env "TARGET") "darwin_arm64" }}'
+
+archives:
+  - id: bare
+    formats:
+      - binary
+    name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
+
+nfpms:
+  - id: packages
+    vendor: Martin Wimpress
+    maintainer: "Martin Wimpress <code@wimpress.io>"
+    description: "Raw microphone recordings into broadcast-ready audio in one command. No configuration, and no surprises 🗣️"
+    homepage: https://linuxmatters.sh/jive/vocals/
+    license: GPL-3.0
+    file_name_template: "{{ .ConventionalFileName }}"
+    formats:
+      - deb
+      - rpm
+      - archlinux
+    archlinux:
+      packager: "Martin Wimpress <code@wimpress.io>"
+    # The static FFmpeg library is built on Ubuntu 24.04, so the binaries
+    # need glibc 2.38 and GLIBCXX_3.4.29 (GCC 11) or later.
+    overrides:
+      deb:
+        dependencies:
+          - libc6 (>= 2.38)
+          - libstdc++6 (>= 11)
+          - libgcc-s1
+      rpm:
+        dependencies:
+          - libc.so.6(GLIBC_2.38)(64bit)
+          - libstdc++.so.6(GLIBCXX_3.4.29)(64bit)
+          - libgcc_s.so.1()(64bit)
+      archlinux:
+        dependencies:
+          - glibc>=2.38
+          - gcc-libs
+
+checksum:
+  disable: true
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  name_template: "Jive Vocals {{ .Version }}"
+  prerelease: auto
+  extra_files:
+    - glob: ./artifacts/*
+  footer: |
+    ## Install
+
+    - Debian and Ubuntu: [apt.wimpys.world](https://apt.wimpys.world/#jive-vocals)
+    - Fedora and openSUSE: [rpm.wimpys.world](https://rpm.wimpys.world/#jive-vocals)
+    - Arch Linux: [pkg.wimpys.world](https://pkg.wimpys.world/#jive-vocals)
+    - macOS (Homebrew): [brew.wimpys.world](https://brew.wimpys.world/#jive-vocals)
+    - Nix and NixOS: [nix.wimpys.world](https://nix.wimpys.world/#jive-vocals)
+    - Linux and macOS, with [bin](https://github.com/marcosnils/bin): `bin install github.com/linuxmatters/jive-vocals`
+
+    The packages need glibc 2.38 or later, for example Ubuntu 24.04, Debian 13, or Fedora 39.
+
+retry:
+  attempts: 5
+  delay: 10s
+  max_delay: 2m

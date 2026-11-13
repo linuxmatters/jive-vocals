@@ -6,3 +6,6 @@ testdata/
 
 # ffmpeg-statigo libraries (downloaded, not committed)
 third_party/ffmpeg-statigo/lib/*/libffmpeg.a
+/artifacts/
+/dist/
+/result
