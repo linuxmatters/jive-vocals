@@ -234,14 +234,14 @@ jobs:
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: "v2.18.0"
-          args: release --clean ${{ startsWith(github.ref, 'refs/tags/') && '--skip=publish,announce' || '--snapshot' }}
+          args: release --clean ${{ startsWith(github.ref, 'refs/tags/') && '--skip=publish,announce' || '--snapshot' }} ${{ matrix.os == 'darwin' && '--skip=nfpm' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET: ${{ matrix.os }}_${{ matrix.arch }}
       - name: Collect release files
         run: |
           mkdir -p artifacts
-          jq -r '.[] | select(.extra.Checksum) | [.path, .name] | @tsv' dist/artifacts.json |
+          jq -r '.[] | select(.type == "Linux Package" or (.type == "Binary" and (.name | test("-(linux|darwin)-(amd64|arm64)$")))) | [.path, .name] | @tsv' dist/artifacts.json |
             while IFS=$'\t' read -r path name; do
               cp "${path}" "artifacts/${name}"
             done
