@@ -9,7 +9,7 @@ languages:
 
 repository:
   description: Raw microphone recordings into broadcast-ready audio in one command. No configuration, and no surprises 🗣️
-  homepage: https://linuxmatters.sh
+  homepage: https://linuxmatters.sh/jive/vocals/
   has_wiki: false
   has_discussions: false
   has_projects: false
