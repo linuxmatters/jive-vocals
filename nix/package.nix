@@ -1,6 +1,11 @@
 { pkgs, self, ... }:
 let
-  version = "0.0.0-${self.sourceInfo.shortRev or (self.sourceInfo.dirtyShortRev or "dirty")}";
+  # The release workflow writes nix/version into the commit that the latest tag names.
+  version =
+    if builtins.pathExists ./version then
+      pkgs.lib.trim (builtins.readFile ./version)
+    else
+      "0.0.0-${self.sourceInfo.shortRev or (self.sourceInfo.dirtyShortRev or "dirty")}";
 
   # github: flakes omit submodules, so fetch ffmpeg-statigo at the commit that
   # third_party/ffmpeg-statigo pins, and the static library that its
