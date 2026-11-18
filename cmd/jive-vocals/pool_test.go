@@ -489,6 +489,54 @@ func TestRunWorkerPool_FailureIsolation(t *testing.T) {
 	}
 }
 
+// TestRunWorkerPool_NoTUINilProgram exercises the --quiet code path: env.p is
+// nil (no tea.Program built), so every guarded p.Send in the pool body,
+// progressHandler.callback, and emitProcessingReport must be skipped rather
+// than panic on a nil receiver. Mirrors TestRunWorkerPool_FailureIsolation but
+// without a TUI, proving failure isolation and the failure count hold
+// identically with no program driving messages.
+func TestRunWorkerPool_NoTUINilProgram(t *testing.T) {
+	t.Parallel()
+
+	const n = 5
+	const failIdx = 2
+
+	dir := t.TempDir()
+	files := make([]string, n)
+	for i := range files {
+		files[i] = filepath.Join(dir, "noTUI-"+string(rune('a'+i))+".flac")
+	}
+
+	fake := &isolationFake{failPath: files[failIdx]}
+
+	base := processor.DefaultFilterConfig()
+	reportWarnings := make(chan string, n)
+
+	env := poolEnv{ctx: context.Background(), p: nil, files: files, base: base, sharedLog: func(string, ...any) {}, jobs: 3}
+	failed := runWorkerPool(env, false, reportWarnings, workerPoolDeps{processAudio: fake.fn})
+
+	close(reportWarnings)
+	for warning := range reportWarnings {
+		t.Errorf("unexpected report warning: %s", warning)
+	}
+
+	if failed != 1 {
+		t.Fatalf("runWorkerPool failure count = %d, want 1 (only the designated failing file)", failed)
+	}
+
+	// Each sibling must have produced its output (proof it ran to completion
+	// with no program to drive it).
+	for i, path := range files {
+		if i == failIdx {
+			continue
+		}
+		out := strings.TrimSuffix(path, filepath.Ext(path)) + "-LUFS-16-processed" + filepath.Ext(path)
+		if _, err := os.Stat(out); err != nil {
+			t.Fatalf("sibling %s did not produce output: %v", path, err)
+		}
+	}
+}
+
 // TestRunWorkerPool_SerialParityJobs1 asserts jobs == 1 yields the serial
 // outcome: every submitted file is processed exactly once, every file emits a
 // FileCompleteMsg, and AllCompleteMsg fires. Parity is proven by the fake's
