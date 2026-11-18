@@ -1501,6 +1501,37 @@ func TestBuildResampleFilter(t *testing.T) {
 			t.Errorf("buildResampleFilter() = %q, want empty string", result)
 		}
 	})
+	t.Run("keep-rate omits sample_rates clause", func(t *testing.T) {
+		config := newTestConfig()
+		config.Resample.Enabled = true
+		config.Resample.SampleRate = 44100
+		config.Resample.Format = "s16"
+		config.Resample.FrameSize = 4096
+		config.Resample.KeepRate = true
+
+		result := config.buildResampleFilter()
+
+		expected := "aformat=channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096"
+		if result != expected {
+			t.Errorf("buildResampleFilter() = %q, want %q", result, expected)
+		}
+	})
+
+	t.Run("keep-rate false falls back to required filter", func(t *testing.T) {
+		config := newTestConfig()
+		config.Resample.Enabled = true
+		config.Resample.SampleRate = 48000
+		config.Resample.Format = "s16"
+		config.Resample.FrameSize = 4096
+		config.Resample.KeepRate = false
+
+		result := config.buildResampleFilter()
+
+		expected := "aformat=sample_rates=48000:channel_layouts=mono:sample_fmts=s16,asetnsamples=n=4096"
+		if result != expected {
+			t.Errorf("buildResampleFilter() = %q, want %q", result, expected)
+		}
+	})
 }
 
 func TestBuildRequiredOutputFormatFilter(t *testing.T) {
