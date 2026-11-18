@@ -177,8 +177,12 @@ type NoiseReductionConfig struct {
 	// noise under speech that anlmdn and the gate do not reach. It replaced the
 	// former compand residual-suppression stage, which resolved to its gentlest
 	// 4 dB expansion on every stem and added floor pumping. Reduction is fixed
-	// (nr=12) and validated; not adaptively tuned, because the noisiest voice
-	// must be capped at ~12 to avoid warble.
+	// at nr=12 on well-separated files (the noisiest voice must be capped at
+	// ~12 to avoid warble); on the white-noise fallback path it ramps down
+	// toward afftdnMinNoiseReductionWhiteFallback as GateSeparationDB approaches
+	// 0, since flat-spectrum suppression at full depth strips real high-frequency
+	// signal on files where noise and speech are barely distinguishable (see
+	// scaleAfftdnNoiseReductionForSeparation).
 	AfftdnEnabled        bool    `json:"afftdn_enabled"`
 	AfftdnNoiseReduction float64 `json:"afftdn_noise_reduction_db"`
 	// AfftdnNoiseType selects afftdn's noise model: "w" (white, the default) or
