@@ -125,6 +125,10 @@ type filterConfigDefaults struct {
 
 	Adeclick AdeclickConfig `json:"-"`
 	Loudnorm LoudnormConfig `json:"-"`
+	// OutputFormat selects the Pass 2/4 output container/codec: "flac" (default)
+	// or "mp3". Plumbing only, excluded from the run record like the other
+	// orchestration configs above.
+	OutputFormat string `json:"-"`
 
 	// Filter chain order - controls the sequence of filters in the processing chain
 	// Use Pass2FilterOrder or customise for experimentation
@@ -385,8 +389,8 @@ func defaultFilterConfigDefaults() filterConfigDefaults {
 		Deesser:             defaultDeesserConfig(),
 		Adeclick:            defaultAdeclickConfig(),
 		Loudnorm:            defaultLoudnormConfig(),
-
-		FilterOrder: Pass2FilterOrder,
+		OutputFormat:        "flac",
+		FilterOrder:         Pass2FilterOrder,
 	}
 }
 
@@ -648,11 +652,33 @@ func (cfg *EffectiveFilterConfig) buildResampleFilter() string {
 
 // buildRequiredOutputFormatFilter builds the mandatory output format filter.
 // Use this when a pass must restore encoder-compatible audio regardless of
-// Resample.Enabled.
+// Resample.Enabled. Sample format and frame size are derived from
+// OutputFormat since MP3 (libmp3lame) requires different values than FLAC.
 func (cfg *EffectiveFilterConfig) buildRequiredOutputFormatFilter() string {
 	resample := cfg.Resample
 	return fmt.Sprintf("aformat=sample_rates=%d:channel_layouts=mono:sample_fmts=%s,asetnsamples=n=%d",
-		resample.SampleRate, resample.Format, resample.FrameSize)
+		resample.SampleRate, cfg.requiredOutputSampleFmt(), cfg.requiredOutputFrameSize())
+}
+
+// requiredOutputSampleFmt returns the sample format the aformat filter (and
+// the encoder built on top of it) must use for the configured OutputFormat.
+// FLAC keeps the existing s16 default; MP3 (libmp3lame) requires planar
+// signed 16-bit input.
+func (cfg *EffectiveFilterConfig) requiredOutputSampleFmt() string {
+	if cfg.OutputFormat == "mp3" {
+		return "s16p"
+	}
+	return cfg.Resample.Format
+}
+
+// requiredOutputFrameSize returns the fixed frame size the aformat filter (and
+// the encoder) must use for the configured OutputFormat. MP3 (libmp3lame)
+// requires exactly 1152 samples per frame; FLAC keeps the existing default.
+func (cfg *EffectiveFilterConfig) requiredOutputFrameSize() int {
+	if cfg.OutputFormat == "mp3" {
+		return 1152
+	}
+	return cfg.Resample.FrameSize
 }
 
 // buildRumbleHighpassFilter builds the rumble high-pass filter.

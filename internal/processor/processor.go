@@ -206,7 +206,7 @@ func ProcessAudio(ctx context.Context, inputPath string, config *BaseFilterConfi
 
 	// Rename output file to include LUFS value: <name>-processed.<ext> → <name>-LUFS-NN-processed.<ext>
 	lufsValue := lufsFilenameValue(result.OutputLUFS)
-	finalPath := generateLUFSOutputPath(inputPath, lufsValue)
+	finalPath := generateLUFSOutputPath(inputPath, lufsValue, effectiveConfig.OutputFormat)
 	if err := publishOutput(outputPath, finalPath); err != nil {
 		return nil, fmt.Errorf("failed to publish output: %w", err)
 	}
@@ -288,7 +288,7 @@ func processWithFilters(ctx context.Context, inputPath, outputPath string, confi
 	defer ffmpeg.AVFilterGraphFree(&filterGraph)
 
 	// Create output encoder
-	encoder, err := createOutputEncoder(outputPath, bufferSinkCtx)
+	encoder, err := createOutputEncoder(outputPath, bufferSinkCtx, config.OutputFormat)
 	if err != nil {
 		return InputMetadata{}, fmt.Errorf("failed to create encoder: %w", err)
 	}
@@ -377,14 +377,14 @@ func processWithFilters(ctx context.Context, inputPath, outputPath string, confi
 }
 
 // generateLUFSOutputPath creates the final output filename with the measured LUFS value.
-// Output is always FLAC regardless of input extension.
+// Output extension follows outputFormat ("flac" or "mp3") regardless of input extension.
 // Example: /path/to/audio.flac → /path/to/audio-LUFS-16-processed.flac
-// Example: /path/to/audio.wav  → /path/to/audio-LUFS-16-processed.flac
-func generateLUFSOutputPath(inputPath string, lufsValue int) string {
+// Example: /path/to/audio.wav  → /path/to/audio-LUFS-16-processed.mp3  (outputFormat "mp3")
+func generateLUFSOutputPath(inputPath string, lufsValue int, outputFormat string) string {
 	dir := filepath.Dir(inputPath)
 	filename := filepath.Base(inputPath)
 	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
-	return filepath.Join(dir, fmt.Sprintf("%s-LUFS-%d-processed.flac", nameWithoutExt, lufsValue))
+	return filepath.Join(dir, fmt.Sprintf("%s-LUFS-%d-processed.%s", nameWithoutExt, lufsValue, outputFormat))
 }
 
 func lufsFilenameValue(outputLUFS float64) int {
