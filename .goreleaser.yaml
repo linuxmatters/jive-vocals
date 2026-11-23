@@ -21,6 +21,8 @@ builds:
     targets:
       - linux_amd64_v1
     skip: '{{ ne (index .Env "TARGET") "linux_amd64" }}'
+    flags:
+      - -trimpath
     ldflags:
       - "-s -w -X main.version={{ .Version }}"
   - <<: *build
