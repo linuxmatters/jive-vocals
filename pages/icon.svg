@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="jv-title">
+  <title id="jv-title">jive-vocals</title>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#131C33" stroke="#2B3B63" stroke-width="1.5"/>
+  <g id="guides" stroke="#2B3B63" stroke-width="1.5" stroke-dasharray="3 3" stroke-linecap="round">
+    <path d="M10 20h44M10 44h44"/>
+  </g>
+  <g id="echo-wave" fill="none" stroke="#6366F1" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 35h7l4-9 4.5 18 5-24 5 28 5-22 4 14 3.5-5h8"/>
+  </g>
+  <g id="lead-wave" fill="none" stroke="#38BDF8" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 31h7l4-9 4.5 18 5-24 5 28 5-22 4 14 3.5-5h8"/>
+  </g>
+  <g id="peak-accents" fill="none" stroke="#F8FAFC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M27.3 25 29.5 16 31.7 27M37.4 29 39.5 22 41.3 28"/>
+  </g>
+</svg>
