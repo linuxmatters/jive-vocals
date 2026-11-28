@@ -144,6 +144,7 @@ type ResampleConfig struct {
 	SampleRate int
 	Format     string
 	FrameSize  int
+	KeepRate   bool
 }
 
 // BiquadFilterConfig holds the shared parameters for a single biquad pole/zero
@@ -638,12 +639,27 @@ func (cfg *EffectiveFilterConfig) buildAnalysisFilter() string {
 // buildResampleFilter builds the output format standardisation filter.
 // Ensures consistent output: 44.1kHz, 16-bit, mono, fixed frame size.
 // Pass 2 only - applied after all processing and analysis.
+// If KeepRate is true, only adjusts channel layout and sample format, preserving sample rate.
 func (cfg *EffectiveFilterConfig) buildResampleFilter() string {
 	resample := cfg.Resample
 	if !resample.Enabled {
 		return ""
 	}
+	if resample.KeepRate {
+		return cfg.buildKeptRateOutputFormatFilter()
+	}
 	return cfg.buildRequiredOutputFormatFilter()
+}
+
+// buildKeptRateOutputFormatFilter builds an output format filter that
+// preserves the source sample rate. Adjusts only channel layout and sample
+// format (and forces the fixed encoder frame size), leaving sample rate
+// unchanged - unlike buildRequiredOutputFormatFilter, it omits
+// aformat's sample_rates= clause entirely.
+func (cfg *EffectiveFilterConfig) buildKeptRateOutputFormatFilter() string {
+	resample := cfg.Resample
+	return fmt.Sprintf("aformat=channel_layouts=mono:sample_fmts=%s,asetnsamples=n=%d",
+		resample.Format, resample.FrameSize)
 }
 
 // buildRequiredOutputFormatFilter builds the mandatory output format filter.
