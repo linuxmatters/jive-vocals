@@ -1330,6 +1330,10 @@ func refLimiterCeiling(measuredI, measuredTP, targetI, targetTP float64) (ceilin
 		ceiling = minLimiterCeilingDB
 		clamped = true
 	}
+	// alimiter limit max is 1.0 (0 dBFS): clamp down, not flagged as clamped.
+	if ceiling > maxLimiterCeilingDB {
+		ceiling = maxLimiterCeilingDB
+	}
 	return ceiling, true, clamped
 }
 
@@ -1355,8 +1359,8 @@ func refPreGain(measuredI, targetI, targetTP float64) (preGainDB, reDerivedCeili
 // helper zeroes the pre-gain pair (the old helpers leaked it), so the oracle
 // composition below applies the same zeroing.
 func TestDeriveLimiterAndPreGainEquivalence(t *testing.T) {
-	measuredIs := []float64{-55.0, -43.2, -40.0, -36.6, -33.5, -24.9, -20.0, -16.0, -12.0}
-	measuredTPs := []float64{-30.0, -20.0, -18.6, -15.0, -10.0, -6.0, -5.0, -3.0, -1.0}
+	measuredIs := []float64{-55.0, -43.2, -40.0, -36.6, -33.5, -24.9, -20.0, -16.0, -12.0, -8.0}
+	measuredTPs := []float64{-30.0, -20.0, -18.6, -15.0, -10.0, -6.0, -5.0, -3.0, -1.0, 6.0}
 	targetIs := []float64{-16.0, -14.0}
 	targetTPs := []float64{-2.0, -1.5, -1.0}
 
@@ -1420,6 +1424,22 @@ func TestDeriveLimiterAndPreGainPinned(t *testing.T) {
 			mI:   -36.6, mTP: -15.0, tI: -16.0, tTP: -2.0,
 			// gain 20.6, projectedTP 5.6 > -2.0, ceiling -22.6 (above -24.0), idealCeiling -22.6 >= -24.0
 			want: limiterDerivation{ceiling: -22.6, needed: true},
+		},
+		{
+			// Regression: hot, high-crest file (filtered I > -15 LUFS with TP > 0 dBTP).
+			// Unclamped ceiling +3.0 dBTP -> alimiter limit 1.41 > 1.0 -> AVERROR(ERANGE)
+			// "Numerical result out of range" from AVFilterGraphParsePtr in Pass 3.
+			name: "hot file - ceiling clamped to alimiter maximum (0 dBFS), not flagged clamped",
+			mI:   -12.0, mTP: 4.0, tI: -16.0, tTP: -1.0,
+			// gain -4.0 (attenuation), projectedTP 0.0 > -1.0 -> needed
+			// ceiling -1.0 - (-4.0) = +3.0 > maxLimiterCeilingDB -> 0.0; no pre-gain, clamped=false
+			want: limiterDerivation{ceiling: maxLimiterCeilingDB, needed: true},
+		},
+		{
+			name: "high clamp boundary - ceiling exactly 0 dBFS, unchanged",
+			mI:   -15.0, mTP: 1.0, tI: -16.0, tTP: -1.0,
+			// gain -1.0, projectedTP 0.0 > -1.0 -> needed, ceiling -1.0 - (-1.0) = 0.0 (== max)
+			want: limiterDerivation{ceiling: 0.0, needed: true},
 		},
 	}
 
@@ -1617,6 +1637,20 @@ func TestCalculateLimiterCeiling(t *testing.T) {
 			wantCeiling: minCeiling,
 			wantNeeded:  true,
 			wantClamped: true,
+		},
+		{
+			name:       "hot file - clamped to maximum (alimiter limit=1.0)",
+			measuredI:  -12.0,
+			measuredTP: 4.0,
+			targetI:    -16.0,
+			targetTP:   -1.0,
+			// gain = -16.0 - (-12.0) = -4.0 dB (attenuation)
+			// projected TP = 4.0 + (-4.0) = 0.0 dBTP (exceeds -1.0)
+			// derived ceiling = -1.0 - (-4.0) = +3.0 dBTP > 0.0, so clamped to 0.0 dBTP.
+			// Not flagged clamped: no pre-gain / target adjustment applies.
+			wantCeiling: maxLimiterCeilingDB,
+			wantNeeded:  true,
+			wantClamped: false,
 		},
 		{
 			name:       "exact clamping boundary - ceiling equals minimum exactly",
@@ -2504,6 +2538,82 @@ func TestLoudnormPrefixAndFilterSpecParityRepresentativeCases(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPlanLimiterForLoudnormHotFilePrefixWithinAlimiterRange is the regression
+// for the Pass 3 failure "failed to parse filter graph: averror -34: Numerical
+// result out of range". A hot, high-crest Pass 2 output (I > -15 LUFS with TP >
+// 0 dBTP) used to derive a ceiling above 0 dBFS, emitting alimiter limit > 1.0,
+// which FFmpeg rejects with AVERROR(ERANGE) (the option's range is 0.0625..1.0).
+// The prefix must now carry limit=1.000000 exactly, with no volume pre-gain.
+func TestPlanLimiterForLoudnormHotFilePrefixWithinAlimiterRange(t *testing.T) {
+	config := defaultNormalisationTestConfig()
+	config.Loudnorm.TargetI = -16.0
+	config.Loudnorm.TargetTP = -1.0
+
+	tests := []struct {
+		name     string
+		outputI  float64
+		outputTP float64
+	}{
+		// Near the reproduction point (filtered I just above -15 LUFS, TP just above 0 dBTP -> limit≈1.01).
+		{name: "just over 0 dBFS ceiling", outputI: -14.9, outputTP: 0.4},
+		{name: "well over 0 dBFS ceiling", outputI: -8.0, outputTP: 8.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output := &OutputMeasurements{
+				Loudness: OutputLoudnessMetrics{OutputI: tt.outputI, OutputTP: tt.outputTP},
+			}
+			plan := planLimiterForLoudnorm(output, config)
+
+			if !plan.needed {
+				t.Fatalf("limiter should be needed (projected TP %.2f > target %.2f)",
+					tt.outputTP+(config.Loudnorm.TargetI-tt.outputI), config.Loudnorm.TargetTP)
+			}
+			if plan.clamped {
+				t.Errorf("high clamp must not set clamped (pre-gain path is low-clamp only)")
+			}
+			if plan.preGainDB != 0 {
+				t.Errorf("preGainDB = %v, want 0", plan.preGainDB)
+			}
+			if plan.ceilingDB != maxLimiterCeilingDB {
+				t.Errorf("ceilingDB = %v, want %v", plan.ceilingDB, maxLimiterCeilingDB)
+			}
+			if !strings.Contains(plan.pass3Prefix, "alimiter=limit=1.000000:") {
+				t.Errorf("pass3Prefix must carry alimiter limit=1.000000, got %q", plan.pass3Prefix)
+			}
+			if strings.Contains(plan.pass3Prefix, "volume=") {
+				t.Errorf("pass3Prefix must not carry a volume pre-gain, got %q", plan.pass3Prefix)
+			}
+			// Belt and braces: the emitted linear limit must be inside alimiter's range.
+			limit := parseAlimiterLimit(t, plan.pass3Prefix)
+			if limit < 0.0625 || limit > 1.0 {
+				t.Errorf("alimiter limit %.6f outside FFmpeg range [0.0625, 1.0]", limit)
+			}
+		})
+	}
+}
+
+// parseAlimiterLimit extracts the numeric alimiter limit= value from a filter
+// prefix string.
+func parseAlimiterLimit(t *testing.T, prefix string) float64 {
+	t.Helper()
+	const key = "alimiter=limit="
+	idx := strings.Index(prefix, key)
+	if idx < 0 {
+		t.Fatalf("no %q in %q", key, prefix)
+	}
+	rest := prefix[idx+len(key):]
+	if end := strings.Index(rest, ":"); end >= 0 {
+		rest = rest[:end]
+	}
+	limit, err := strconv.ParseFloat(rest, 64)
+	if err != nil {
+		t.Fatalf("parse alimiter limit %q: %v", rest, err)
+	}
+	return limit
 }
 
 func TestPlanLimiterForLoudnormMatchesInlineCalculation(t *testing.T) {
