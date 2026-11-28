@@ -1,6 +1,6 @@
 # Managed by Tailor: nix/hooks/go-ffmpeg-statigo.nix
 { pkgs, ... }:
-pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
   tailor_prepend_path LD_LIBRARY_PATH "${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isx86_64 "${pkgs.vpl-gpu-rt}/lib:${pkgs.intel-media-driver}/lib:"}${pkgs.vulkan-loader}/lib"
   if tailor_nixos_drivers; then
     ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isx86_64 ''

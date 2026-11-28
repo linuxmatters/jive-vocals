@@ -1,73 +1,30 @@
-# VHS documentation
-#
-# Output:
-#   Output <path>.gif               Create a GIF output at the given <path>
-#   Output <path>.mp4               Create an MP4 output at the given <path>
-#   Output <path>.webm              Create a WebM output at the given <path>
-#
-# Require:
-#   Require <string>                Ensure a program is on the $PATH to proceed
-#
-# Settings:
-#   Set FontSize <number>           Set the font size of the terminal
-#   Set FontFamily <string>         Set the font family of the terminal
-#   Set Height <number>             Set the height of the terminal
-#   Set Width <number>              Set the width of the terminal
-#   Set LetterSpacing <float>       Set the font letter spacing (tracking)
-#   Set LineHeight <float>          Set the font line height
-#   Set LoopOffset <float>%         Set the starting frame offset for the GIF loop
-#   Set Theme <json|string>         Set the theme of the terminal
-#   Set Padding <number>            Set the padding of the terminal
-#   Set Framerate <number>          Set the framerate of the recording
-#   Set PlaybackSpeed <float>       Set the playback speed of the recording
-#   Set MarginFill <file|#000000>   Set the file or color the margin will be filled with.
-#   Set Margin <number>             Set the size of the margin. Has no effect if MarginFill isn't set.
-#   Set BorderRadius <number>       Set terminal border radius, in pixels.
-#   Set WindowBar <string>          Set window bar type. (one of: Rings, RingsRight, Colorful, ColorfulRight)
-#   Set WindowBarSize <number>      Set window bar size, in pixels. Default is 40.
-#   Set TypingSpeed <time>          Set the typing speed of the terminal. Default is 50ms.
-#
-# Sleep:
-#   Sleep <time>                    Sleep for a set amount of <time> in seconds
-#
-# Type:
-#   Type[@<time>] "<characters>"    Type <characters> into the terminal with a
-#                                   <time> delay between each character
-#
-# Keys:
-#   Escape[@<time>] [number]        Press the Escape key
-#   Backspace[@<time>] [number]     Press the Backspace key
-#   Delete[@<time>] [number]        Press the Delete key
-#   Insert[@<time>] [number]        Press the Insert key
-#   Down[@<time>] [number]          Press the Down key
-#   Enter[@<time>] [number]         Press the Enter key
-#   Space[@<time>] [number]         Press the Space key
-#   Tab[@<time>] [number]           Press the Tab key
-#   Left[@<time>] [number]          Press the Left Arrow key
-#   Right[@<time>] [number]         Press the Right Arrow key
-#   Up[@<time>] [number]            Press the Up Arrow key
-#   Down[@<time>] [number]          Press the Down Arrow key
-#   PageUp[@<time>] [number]        Press the Page Up key
-#   PageDown[@<time>] [number]      Press the Page Down key
-#   Ctrl+<key>                      Press the Control key + <key> (e.g. Ctrl+C)
-#
-# Display:
-#   Hide                            Hide the subsequent commands from the output
-#   Show                            Show the subsequent commands in the output
+# Jive Vocals demo tape. Record with `just record`.
 
-Output .github/jive-vocals.gif
+Output .demo.mp4
 
-Require ./jive-vocals
+Require jive-vocals
 
-Set Shell "fish"
+Set Shell "/bin/sh"
+Set Columns 116
+Set Rows 32
+Set FontFamily "Fira Code"
 Set FontSize 14
-Set Width 1030
-Set Height 720
-Set Padding 8
-Set WindowBar ColorfulRight
-Set WindowBarSize 32
-Set TypingSpeed 27ms
-Set Theme catppuccin-mocha
+Set Padding 16
+Set Framerate 8
+Set TypingSpeed 40ms
+Set Theme "Catppuccin Mocha"
+Set CursorBlink false
 
-Type "./jive-vocals testdata/LMP-81s-*.flac" Sleep 250ms Enter
-Sleep 20s
+Hide
+Type 'PS1="$ " && cd "${JIVE_VOCALS_DEMO_DIR:-.}" && clear'
+Enter
+Sleep 200ms
+Show
+
+Sleep 400ms
+Type "jive-vocals LMP-81s-mark.flac LMP-81s-popey.flac"
+Enter
+Sleep 7s
+Screenshot pages/demo-still.png
+Wait+Screen@60s /2 complete/
+Sleep 2.5s

@@ -1,22 +1,94 @@
-# Jive Vocals 🗣️
+<!-- tailor:social-header:start -->
+<p align="center">
+  <a href="https://linuxmatters.sh/jive/vocals/"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/hero-dark.svg"><img src="pages/social/hero-light.svg" alt="Jive Vocals"></picture></a>
+</p>
+<!-- tailor:social-header:end -->
+
+<!-- tailor:social-links:start -->
+<p align="center">
+  <a href="https://bsky.app/profile/wimpys.world"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/link-bluesky-dark.svg"><img src="pages/social/link-bluesky-light.svg" alt="Bluesky"></picture></a>
+  <a href="https://wimpysworld.social/@martin"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/link-mastodon-dark.svg"><img src="pages/social/link-mastodon-light.svg" alt="Mastodon"></picture></a>
+  <a href="https://linkedin.com/in/martinwimpress"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/link-linkedin-dark.svg"><img src="pages/social/link-linkedin-light.svg" alt="LinkedIn"></picture></a>
+</p>
+<!-- tailor:social-links:end -->
+
+<!-- tailor:social-community:start -->
+<p align="center">
+  <a href="https://discord.com/invite/vUsydfP"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/linuxmatters/jive-vocals/social-assets/community-dark.svg"><img src="https://raw.githubusercontent.com/linuxmatters/jive-vocals/social-assets/community-light.svg" alt="Discord community"></picture></a>
+</p>
+<!-- tailor:social-community:end -->
 
 > Formerly known as Jivetalking.
 
 Raw microphone recordings into broadcast-ready audio in one command. No configuration, and no surprises.
 
+Your files emerge at -16 LUFS / -1 dBTP, the loudness standard for spoken-word podcasts, with room rumble, background hiss, clicks, and harsh sibilance sorted automatically. Multiple files process in parallel, each with its own TUI progress row. Everything needed is embedded in the binary. This is not how audio tools usually work, and that is rather the point.
+
 Website: [linuxmatters.sh/jive/vocals](https://linuxmatters.sh/jive/vocals/)
+
+## Features
+
+- **Adaptive four-pass pipeline**: analyses each recording before setting compressor thresholds, noise reduction, speech gate, and de-esser parameters.
+- **Automatic spoken-word clean-up**: removes room rumble, background hiss, clicks, and harsh sibilance without manual tuning.
+- **Broadcast loudness normalisation**: outputs matched `-16 LUFS` / `-1 dBTP` masters for spoken-word podcasts.
+- **Parallel multi-presenter processing**: processes multiple files at once with live terminal progress, filter status panels, and Recording and Processed star ratings.
+- **Empirical Markdown reports**: writes every measurement and adapted filter setting beside each output file.
+- **Analysis-only and diagnostics modes**: check recordings before committing to a take (`-a`), or emit before/after spectrograms and interval sidecars (`--diagnostics`).
+- **Self-contained binary**: embeds static FFmpeg libraries with zero runtime dependencies.
+
+<!-- tailor:social-stats:start -->
+<p align="center">
+  <a href="https://github.com/linuxmatters/jive-vocals/pulse"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/linuxmatters/jive-vocals/social-assets/stats-dark.svg"><img src="https://raw.githubusercontent.com/linuxmatters/jive-vocals/social-assets/stats-light.svg" alt="Jive Vocals statistics"></picture></a>
+</p>
+<!-- tailor:social-stats:end -->
+
+## Install
+
+First-party signed package repositories are published for Linux and macOS through [wimpys.world](https://wimpys.world/). Choose your platform below for setup instructions and automatic updates.
+
+<!-- tailor:social-packages:start -->
+<p align="center">
+  <a href="https://apt.wimpys.world/#jive-vocals"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-apt-dark.svg"><img src="pages/social/pkg-apt-light.svg" alt="Debian and Ubuntu"></picture></a>
+  <a href="https://rpm.wimpys.world/#jive-vocals"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-rpm-dark.svg"><img src="pages/social/pkg-rpm-light.svg" alt="Fedora and openSUSE"></picture></a>
+  <a href="https://pkg.wimpys.world/#jive-vocals"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-pkg-dark.svg"><img src="pages/social/pkg-pkg-light.svg" alt="Arch Linux"></picture></a>
+  <br>
+  <a href="https://brew.wimpys.world/#jive-vocals"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-brew-dark.svg"><img src="pages/social/pkg-brew-light.svg" alt="macOS (Homebrew)"></picture></a>
+  <a href="https://nix.wimpys.world/#jive-vocals"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-nix-dark.svg"><img src="pages/social/pkg-nix-light.svg" alt="Nix and NixOS"></picture></a>
+</p>
+<!-- tailor:social-packages:end -->
+
+The Linux packages and binaries need glibc 2.38 or later, for example Ubuntu 24.04, Debian 13, or Fedora 39.
+
+<details>
+<summary><strong>Any platform (<code>bin</code>)</strong> - install and update the release binary directly</summary>
+
+[bin](https://github.com/marcosnils/bin) installs and updates the release binary:
+
+```shell
+bin install github.com/linuxmatters/jive-vocals
+```
+
+</details>
+
+<!-- tailor:social-sponsors:start -->
+<p align="center">
+  <a href="https://github.com/sponsors/flexiondotorg"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/sponsors-dark.svg"><img src="pages/social/sponsors-light.svg" alt="Jive Vocals sponsors"></picture></a>
+</p>
+<!-- tailor:social-sponsors:end -->
+
+## Quick start
+
+Process one or more presenter recordings in a single command:
 
 ```bash
 jive-vocals LMP-81s-mark.flac LMP-81s-martin.flac LMP-81s-popey.flac
 ```
 
-Your files emerge at -16 LUFS / -1 dBTP, the loudness standard for spoken-word podcasts, with room rumble, background hiss, clicks, and harsh sibilance sorted automatically. Multiple files process in parallel, each with its own TUI progress row. Everything needed is embedded in the binary. This is not how audio tools usually work, and that is rather the point.
-
-## Example Output
-
-<div align="center"><img alt="Jive Vocals Demo" src=".github/jive-vocals.gif" width="620" /></div>
-
----
+<!-- tailor:social-demo:start -->
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/demo-dark.svg"><img src="pages/social/demo-light.svg" alt="Jive Vocals demo"></picture>
+</p>
+<!-- tailor:social-demo:end -->
 
 ## The Typical Workflow
 
@@ -27,32 +99,6 @@ Your files emerge at -16 LUFS / -1 dBTP, the loudness standard for spoken-word p
 Each presenter records a separate FLAC file. Jive Vocals processes the files to
 matched -16 LUFS levels. Import them into Audacity to trim and edit, then export
 the finished episode.
-
----
-
-## Install
-
-| | Platform | Repository |
-| :-: | --- | --- |
-| <img src="https://apt.wimpys.world/logo.svg" width="32" height="32" alt=""> | Debian and Ubuntu | [apt.wimpys.world](https://apt.wimpys.world/#jive-vocals) |
-| <img src="https://rpm.wimpys.world/logo.svg" width="32" height="32" alt=""> | Fedora and openSUSE | [rpm.wimpys.world](https://rpm.wimpys.world/#jive-vocals) |
-| <img src="https://pkg.wimpys.world/logo.svg" width="32" height="32" alt=""> | Arch Linux | [pkg.wimpys.world](https://pkg.wimpys.world/#jive-vocals) |
-| <img src="https://brew.wimpys.world/logo.svg" width="32" height="32" alt=""> | macOS (Homebrew) | [brew.wimpys.world](https://brew.wimpys.world/#jive-vocals) |
-| <img src="https://nix.wimpys.world/logo.svg" width="32" height="32" alt=""> | Nix and NixOS | [nix.wimpys.world](https://nix.wimpys.world/#jive-vocals) |
-
-Each repository is signed, and its page gives the setup steps and keeps Jive Vocals up to date.
-
-The Linux packages and binaries need glibc 2.38 or later, for example Ubuntu 24.04, Debian 13, or Fedora 39.
-
-### Linux and macOS
-
-[bin](https://github.com/marcosnils/bin) installs and updates the release binary:
-
-```shell
-bin install github.com/linuxmatters/jive-vocals
-```
-
----
 
 ## The Four-Pass Pipeline
 
@@ -76,8 +122,6 @@ The Pass 2 filter chain has each stage hand the next a cleaner signal:
 [Open the HTML source](docs/diagrams/pass2-filter-chain.html).
 
 For the full walkthrough, see **[docs/Pipeline.md](docs/Pipeline.md)**: what each stage does, why it sits where it does, how the adaptive tuning works, and how normalisation reaches -16 LUFS honestly, with a diagram.
-
----
 
 ## Quality Ratings
 
@@ -123,8 +167,6 @@ Jive Vocals 🗣️
 ```
 
 See **[docs/Usage.md](docs/Usage.md#quality-ratings)** for the three axes behind the Recording score and what a low star is telling you to fix.
-
----
 
 ## Usage
 
@@ -174,8 +216,6 @@ Pass `--analysis-only` to run Pass 1 only. It writes `<input>-analysis.md` next 
 
 See **[docs/Usage.md](docs/Usage.md#analysis-only-mode)** for what the report covers and how to read the gain-advice thermometer.
 
----
-
 ## Development
 
 Requires Go, Nix, and a tolerance for CGO.
@@ -223,3 +263,25 @@ Review and approve `.envrc` through the usual direnv process, then reload the de
 - [Levelator Comparison](docs/Levelator-Comparison-And-Gap-Analysis.md): how Jive Vocals compares to The Levelator, with capabilities and gaps
 - [Spectral Metrics Reference](docs/Spectral-Metrics-Reference.md): how measurements drive adaptation
 - [Normalisation Tuning](docs/Normalisation-Tuning.md): why the loudnorm and limiter constants hold their corpus-derived values
+
+## Support and contributing
+
+Read [Support](SUPPORT.md) for help and [Contributing](CONTRIBUTING.md) before submitting a change.
+
+<!-- tailor:social-stars:start -->
+<p align="center">
+  <a href="https://github.com/linuxmatters/jive-vocals/stargazers"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/linuxmatters/jive-vocals/social-assets/stars-dark.svg"><img src="https://raw.githubusercontent.com/linuxmatters/jive-vocals/social-assets/stars-light.svg" alt="Jive Vocals star history"></picture></a>
+</p>
+<!-- tailor:social-stars:end -->
+
+<!-- tailor:social-contributors:start -->
+<p align="center">
+  <a href="https://github.com/linuxmatters/jive-vocals/graphs/contributors"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/linuxmatters/jive-vocals/social-assets/contributors-dark.svg"><img src="https://raw.githubusercontent.com/linuxmatters/jive-vocals/social-assets/contributors-light.svg" alt="Jive Vocals contributors"></picture></a>
+</p>
+<!-- tailor:social-contributors:end -->
+
+<!-- tailor:social-footer:start -->
+<p align="center">
+  <a href="https://tailor.wimpys.world"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/footer-dark.svg"><img src="pages/social/footer-light.svg" alt="Fitted by Tailor"></picture></a>
+</p>
+<!-- tailor:social-footer:end -->

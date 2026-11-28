@@ -19,7 +19,7 @@ Go CLI tool for podcast audio preprocessing using embedded FFmpeg. Transforms ra
 - Keep the versioned root binary build in `just/project/build.sh`, after the managed build. Keep setup explicitly invoked and outside quality commands.
 - **Clean artifacts:** `just clean`
 - **Install to ~/.local/bin:** `just install`
-- **VHS demo recording:** `just vhs`
+- **Terminal demo recording:** `just record` (uses `ntrecord`)
 
 ## Architecture
 

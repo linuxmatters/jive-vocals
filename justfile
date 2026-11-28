@@ -39,10 +39,55 @@ install: build
     @echo "Installed jive-vocals to ~/.local/bin/jive-vocals"
     @echo "Make sure ~/.local/bin is in your PATH"
 
-# Make a VHS tape recording
-vhs: build
-    @rm -f testdata/LMP-81s-*-processed.flac
-    @vhs ./jive-vocals.tape
+# Record pages/demo.webp and pages/demo-still.png from jive-vocals.tape using ntrecord
+record: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    for tool in ntrecord ffmpeg oxipng; do
+        command -v "$tool" >/dev/null || {
+            printf "just record: %s not found; enter the Nix shell with 'nix develop'\n" "$tool" >&2
+            exit 1
+        }
+    done
+
+    repo_root="$PWD"
+    tmp_dir="$(mktemp -d)"
+
+    cleanup() {
+        rm -f -- "$repo_root/.demo.mp4"
+        if [[ -n "${tmp_dir:-}" && -d "$tmp_dir" ]]; then
+            rm -rf -- "$tmp_dir"
+        fi
+    }
+    trap cleanup EXIT
+
+    mkdir -p pages
+    cp -- testdata/LMP-81s-mark.flac testdata/LMP-81s-popey.flac "$tmp_dir/"
+
+    font_env=()
+    if command -v fc-list >/dev/null 2>&1; then
+        cjk_font="$(fc-list :charset=33c8 -f '%{file}\n' 2>/dev/null | head -n 1 || true)"
+        if [[ -n "$cjk_font" ]]; then
+            base_font_path="$(sed -n "s/^export NTRECORD_FONT_PATH=\${NTRECORD_FONT_PATH-'\([^']*\)'}$/\1/p" "$(command -v ntrecord)" 2>/dev/null || true)"
+            if [[ -n "$base_font_path" ]]; then
+                font_env=(NTRECORD_FONT_PATH="${base_font_path}:$(dirname "$cjk_font")")
+            fi
+        fi
+    fi
+
+    env -u DIRENV_DIR -u DIRENV_FILE -u DIRENV_DIFF -u DIRENV_WATCHES \
+        -u PROMPT_COMMAND -u BASH_ENV \
+        PATH="$repo_root:$PATH" \
+        JIVE_VOCALS_DEMO_DIR="$tmp_dir" \
+        "${font_env[@]}" \
+        ntrecord jive-vocals.tape
+
+    ffmpeg -y -v error -i "$repo_root/.demo.mp4" \
+        -vf "setpts=0.6*PTS,fps=8" \
+        -c:v libwebp_anim -lossless 0 -quality 70 -compression_level 6 -loop 0 \
+        pages/demo.webp
+    oxipng -q -o 4 --strip safe pages/demo-still.png
 
 # Show current version (from git tags or "dev" if no tags)
 version:
