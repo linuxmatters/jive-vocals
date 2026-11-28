@@ -1959,6 +1959,116 @@ func TestTuneNoiseReduction(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("white-fallback nr ramps down with GateSeparationDB", func(t *testing.T) {
+		// A SpeechProfile must be present for the ramp to engage (GateSeparationDB
+		// is only meaningful with a real profile behind it); separation stays below
+		// afftdnCustomMinSeparationDB in every case here, so the custom path never
+		// qualifies (no NoiseProfile) and nr scaling is exercised on its own.
+		cases := []struct {
+			name         string
+			separationDB float64
+			want         float64
+		}{
+			{"zero separation sits at the floor", 0.0, afftdnMinNoiseReductionWhiteFallback},
+			{"negative separation clamps to the floor", -3.0, afftdnMinNoiseReductionWhiteFallback},
+			{"issue #155 case (0.88 dB)", 0.88, afftdnMinNoiseReductionWhiteFallback + (0.88/afftdnCustomMinSeparationDB)*(12.0-afftdnMinNoiseReductionWhiteFallback)},
+			{"halfway to the custom-profile threshold", afftdnCustomMinSeparationDB / 2, (afftdnMinNoiseReductionWhiteFallback + 12.0) / 2},
+			{"at the custom-profile threshold reaches full nr", afftdnCustomMinSeparationDB, 12.0},
+			{"above the custom-profile threshold stays at full nr", afftdnCustomMinSeparationDB + 5, 12.0},
+		}
+
+		for _, tt := range cases {
+			t.Run(tt.name, func(t *testing.T) {
+				config := &EffectiveFilterConfig{NoiseReduction: defaultNoiseReductionConfig()}
+				diag := &AdaptiveDiagnostics{}
+				measurements := &AudioMeasurements{
+					Noise: NoiseMetrics{Floor: -58.0},
+					Regions: RegionMetrics{
+						GateSeparationDB: tt.separationDB,
+						SpeechProfile:    &SpeechCandidateMetrics{},
+					},
+				}
+
+				tuneNoiseReduction(config, diag, measurements)
+
+				if config.NoiseReduction.AfftdnNoiseType != "w" {
+					t.Fatalf("AfftdnNoiseType = %q, want w (no NoiseProfile means custom can't qualify)", config.NoiseReduction.AfftdnNoiseType)
+				}
+				const epsilon = 1e-9
+				if got := config.NoiseReduction.AfftdnNoiseReduction; math.Abs(got-tt.want) > epsilon {
+					t.Errorf("AfftdnNoiseReduction = %.4f, want %.4f", got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("nr stays fixed at 12 without a SpeechProfile", func(t *testing.T) {
+		// GateSeparationDB degrades to a non-informative value when no profile was
+		// elected; the ramp must not engage on that value.
+		config := &EffectiveFilterConfig{NoiseReduction: defaultNoiseReductionConfig()}
+		diag := &AdaptiveDiagnostics{}
+		measurements := &AudioMeasurements{
+			Noise:   NoiseMetrics{Floor: -58.0},
+			Regions: RegionMetrics{GateSeparationDB: 0.0},
+		}
+
+		tuneNoiseReduction(config, diag, measurements)
+
+		if got := config.NoiseReduction.AfftdnNoiseReduction; got != 12.0 {
+			t.Errorf("AfftdnNoiseReduction = %.2f, want 12.0 (unset, default stands)", got)
+		}
+	})
+
+	t.Run("custom profile keeps nr at 12 regardless of the ramp", func(t *testing.T) {
+		config := &EffectiveFilterConfig{NoiseReduction: defaultNoiseReductionConfig()}
+		diag := &AdaptiveDiagnostics{}
+		measurements := &AudioMeasurements{
+			Noise: NoiseMetrics{Floor: -58.0},
+			Regions: RegionMetrics{
+				GateSeparationDB: 15.0,
+				SpeechProfile:    &SpeechCandidateMetrics{},
+				NoiseProfile: &NoiseProfile{
+					Spectral:      SpectralMetrics{Flatness: 0.6},
+					BandsMeasured: true,
+					BandNoise:     []float64{-61.0, -60.0, -59.0},
+				},
+			},
+		}
+
+		tuneNoiseReduction(config, diag, measurements)
+
+		if config.NoiseReduction.AfftdnNoiseType != "custom" {
+			t.Fatalf("AfftdnNoiseType = %q, want custom", config.NoiseReduction.AfftdnNoiseType)
+		}
+		if got := config.NoiseReduction.AfftdnNoiseReduction; got != 12.0 {
+			t.Errorf("AfftdnNoiseReduction = %.2f, want 12.0 on the custom path", got)
+		}
+	})
+}
+
+// TestScaleAfftdnNoiseReductionForSeparation covers the ramp function directly.
+func TestScaleAfftdnNoiseReductionForSeparation(t *testing.T) {
+	tests := []struct {
+		name         string
+		separationDB float64
+		want         float64
+	}{
+		{"zero", 0.0, afftdnMinNoiseReductionWhiteFallback},
+		{"negative clamps to zero", -10.0, afftdnMinNoiseReductionWhiteFallback},
+		{"threshold", afftdnCustomMinSeparationDB, 12.0},
+		{"above threshold", afftdnCustomMinSeparationDB * 2, 12.0},
+		{"midpoint", afftdnCustomMinSeparationDB / 2, (afftdnMinNoiseReductionWhiteFallback + 12.0) / 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := scaleAfftdnNoiseReductionForSeparation(tt.separationDB)
+			const epsilon = 1e-9
+			if math.Abs(got-tt.want) > epsilon {
+				t.Errorf("scaleAfftdnNoiseReductionForSeparation(%.2f) = %.4f, want %.4f", tt.separationDB, got, tt.want)
+			}
+		})
+	}
 }
 
 // TestBuildAfftdnBandNoise covers the bn mean-subtraction and clip maths.
